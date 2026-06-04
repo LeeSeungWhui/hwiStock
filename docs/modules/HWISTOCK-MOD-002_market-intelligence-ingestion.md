@@ -1,0 +1,202 @@
+---
+schema_version: hwi.module/v0
+id: HWISTOCK-MOD-002
+type: module
+domain: backend
+name: Market intelligence ingestion
+spec_status: set
+build_status: planned
+verification_status: pending
+priority: P0
+source_of_truth: user_intent
+legacy_ids: []
+source_coverage:
+  inventory_ref: docs/index.md
+  ledger_ref: none
+  preservation_status: not_applicable
+  coverage_ref: none
+completeness:
+  status: set
+  audit_ref: docs/units/HWISTOCK-UNIT-003_market-intelligence-ingestion.md
+owner: hwi
+updated_at: 2026-06-02
+last_verified_at:
+source_inputs:
+  - kind: user_prompt
+    path_or_url: "인터넷 뉴스 기사 / 공시 같은 것 수집, 24시간"
+    confidence: high
+required_rules:
+  - docs/profiles/PROFILE-HWISTOCK.md
+design_refs: []
+code_paths: []
+entrypoints: []
+interfaces: []
+links:
+  - PROFILE-HWISTOCK
+  - HWISTOCK-MOD-001
+  - docs/sources/HWISTOCK-SOURCE-REGISTRY.md
+---
+
+# Market Intelligence Ingestion
+
+## 1. Purpose
+
+This module owns the 24-hour information ingestion branch for `hwiStock`: news,
+articles, disclosures, exchange/broker notices, chart/market-data context, and
+other permitted public or licensed sources. It is separate from the trading/order
+branch.
+
+## 2. User Value / Representative Scenarios
+
+- As the project owner, I can collect market-moving information continuously,
+  including outside market hours.
+- As a strategy reviewer, I can inspect what source produced a signal candidate.
+- As an operator, I can pause or throttle ingestion without affecting kill switch
+  controls for trading.
+
+## 3. Scope
+
+### Included
+
+- Source allowlist.
+- API/RSS-first ingestion policy.
+- Crawling permission notes: robots/terms/rate limits where applicable.
+- Deduplication and timestamp normalization.
+- Disclosure/news event normalization.
+- Chart/market-data context ingestion: OHLCV/candles, volume, price movement,
+  and quote-derived indicators from approved data sources.
+- Retention and audit evidence.
+- Isolation from direct order placement.
+
+### Excluded
+
+- Direct order routing.
+- Broker credential handling.
+- Profit prediction claims.
+- Scraping sources that disallow automated collection.
+- Republishing copyrighted article bodies beyond permitted excerpts/metadata.
+
+## 4. Product / Capability Contract
+
+- The ingestion branch may run 24 hours.
+- Each source must be explicitly allowed before implementation through
+  `docs/sources/HWISTOCK-SOURCE-REGISTRY.md`.
+- Prefer official APIs, RSS feeds, public disclosure systems, or broker-provided
+  feeds over generic scraping.
+- First source allowlist:
+  - OPENDART / DART Open API is approved for the first ingestion implementation.
+  - NAVER Developers Search API news is conditionally allowed only after API
+    credentials, query list, rate cap, and storage policy are approved.
+  - KRX KIND and KRX Data Marketplace are registered as official sources, but
+    automated collection is deferred until source-specific terms/access checks
+    are complete.
+  - KIS market/realtime/news APIs are deferred to KIS API verification and
+    broker-network approval.
+  - General media HTML scraping and unofficial finance APIs are forbidden by
+    default.
+- Prefer raw market-data fields over chart-image scraping. Rendered chart images
+  are visualization only; OHLCV, tick, quote, and volume data are the source of
+  truth for chart signals.
+- Store source URL/id, collected_at, published_at when available, title/summary,
+  source name, and deduplication key.
+- Store market-data timestamp, venue, symbol, interval, OHLCV, volume spike
+  metrics, and data-latency status when chart data is used.
+- Do not store secrets or private account data.
+- Ingestion output may create candidate events/signals, but must not directly
+  place orders.
+
+## 4-1. Contract Surface Map
+
+| surface | names / paths / ids | behavior owned | out of scope | evidence needed |
+| --- | --- | --- | --- | --- |
+| source registry | future config | allowed sources and limits | unapproved sources | config review |
+| crawler/fetcher | future service | collect metadata/events | direct trading | logs |
+| disclosure source | DART first; KIND conditional | public disclosure events | private data | source evidence |
+| news source | Naver Search API conditional; general HTML scraping forbidden | news/article metadata | full article copying beyond allowed policy | source evidence |
+| chart data source | KRX delayed conditional; KIS realtime deferred | candles/OHLCV/volume/latency | chart image scraping | data evidence |
+| event bus/store | future store | normalized candidate events | orders | data review |
+
+## 5. Interfaces
+
+No code interfaces exist yet.
+
+Future interfaces may include:
+
+- source registry
+- fetch scheduler
+- dedupe store
+- normalized event store
+- chart/market-data adapter
+- downstream strategy signal input
+- ingestion health output
+
+## 6. State / Data / Permission Rules
+
+- Source allowlist is required before implementation.
+- Source registry is `docs/sources/HWISTOCK-SOURCE-REGISTRY.md`.
+- Retention default: keep normalized events, source metadata, and summaries
+  through at least the one-week paper/sandbox gate. Longer retention and
+  compression remain storage-policy questions.
+- Copyright/terms handling is source-specific. Full article body storage is
+  forbidden unless the registry explicitly allows it.
+- News/disclosure/chart events must be labeled as informational until
+  strategy/risk layers evaluate them.
+
+## 7. Existing Assets / Reuse Points
+
+- No project code exists yet.
+
+## 8. Module-Level Verification
+
+- Source allowlist exists.
+- Rate limit and robots/terms notes exist for crawled sources.
+- Deduplication behavior is testable.
+- Chart source, interval, latency, and OHLCV schema are testable when chart
+  signals are enabled.
+- Ingestion output cannot directly call order routing.
+
+## 9. Included Units
+
+- `HWISTOCK-UNIT-003`: 24-hour market intelligence ingestion planning.
+
+## 10. Decisions / Open Contract Questions
+
+- Decision: market intelligence ingestion is a separate 24-hour branch.
+- Decision: ingestion cannot directly place orders.
+- Decision: news/disclosure and chart/market-data context should both feed
+  candidate generation, but neither can bypass strategy/risk checks.
+- Decision: chart signals must use approved raw market data, not scraped chart
+  images.
+- Decision: OPENDART / DART Open API is the first approved disclosure source.
+- Decision: NAVER Search API news is conditional after key/query/rate approval.
+- Decision: KIND/KRX are official source candidates but automated collection is
+  deferred until terms/access checks are complete.
+- Decision: general HTML scraping and unofficial finance APIs are blocked by
+  default.
+- Open: exact query list for news collection.
+- Pending approval: first-pass chart data source, realtime quote source, and
+  candle intervals are packaged in
+  `docs/set/READY-SET-STRATEGY-DECISION-PACKET-20260602_hwistock.md`. Broker
+  data calls remain disabled until later explicit broker-network approval.
+
+## 10-1. Completeness Audit
+
+| coverage_area | status | notes | blocks_unit_set |
+| --- | --- | --- | --- |
+| source inventory | set | source registry added | no |
+| actors and roles | sufficient | owner/operator/reviewer | no |
+| entrypoints | set | future interfaces named; no code yet | no |
+| behavior contract | set | allowlist and forbidden sources defined | no |
+| state and data | set | event fields and storage refs defined | no |
+| permissions | set | per-source status model defined | no |
+| design basis | minimal_exception | no UI yet | no |
+| invariants | sufficient | no direct order placement | no |
+| verification families | set | QA scenario updated for source registry | no |
+
+## 11. Evidence References
+
+- `docs/evidence/RUN-20260602_unit-003-market-intelligence-set.md`
+
+## 12. Design References
+
+- None.

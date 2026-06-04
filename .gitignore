@@ -1,0 +1,37 @@
+# Local secrets and environment files.
+.env
+.env.*
+*.env
+!*.env.example
+!.env.example
+
+# Local runtime/cache/output artifacts.
+/cache/
+/data/
+/output/
+/logs/
+*.log
+
+# Python/tooling caches.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Node/tooling caches.
+node_modules/
+.next/
+dist/
+build/
+coverage/
+
+# OS/editor noise.
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
