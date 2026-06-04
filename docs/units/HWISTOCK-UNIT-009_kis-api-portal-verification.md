@@ -5,11 +5,13 @@ type: unit
 domain: broker
 name: KIS API portal verification
 status: set
+ready_set_rebaseline_status: go_check_passed
+implementation_status: go_check_passed
 priority: P0
 source_of_truth: official_docs_required
 work_class: docs_only
 owner: hwi
-updated_at: 2026-06-02
+updated_at: 2026-06-04
 profile_refs:
   - PROFILE-HWISTOCK
 module_ids:
@@ -21,6 +23,10 @@ links:
   - PROFILE-HWISTOCK
 evidence_refs:
   - docs/evidence/RUN-20260602_unit-009-kis-api-portal-verification-set.md
+  - docs/evidence/RUN-20260604_unit-009-go-preflight-rebaseline.md
+  - docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md
+  - docs/evidence/RUN-20260604_unit-009-go-preflight.md
+  - docs/evidence/RUN-20260604_unit-009-go-check.md
 ---
 
 # KIS API Portal Verification
@@ -60,9 +66,9 @@ or live network call is implemented. Target portal:
 | ac_id | priority | criterion | observable_result | evidence | linked_qa_rows | result |
 | --- | --- | --- | --- | --- | --- | --- |
 | AC-01 | P0 | Official API list is reviewed | Required order/quote/account endpoints are enumerated | `RUN-20260602_unit-009-kis-api-portal-verification-set.md` | QA-001 | pass |
-| AC-02 | P0 | Paper/mock mode is confirmed | Paper endpoint separation is confirmed; KIS paper mode supports the core KRX order/account/realtime path, while exact paper budget and current numeric limits require future account/API smoke | `RUN-20260602_unit-009-kis-api-portal-verification-set.md` | QA-002 | partial |
-| AC-03 | P0 | KRX/NXT/SOR behavior is confirmed | KRX/NXT/SOR fields are documented for live-capable APIs, but KIS paper docs explicitly constrain several order/realtime paths to KRX-only or real-only | `RUN-20260602_unit-009-kis-api-portal-verification-set.md` | QA-003 | partial |
-| AC-04 | P0 | No network call is made during verification | Unit remained docs/public-sample only; no credential use, login, token request, broker API call, or order placement occurred | `RUN-20260602_unit-009-kis-api-portal-verification-set.md` | QA-004 | pass |
+| AC-02 | P0 | Paper/mock mode is confirmed | Paper endpoint separation is confirmed; KRX paper core order/account/quote/realtime paths are cross-referenced to sanitized bounded smoke `RUN-20260604_kis-paper-mock-api-smoke.md`; exact paper budget and current numeric limits still require future account evidence | `RUN-20260602_unit-009-kis-api-portal-verification-set.md`; `RUN-20260604_unit-009-go-check-rebaseline.md` | QA-002 | pass_with_partial_boundary |
+| AC-03 | P0 | KRX/NXT/SOR behavior is confirmed | KRX/NXT/SOR fields are documented for live-capable APIs; KIS paper remains KRX-limited where references say paper-unsupported; NXT/SOR routing stays `live_verify` | `RUN-20260602_unit-009-kis-api-portal-verification-set.md`; `RUN-20260604_unit-009-go-check-rebaseline.md` | QA-003 | pass_with_partial_boundary |
+| AC-04 | P0 | No network call is made during verification | Unit remained docs/public-sample only; no credential use, login, token request, broker API call, or order placement occurred during Set or the current-authority rebaseline closure | `RUN-20260602_unit-009-kis-api-portal-verification-set.md`; `RUN-20260604_unit-009-go-check-rebaseline.md` | QA-004 | pass |
 
 ## 5. Official Source Snapshot
 
@@ -123,7 +129,26 @@ Checked on 2026-06-02 KST.
 - Paper budget must be read from KIS paper account balance evidence, not assumed
   from the project target.
 
-## 8. Open Questions / Follow-Up Inputs
+## 8. Go-Check Boundary (2026-06-04 Rebaseline)
+
+Current-authority Go-Check closed this unit as docs-only / local-reference
+verification. Evidence:
+`docs/evidence/RUN-20260604_unit-009-go-preflight-rebaseline.md` and
+`docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md`.
+
+Historical supporting docs-only evidence remains preserved at
+`docs/evidence/RUN-20260604_unit-009-go-preflight.md` and
+`docs/evidence/RUN-20260604_unit-009-go-check.md`, but those files are superseded
+as current Go authorization by the rebaseline closure above.
+
+- `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md` now cross-references sanitized
+  bounded KIS paper/mock smoke for proven KRX paper paths only.
+- The completed smoke does **not** authorize new KIS calls, paper orders, live orders,
+  credential use, or broker network activity in ordinary Go rows.
+- Residual partial items (paper budget amount, exact rate limits, NXT/SOR live proof,
+  paper-unsupported helpers) remain deferred to future explicitly approved units.
+
+## 9. Open Questions / Follow-Up Inputs
 
 - KIS paper account number first 8 digits, product code, and HTS ID are needed
   for any future paper smoke. Do not store or print secrets in docs/evidence.

@@ -1,0 +1,77 @@
+.wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.wrapper:has(:disabled) {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.radio {
+    --radio-color: #3b82f6;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #d1d5db;
+    border-radius: 50%;
+    background-color: white;
+    cursor: inherit;
+    position: relative;
+    transition: all 0.2s;
+}
+
+.radio:checked {
+    border-color: var(--radio-color, #3b82f6);
+}
+
+.radio:checked::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--radio-color, #3b82f6);
+}
+
+.radio:not(:disabled):hover {
+    border-color: var(--radio-color, #3b82f6);
+}
+
+.radio:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px white, 0 0 0 4px var(--radio-color, #3b82f6);
+}
+
+.label {
+    color: #374151;
+}
+
+.wrapper:has(:disabled) .label {
+    color: #9ca3af;
+}
+
+.radioPrimary {
+    --radio-color: #3b82f6;
+}
+
+.radioSuccess {
+    --radio-color: #10b981;
+}
+
+.radioWarning {
+    --radio-color: #f59e0b;
+}
+
+.radioDanger {
+    --radio-color: #ef4444;
+}
+
+.radioNeutral {
+    --radio-color: #6b7280;
+}

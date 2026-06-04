@@ -11,8 +11,16 @@ module_refs:
 profile_refs:
   - PROFILE-HWISTOCK
 status: set
+ready_set_rebaseline_status: go_check_passed
+implementation_status: go_check_passed
 owner: hwi
-updated_at: 2026-06-02
+updated_at: 2026-06-04
+evidence_refs:
+  - docs/evidence/RUN-20260602_unit-004-strategy-risk-rulebook-set.md
+  - docs/evidence/RUN-20260604_unit-004-go-preflight-rebaseline.md
+  - docs/evidence/RUN-20260604_unit-004-go-check-rebaseline.md
+  - docs/evidence/RUN-20260604_unit-004-go-preflight.md
+  - docs/evidence/RUN-20260604_unit-004-go-check.md
 ---
 
 # Strategy Risk Rulebook QA
@@ -60,7 +68,7 @@ Out of scope:
 | QA-003 | P0 | architecture | Submit a candidate event without entry signal/risk fields | Candidate is watchlist-only and cannot place an order | code/log review |
 | QA-004 | P0 | risk | Submit entry request without configured stop-loss trigger or route | Entry is rejected before order routing | rule/config test |
 | QA-005 | P0 | risk | Submit config without minimum cash reserve ratio 0.25, max simultaneous holdings 5, max stop envelope, or AI stop-validation policy | Config is invalid | schema/config test |
-| QA-006 | P1 | evidence | Generate paper trade summary | Candidate, entry, size, exit, reason, and P/L are recorded | evidence file |
+| QA-006 | P1 | evidence | Generate no-order dry-run decision summary | Candidate, entry, size, stop, target, hold window, and rejection reason are recorded without fill/PnL simulation | evidence file |
 | QA-007 | P1 | session | Open position before 19:30 and inspect 19:50 rule | Position is flattened by 19:50 KST by default | paper log |
 | QA-008 | P1 | safety | Submit averaging-down add-on after price moves against position | Add-on is rejected by default | test/log |
 | QA-009 | P1 | tempo | Attempt continuous 10-20 minute re-entry after each exit without a fresh signal | Re-entry is blocked unless fresh signal, reserve, holdings, and data checks pass | test/log |
@@ -96,3 +104,7 @@ Out of scope:
 - rejected-order log for all-in, missing stop, stale data, or averaging down
 - approved strategy decision packet/config review when UNIT-004 proceeds to full
   trading strategy Go
+- Current-authority rebaseline Go-Check keeps QA-007 and QA-010 documented as
+  deferred to the later trading-engine execution/logging unit while requiring
+  all P0 rows plus dry-run evidence, stale-data checks, and re-entry blocking to
+  pass locally.

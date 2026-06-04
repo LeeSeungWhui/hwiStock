@@ -5,21 +5,40 @@ type: unit
 domain: backend
 name: Trading engine and order state
 status: set
+ready_set_rebaseline_status: go_check_passed
+implementation_status: go_check_passed
 priority: P0
 source_of_truth: user_intent
 work_class: product_api
+completeness:
+  status: set
+  audit_ref: docs/qa/QA-HWISTOCK-UNIT-006_trading-engine-order-state.md
 owner: hwi
-updated_at: 2026-06-03
+updated_at: 2026-06-04
+last_verified_at: 2026-06-04
 profile_refs:
   - PROFILE-HWISTOCK
 module_ids:
   - HWISTOCK-MOD-005
   - HWISTOCK-MOD-003
   - HWISTOCK-MOD-004
+code_paths:
+  include:
+    - backend/lib/trading_engine.py
+    - backend/tests/test_trading_engine_order_state.py
+  exclude:
+    - "**/*credentials*"
+    - "**/*.env"
 qa_scenario_refs:
   - docs/qa/QA-HWISTOCK-UNIT-006_trading-engine-order-state.md
 evidence_refs:
   - docs/evidence/RUN-20260602_unit-006-trading-engine-order-state-set.md
+  - docs/evidence/RUN-20260604_unit-006-go-preflight-rebaseline.md
+  - docs/evidence/RUN-20260604_unit-006-go-check-rebaseline.md
+  - run_id: RUN-20260604-unit-006-go-preflight
+    status: historical_before_rebaseline_queue
+  - run_id: RUN-20260604-unit-006-go-check
+    status: superseded_by_code_import
 links:
   - HWISTOCK-MOD-005
 ---
@@ -90,7 +109,7 @@ approval and broker-network gates close.
 | AC-06 | P0 | NXT/SOR are parameterized, not separate strategies | KRX/NXT/SOR routes use the same state machine; KIS paper-unsupported NXT/SOR branches are disabled or explicit-fallback-only | route/capability test | QA-006 |
 | AC-07 | P0 | Condition schema is deterministic | `condition_card/v0` accepts only known condition types and required source/risk refs | schema test | QA-007 |
 | AC-08 | P0 | KIS paper capabilities are explicit | Adapter capability flags expose KRX-only paper support and unsupported NXT/SOR/helper APIs | capability test | QA-008 |
-| AC-09 | P0 | KIS paper reconciliation is auditable | Order, fill, balance, cancel, retry, disabled-branch, and fallback events are represented from supported KIS paper data or explicit local fallback | reconciliation test | QA-009 |
+| AC-09 | P0 | KIS paper evidence shape is auditable without broker state application | Order, fill, balance, cancel, disabled-branch, and fallback fixture events are represented without applying broker state changes | reconciliation test | QA-009 |
 
 ## 5. Set Decisions
 
@@ -123,6 +142,15 @@ Allowed first-pass `watch_conditions.type` values:
 
 Reject unknown condition types, missing source ids, missing risk refs, expired
 cards, and vague natural-language-only triggers.
+
+Foundation risk-gate behavior for route metadata:
+
+- `KRX` and `NXT` pass directly to UNIT-004 risk validation.
+- `SOR` stays a UNIT-006 route metadata value but is normalized to `KRX` for the
+  current foundation/no-order risk-gate call.
+- `AUTO_SESSION` stays a UNIT-006 route metadata value and requires an explicit
+  `session_venue_hint` of `KRX` or `NXT`; otherwise the risk gate blocks with a
+  clear unresolved-route reason.
 
 ### 5.2 State Machine
 
@@ -217,9 +245,24 @@ Use local state or explicit fallback records for paper-unsupported helper APIs:
 
 ### 5.6 Go Boundary
 
-This unit is Set-ready for implementation planning but still cannot start Go
-until the broader Ready-Set completion gate marks `implementation_ready: true`
-and the row appears in an approved `go_check_queue`.
+Foundation-only Go-Check passed on 2026-06-04 in the current-authority
+rebaseline evidence for the imported backend tree:
+`docs/evidence/RUN-20260604_unit-006-go-preflight-rebaseline.md` and
+`docs/evidence/RUN-20260604_unit-006-go-check-rebaseline.md`.
+
+Validated scope:
+
+- local `condition_card/v0` validator
+- deterministic compiler skeleton producing `compiled_watch/v0`
+- UNIT-004 strategy/risk gate delegation for entry-intent review
+- pre-approval order-state transitions through `dry_run_recorded` only
+- UNIT-006 no-order dry-run decision records
+- venue-route metadata and explicit KIS paper capability flags
+- fixture-only KIS paper evidence representation without broker state
+  application
+
+Broker-backed paper evidence, executable `submitted`/`accepted`/fill
+transitions, and KIS network adapters remain denied until later approved gates.
 
 ## 6. Remaining Open Questions
 

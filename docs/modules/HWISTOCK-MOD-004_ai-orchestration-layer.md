@@ -5,8 +5,9 @@ type: module
 domain: backend
 name: AI orchestration layer
 spec_status: set
-build_status: planned
-verification_status: pending
+build_status: go_check_passed
+verification_status: go_check_passed
+ready_set_rebaseline_status: go_check_passed
 priority: P0
 source_of_truth: user_intent
 legacy_ids: []
@@ -16,11 +17,11 @@ source_coverage:
   preservation_status: not_applicable
   coverage_ref: none
 completeness:
-  status: set
-  audit_ref: docs/units/HWISTOCK-UNIT-005_ai-orchestration-layer.md
+  status: go_check_passed
+  audit_ref: docs/evidence/RUN-20260605_unit-005-go-check-rebaseline.md
 owner: hwi
-updated_at: 2026-06-02
-last_verified_at:
+updated_at: 2026-06-05
+last_verified_at: 2026-06-05
 source_inputs:
   - kind: user_prompt
     path_or_url: "단순 알고리즘이 아니라 ai api로 오케스트레이트"
@@ -28,7 +29,9 @@ source_inputs:
 required_rules:
   - docs/profiles/PROFILE-HWISTOCK.md
 design_refs: []
-code_paths: []
+code_paths:
+  - backend/lib/ai_orchestration.py
+  - backend/tests/test_ai_orchestration_layer.py
 entrypoints: []
 interfaces: []
 links:
@@ -337,7 +340,8 @@ Future interfaces may include:
 
 ## 9. Included Units
 
-- `HWISTOCK-UNIT-005`: AI orchestration planning and safety-gate contract.
+- `HWISTOCK-UNIT-005`: AI orchestration foundation implementation and
+  safety-gate contract.
 - `HWISTOCK-UNIT-006`: trading engine/order state consumes validated candidate
   cards but never raw executable AI instructions.
 - `HWISTOCK-UNIT-008`: data/evidence storage persists AI analysis artifacts,
@@ -377,6 +381,8 @@ Future interfaces may include:
 ## 11. Evidence References
 
 - `docs/evidence/RUN-20260602_ai-orchestration-layer.md`
+- `docs/evidence/RUN-20260605_unit-005-go-preflight-rebaseline.md`
+- `docs/evidence/RUN-20260605_unit-005-go-check-rebaseline.md`
 - `docs/evidence/RUN-20260602_unit-005-ai-orchestration-layer-set.md`
 
 ## 12. Design References

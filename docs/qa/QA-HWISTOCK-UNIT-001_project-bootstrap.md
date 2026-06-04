@@ -10,10 +10,16 @@ module_refs:
 profile_refs:
   - PROFILE-HWISTOCK
 status: set
+ready_set_rebaseline_status: go_check_passed
+implementation_status: go_check_passed
 owner: hwi
-updated_at: 2026-06-02
+updated_at: 2026-06-04
 evidence_refs:
   - docs/evidence/RUN-20260602_unit-001-project-bootstrap-set.md
+  - docs/evidence/RUN-20260604_unit-001-go-preflight.md
+  - docs/evidence/RUN-20260604_unit-001-go-check.md
+  - docs/evidence/RUN-20260604_unit-001-go-preflight-rebaseline.md
+  - docs/evidence/RUN-20260604_unit-001-go-check-rebaseline.md
 ---
 
 # Project Bootstrap QA
@@ -33,6 +39,8 @@ In scope:
 - `docs/modules/HWISTOCK-MOD-001_trading-safety-core.md`
 - `docs/units/HWISTOCK-UNIT-001_project-bootstrap.md`
 - `docs/evidence/RUN-20260602_project-bootstrap.md`
+- `docs/evidence/RUN-20260604_unit-001-go-preflight-rebaseline.md`
+- `docs/evidence/RUN-20260604_unit-001-go-check-rebaseline.md`
 
 Out of scope:
 
@@ -50,7 +58,7 @@ Out of scope:
 | QA-002 | P0 | docs | Inspect profile approval policy | Broker/live order/real-money gates require explicit approval | file path |
 | QA-003 | P0 | docs | Inspect module doc | Safety module states no live orders by default | file path |
 | QA-004 | P1 | docs | Inspect QA scenario | Scenario references bootstrap unit/module/profile | file path |
-| QA-005 | P1 | docs | Inspect index/profile/unit | Selected broker, stack, strategy/risk, paper-boundary, source registry, and remaining full Ready-Set blockers are visible | file path |
+| QA-005 | P1 | docs | Inspect index/profile/unit | Selected broker, stack, strategy/risk, paper-boundary, source registry, closed Ready-Set state, and remaining Go/operational restrictions are visible | file path |
 | QA-006 | P0 | docs | Inspect profile/module/unit | Live operation requires at least one full week of paper/sandbox testing evidence before go/no-go approval | file path |
 | QA-007 | P0 | docs | Inspect profile/module/unit | Capital policy is cash-only and leveraged capital is forbidden by default | file path |
 

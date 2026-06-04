@@ -5,6 +5,8 @@ type: unit
 domain: backend
 name: Market intelligence ingestion
 status: set
+ready_set_rebaseline_status: go_check_passed
+implementation_status: go_check_passed
 priority: P0
 source_of_truth: user_intent
 legacy_ids: []
@@ -18,8 +20,8 @@ completeness:
   status: set
   audit_ref: docs/qa/QA-HWISTOCK-UNIT-003_market-intelligence-ingestion.md
 owner: hwi
-updated_at: 2026-06-03
-last_verified_at:
+updated_at: 2026-06-04
+last_verified_at: 2026-06-04
 source_snapshot:
   input_digest: "24시간 뉴스 기사/공시 수집 브랜치와 차트/시장데이터 컨텍스트"
   legacy_doc: none
@@ -39,12 +41,20 @@ required_rules:
   - docs/profiles/PROFILE-HWISTOCK.md
 design_refs: []
 code_paths:
-  include: []
+  include:
+    - backend/lib/market_intelligence.py
+    - backend/service/market_intelligence_ingestion.py
+    - backend/tests/test_market_intelligence_ingestion.py
   exclude:
     - "**/*credentials*"
     - "**/*.env"
-entrypoints: []
-interfaces: []
+entrypoints:
+  - backend.service.market_intelligence_ingestion.ingestFixtureRows
+interfaces:
+  - backend.lib.market_intelligence.loadSourceRegistryConfig
+  - backend.lib.market_intelligence.normalizeFixtureRow
+  - backend.lib.market_intelligence.validateNormalizedEvent
+  - backend.service.market_intelligence_ingestion.ingestFixtureRows
 verification:
   stage_skill_routes:
     ready:
@@ -75,6 +85,10 @@ last_set:
   context_fingerprint:
 evidence_refs:
   - docs/evidence/RUN-20260602_unit-003-market-intelligence-set.md
+  - docs/evidence/RUN-20260604_unit-003-go-preflight.md
+  - docs/evidence/RUN-20260604_unit-003-go-check.md
+  - docs/evidence/RUN-20260604_unit-003-go-preflight-rebaseline.md
+  - docs/evidence/RUN-20260604_unit-003-go-check-rebaseline.md
 links:
   - HWISTOCK-MOD-002
   - docs/sources/HWISTOCK-SOURCE-REGISTRY.md
@@ -167,6 +181,41 @@ Future live-source mode, after explicit source API config approval:
 
 The first foundation implementation must not implement conditional/deferred
 sources until their status changes in Set.
+
+Current rebaseline Go-Check implementation status:
+
+- Implemented as a Python stdlib-only, fixture/config-first skeleton in
+  `backend/lib/market_intelligence.py` and
+  `backend/service/market_intelligence_ingestion.py`.
+- `loadSourceRegistryConfig()` returns the deterministic UNIT-003 foundation
+  source registry/config model without reading environment variables or files.
+- `ingestFixtureRows()` accepts in-memory fixture rows only and returns
+  normalized events plus summary/health dictionaries. It writes no runtime
+  artifacts.
+- Live OpenDART, Naver, KRX/KIND, KIS/broker, general media HTML scraping, and
+  unofficial API paths remain disabled. Conditional, deferred, forbidden, and
+  unknown sources are reported as failures and cannot ingest in foundation mode.
+- Duplicate fixture events are linked deterministically by dedupe key; they are
+  not silently discarded.
+- `published_at_kst` and `collected_at_kst` validation requires explicit
+  `+09:00` KST timestamps.
+- `body_storage_policy` is enforced from the source registry; callers cannot
+  widen it through fixture rows.
+- The ingestion modules do not import network, credential-loading,
+  broker/KIS/order-routing, or trading router interfaces.
+- Focused unittest coverage exists at
+  `backend/tests/test_market_intelligence_ingestion.py` for QA-001 through
+  QA-011 foundation smoke coverage. This is Go implementation/check evidence,
+  not Prove evidence.
+
+Current evidence:
+
+- `docs/evidence/RUN-20260604_unit-003-go-preflight-rebaseline.md`
+- `docs/evidence/RUN-20260604_unit-003-go-check-rebaseline.md`
+
+The earlier `RUN-20260604_unit-003-go-preflight.md` and
+`RUN-20260604_unit-003-go-check.md` files remain historical after the
+MyWebTemplate code import.
 
 ## 7. Required Event Fields
 

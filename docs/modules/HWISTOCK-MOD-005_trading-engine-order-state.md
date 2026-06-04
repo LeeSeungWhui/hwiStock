@@ -5,12 +5,13 @@ type: module
 domain: backend
 name: Trading engine and order state
 spec_status: set
-build_status: planned
-verification_status: pending
+build_status: go_check_passed
+verification_status: go_check_passed
+ready_set_rebaseline_status: go_check_passed
 priority: P0
 source_of_truth: user_intent
 owner: hwi
-updated_at: 2026-06-02
+updated_at: 2026-06-04
 required_rules:
   - docs/profiles/PROFILE-HWISTOCK.md
 links:
@@ -18,6 +19,13 @@ links:
   - HWISTOCK-MOD-001
   - HWISTOCK-MOD-003
   - HWISTOCK-MOD-004
+evidence_refs:
+  - docs/evidence/RUN-20260604_unit-006-go-preflight-rebaseline.md
+  - docs/evidence/RUN-20260604_unit-006-go-check-rebaseline.md
+  - path: docs/evidence/RUN-20260604_unit-006-go-preflight.md
+    status: historical_before_rebaseline
+  - path: docs/evidence/RUN-20260604_unit-006-go-check.md
+    status: superseded_by_code_import
 ---
 
 # Trading Engine And Order State
@@ -41,6 +49,9 @@ execution adapter.
 - KRX, NXT, and SOR share the same deterministic order-state semantics in the
   first engine. NXT/SOR are represented as venue/session-routing parameters, not
   separate strategy families.
+- For current foundation risk gating, `SOR` is normalized to underlying `KRX`
+  metadata and `AUTO_SESSION` requires an explicit resolved underlying
+  `session_venue_hint` of `KRX` or `NXT` before UNIT-004 validation runs.
 - During KIS paper runs, KIS-specific NXT/SOR broker branches stay disabled or
   explicit-fallback-only because the current KIS paper references prove only the
   KRX paper path. Before KIS paper approval, dry-run validation records intended
@@ -179,3 +190,9 @@ Future interfaces:
 - Decision: baseline numeric risk values are closed by `HWISTOCK-MOD-003` /
   `HWISTOCK-UNIT-004`; calendar source is closed by
   `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`.
+- Current-authority rebaseline Go-Check passed on 2026-06-04 for the imported
+  backend tree. The validated scope is still foundation-only:
+  `condition_card/v0`, deterministic compiler skeleton, UNIT-004 risk-gate
+  delegation, dry-run-only state transitions through `dry_run_recorded`,
+  KIS-paper capability flags, and fixture-only evidence representation. See
+  `docs/evidence/RUN-20260604_unit-006-go-check-rebaseline.md`.

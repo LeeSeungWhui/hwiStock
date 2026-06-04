@@ -5,8 +5,9 @@ type: module
 domain: backend
 name: Market intelligence ingestion
 spec_status: set
-build_status: planned
-verification_status: pending
+build_status: go_check_passed
+verification_status: go_check_passed
+ready_set_rebaseline_status: go_check_passed
 priority: P0
 source_of_truth: user_intent
 legacy_ids: []
@@ -19,8 +20,8 @@ completeness:
   status: set
   audit_ref: docs/units/HWISTOCK-UNIT-003_market-intelligence-ingestion.md
 owner: hwi
-updated_at: 2026-06-02
-last_verified_at:
+updated_at: 2026-06-04
+last_verified_at: 2026-06-04
 source_inputs:
   - kind: user_prompt
     path_or_url: "인터넷 뉴스 기사 / 공시 같은 것 수집, 24시간"
@@ -28,9 +29,17 @@ source_inputs:
 required_rules:
   - docs/profiles/PROFILE-HWISTOCK.md
 design_refs: []
-code_paths: []
-entrypoints: []
-interfaces: []
+code_paths:
+  - backend/lib/market_intelligence.py
+  - backend/service/market_intelligence_ingestion.py
+  - backend/tests/test_market_intelligence_ingestion.py
+entrypoints:
+  - backend.service.market_intelligence_ingestion.ingestFixtureRows
+interfaces:
+  - backend.lib.market_intelligence.loadSourceRegistryConfig
+  - backend.lib.market_intelligence.normalizeFixtureRow
+  - backend.lib.market_intelligence.validateNormalizedEvent
+  - backend.service.market_intelligence_ingestion.ingestFixtureRows
 links:
   - PROFILE-HWISTOCK
   - HWISTOCK-MOD-001
@@ -109,8 +118,8 @@ branch.
 
 | surface | names / paths / ids | behavior owned | out of scope | evidence needed |
 | --- | --- | --- | --- | --- |
-| source registry | future config | allowed sources and limits | unapproved sources | config review |
-| crawler/fetcher | future service | collect metadata/events | direct trading | logs |
+| source registry | `backend.lib.market_intelligence.loadSourceRegistryConfig` | allowed sources and limits | unapproved sources | config review |
+| crawler/fetcher | `backend.service.market_intelligence_ingestion.ingestFixtureRows` | fixture-only metadata/events | direct trading/live fetch | logs/tests |
 | disclosure source | DART first; KIND conditional | public disclosure events | private data | source evidence |
 | news source | Naver Search API conditional; general HTML scraping forbidden | news/article metadata | full article copying beyond allowed policy | source evidence |
 | chart data source | KRX delayed conditional; KIS realtime deferred | candles/OHLCV/volume/latency | chart image scraping | data evidence |
@@ -118,17 +127,28 @@ branch.
 
 ## 5. Interfaces
 
-No code interfaces exist yet.
+Current rebaseline Go-Check implementation interfaces:
+
+- `backend.lib.market_intelligence.loadSourceRegistryConfig`: deterministic
+  foundation source registry/config model.
+- `backend.lib.market_intelligence.normalizeFixtureRow`: in-memory fixture row
+  normalization into the required UNIT-003 event schema.
+- `backend.lib.market_intelligence.validateNormalizedEvent`: normalized event
+  schema and foundation-boundary validation.
+- `backend.service.market_intelligence_ingestion.ingestFixtureRows`: fixture-only
+  ingestion orchestration returning events, summary, and health dictionaries.
+
+The current MyWebTemplate-derived backend now contains these files again after
+the 2026-06-04 UNIT-003 rebaseline Go-Check.
 
 Future interfaces may include:
 
-- source registry
-- fetch scheduler
+- live fetch scheduler after explicit source approval
 - dedupe store
 - normalized event store
-- chart/market-data adapter
-- downstream strategy signal input
-- ingestion health output
+- chart/market-data adapter after source terms/access approval
+- downstream strategy signal input that still cannot place orders directly
+- ingestion health API output
 
 ## 6. State / Data / Permission Rules
 
@@ -144,7 +164,11 @@ Future interfaces may include:
 
 ## 7. Existing Assets / Reuse Points
 
-- No project code exists yet.
+- Historical UNIT-003 Go added a stdlib-only fixture/config-first implementation
+  under `backend/lib/` and `backend/service/`. The current rebaseline Go-Check
+  reintroduced that surface into the MyWebTemplate-derived backend skeleton.
+- The current implementation uses no network client, broker adapter, order
+  router, AI provider, or credential loader.
 
 ## 8. Module-Level Verification
 
@@ -157,7 +181,8 @@ Future interfaces may include:
 
 ## 9. Included Units
 
-- `HWISTOCK-UNIT-003`: 24-hour market intelligence ingestion planning.
+- `HWISTOCK-UNIT-003`: 24-hour market intelligence ingestion foundation
+  implementation.
 
 ## 10. Decisions / Open Contract Questions
 
@@ -185,7 +210,7 @@ Future interfaces may include:
 | --- | --- | --- | --- |
 | source inventory | set | source registry added | no |
 | actors and roles | sufficient | owner/operator/reviewer | no |
-| entrypoints | set | future interfaces named; no code yet | no |
+| entrypoints | go_check_passed | fixture/config-first interfaces were reintroduced into the imported backend skeleton during UNIT-003 rebaseline Go-Check | no |
 | behavior contract | set | allowlist and forbidden sources defined | no |
 | state and data | set | event fields and storage refs defined | no |
 | permissions | set | per-source status model defined | no |
@@ -196,6 +221,26 @@ Future interfaces may include:
 ## 11. Evidence References
 
 - `docs/evidence/RUN-20260602_unit-003-market-intelligence-set.md`
+- `docs/evidence/RUN-20260604_unit-003-go-preflight.md`
+- `docs/evidence/RUN-20260604_unit-003-go-check.md`
+- `docs/evidence/RUN-20260604_unit-003-go-preflight-rebaseline.md`
+- `docs/evidence/RUN-20260604_unit-003-go-check-rebaseline.md`
+
+## 11-1. Go-Check Summary
+
+UNIT-003 passed current-tree rebaseline Go-Check on 2026-06-04 for the local
+market-intelligence ingestion skeleton scope. The implementation defines a
+deterministic source registry, fixture-only event normalization, duplicate
+linking, summary/health output, blocked-source enforcement, KST `+09:00`
+timestamp validation, registry-controlled body storage policy, and focused
+tests. No live source API call, broker/KIS call, AI provider call, order
+placement, credential read, runtime scheduler, runtime artifact write, server
+operation, browser QA, or deploy was performed.
+
+Current evidence:
+
+- `docs/evidence/RUN-20260604_unit-003-go-preflight-rebaseline.md`
+- `docs/evidence/RUN-20260604_unit-003-go-check-rebaseline.md`
 
 ## 12. Design References
 

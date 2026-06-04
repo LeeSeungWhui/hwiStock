@@ -3,9 +3,9 @@ schema_version: hwi.source/v0
 id: HWISTOCK-KIS-API-CAPABILITY-MATRIX
 type: broker_api_capability_matrix
 name: KIS API capability matrix
-status: set
+status: go_check_passed
 owner: hwi
-updated_at: 2026-06-02
+updated_at: 2026-06-04
 profile_refs:
   - PROFILE-HWISTOCK
 unit_refs:
@@ -38,25 +38,26 @@ broker.
 | `paper_unsupported` | KIS reference marks paper/mock investment as unsupported. |
 | `live_verify` | Needs later explicit real-account/support-confirmation evidence before live use. |
 | `local_fallback` | Use internal state, fixtures, scheduler, or system-calculated values during simulation. |
+| `paper_proven_bounded_20260604` | KRX paper/mock path proven only by sanitized bounded smoke `docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md`; does not authorize new broker calls. |
 
 ## 3. Auth / Token APIs
 
 | API reference | KIS mode | paper/mock handling | live follow-up |
 | --- | --- | --- | --- |
-| `접근토큰발급(P)[인증-001].xlsx` | REST OAuth token issue | Use only inside an approved KIS paper-network unit; no-order dry-run does not need broker tokens. | Verify current token TTL, rate limits, and domain before any adapter run. |
-| `접근토큰폐기(P)[인증-002].xlsx` | REST OAuth token revoke | Use only if the approved paper adapter obtains a KIS token. | Verify revoke behavior and logging/masking before live. |
-| `실시간 (웹소켓) 접속키 발급[실시간-000].xlsx` | WebSocket approval key via `/oauth2/Approval` | `paper_ok` for approval-key issuance after broker-network approval; no-order dry-run uses no KIS WebSocket key. The returned `approval_key` replaces app key/secret for WebSocket authorization. | Verify current approval-key TTL, reconnect behavior, and KRX subscription behavior before live. |
+| `접근토큰발급(P)[인증-001].xlsx` | REST OAuth token issue | `paper_proven_bounded_20260604` on KRX paper REST domain; use only inside an approved KIS paper-network unit; no-order dry-run does not need broker tokens. | Verify current token TTL, rate limits, and domain before any adapter run. |
+| `접근토큰폐기(P)[인증-002].xlsx` | REST OAuth token revoke | `paper_proven_bounded_20260604` after approved paper token issue; use only if the approved paper adapter obtains a KIS token. | Verify revoke behavior and logging/masking before live. |
+| `실시간 (웹소켓) 접속키 발급[실시간-000].xlsx` | WebSocket approval key via `/oauth2/Approval` | `paper_proven_bounded_20260604` for approval-key issuance on the bounded KRX paper path; no-order dry-run uses no KIS WebSocket key. The returned `approval_key` replaces app key/secret for WebSocket authorization. | Verify current approval-key TTL, reconnect behavior, and KRX subscription behavior before live. |
 
 ## 4. Order / Account APIs
 
 | API reference | KIS mode | paper/mock handling | live follow-up |
 | --- | --- | --- | --- |
-| `주식주문(현금)[v1_국내주식-001].xlsx` | Cash buy/sell order | `paper_constrained`: paper buy/sell TRs exist, but `EXCG_ID_DVSN_CD` is KRX-only in paper/mock. NXT/SOR broker branches stay disabled or explicit-fallback-only. | Verify live KRX/NXT/SOR order acceptance before enabling live venue routing. Enforce hwiStock cash-only policy even if KIS permits 미수. |
-| `주식주문(정정취소)[v1_국내주식-003].xlsx` | Modify/cancel order | `paper_constrained`: paper modify/cancel TR exists, but precheck API below is paper-unsupported. Use local open-order state plus daily fill/order reconciliation. | Verify live modify/cancel workflow with `정정취소가능주문조회` before live route enablement. |
+| `주식주문(현금)[v1_국내주식-001].xlsx` | Cash buy/sell order | `paper_constrained` + `paper_proven_bounded_20260604` for minimal KRX paper cash buy/cancel smoke only; `EXCG_ID_DVSN_CD` remains KRX-only in paper/mock. NXT/SOR broker branches stay disabled or explicit-fallback-only. | Verify live KRX/NXT/SOR order acceptance before enabling live venue routing. Enforce hwiStock cash-only policy even if KIS permits 미수. |
+| `주식주문(정정취소)[v1_국내주식-003].xlsx` | Modify/cancel order | `paper_constrained` + `paper_proven_bounded_20260604` for paper cancel on the bounded smoke path; precheck API below remains paper-unsupported. Use local open-order state plus daily fill/order reconciliation. | Verify live modify/cancel workflow with `정정취소가능주문조회` before live route enablement. |
 | `주식정정취소가능주문조회[v1_국내주식-004].xlsx` | Query modify/cancel-eligible orders | `paper_unsupported` / `local_fallback`: derive eligibility from local submitted/open order state and `주식일별주문체결조회`; keep strict reject if state is ambiguous. | Verify in real account/support-confirmation before relying on live cancel eligibility. |
-| `주식일별주문체결조회[v1_국내주식-005].xlsx` | Daily order/fill lookup | `paper_constrained`: paper TR exists; local reference indicates paper provides KRX only. Use for KRX paper reconciliation. | Verify live KRX/NXT/SOR query filters and pagination. |
-| `주식잔고조회[v1_국내주식-006].xlsx` | Balance/position lookup | `paper_ok`: use in approved KIS KRX paper adapter for cash/position reconciliation. | Verify live response fields, masking, and account/product-code mapping. |
-| `매수가능조회[v1_국내주식-007].xlsx` | Buyable amount lookup | `paper_ok`: use in approved KIS paper adapter as an input to cash gate, while still applying hwiStock 2,000,000 KRW virtual capital cap if configured. | Verify live cash-only fields and ensure 미수/credit buying power is ignored. |
+| `주식일별주문체결조회[v1_국내주식-005].xlsx` | Daily order/fill lookup | `paper_constrained` + `paper_proven_bounded_20260604` on KRX paper path. | Verify live KRX/NXT/SOR query filters and pagination. |
+| `주식잔고조회[v1_국내주식-006].xlsx` | Balance/position lookup | `paper_proven_bounded_20260604` on KRX paper path; use in approved KIS KRX paper adapter for cash/position reconciliation. | Verify live response fields, masking, and account/product-code mapping. |
+| `매수가능조회[v1_국내주식-007].xlsx` | Buyable amount lookup | `paper_proven_bounded_20260604` on KRX paper path; use in approved KIS paper adapter as an input to cash gate, while still applying hwiStock 2,000,000 KRW virtual capital cap if configured. | Verify live cash-only fields and ensure 미수/credit buying power is ignored. |
 | `매도가능수량조회 [국내주식-165].xlsx` | Sellable quantity lookup | `paper_unsupported` / `local_fallback`: derive sellable quantity from paper balance, local fills, unsettled orders, and local position locks. | Verify live behavior before using as sell gate. |
 | `주식잔고조회_실현손익[v1_국내주식-041].xlsx` | Realized PnL lookup | `paper_unsupported` / `local_fallback`: calculate PnL from fills, fees, tax model, and position ledger during simulation. | Verify live response and compare against system-calculated PnL before trusting it. |
 
@@ -66,7 +67,7 @@ broker.
 | --- | --- | --- | --- |
 | `국내주식 실시간체결가 (KRX) [실시간-003].xlsx` | KRX realtime trade price | `paper_ok`: use after approved WebSocket paper setup. | Verify reconnect, heartbeat, and symbol subscription behavior. |
 | `국내주식 실시간호가 (KRX) [실시간-004].xlsx` | KRX realtime order book | `paper_ok`: use after approved WebSocket paper setup. | Verify quote depth fields and stale-data detection. |
-| `국내주식 실시간체결통보 [실시간-005].xlsx` | Realtime order/fill notice | `paper_ok`: paper fill-notice TR is documented; use for KRX paper order reconciliation when approved. | Verify live/paper TR split and masking before live. |
+| `국내주식 실시간체결통보 [실시간-005].xlsx` | Realtime order/fill notice | `paper_proven_bounded_20260604` for KRX fill-notice subscription ACK on bounded smoke path; use for KRX paper order reconciliation when approved. | Verify live/paper TR split and masking before live. |
 | `국내주식 실시간체결가 (NXT).xlsx` | NXT realtime trade price | `paper_unsupported` / `local_fallback`: simulate NXT session timing and quote events internally. | Verify live subscription support before enabling live NXT. |
 | `국내주식 실시간호가 (NXT).xlsx` | NXT realtime order book | `paper_unsupported` / `local_fallback`: simulate or disable NXT order-book conditions in paper. | Verify live subscription support before enabling live NXT. |
 | `국내주식 실시간체결가 (통합).xlsx` | Integrated realtime trade price | `paper_unsupported` / `local_fallback`: use KRX paper feed plus local routing metadata, or disable integrated feed dependency. | Verify live integrated feed semantics before use. |
@@ -93,3 +94,22 @@ broker.
   presented as broker fill evidence.
 - Live verification of NXT/SOR must be a separate approved gate. Passing a KRX
   KIS paper week does not prove NXT/SOR live brokerage behavior.
+
+## 8. Bounded Paper/Mock Smoke Cross-Reference (2026-06-04)
+
+Sanitized evidence: `docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md`.
+Current-authority UNIT-009 rebaseline closure reference:
+`docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md`.
+
+| smoke_family | matrix effect | still denied without future scoped unit |
+| --- | --- | --- |
+| OAuth token issue/revoke (paper REST) | `paper_proven_bounded_20260604` | new token calls in ordinary Go rows |
+| balance, buyable, KRX quote | `paper_proven_bounded_20260604` | unscoped account/quote runtime |
+| paper cash buy + cancel (KRX only) | `paper_proven_bounded_20260604` | additional paper/live orders |
+| daily order/fill inquiry (KRX) | `paper_proven_bounded_20260604` | unscoped reconciliation polling |
+| WebSocket approval + fill-notice ACK | `paper_proven_bounded_20260604` | unscoped realtime subscriptions |
+
+This section references completed bounded smoke only. It does not replace
+`paper_unsupported`, `paper_constrained`, `local_fallback`, or `live_verify` labels
+for NXT/SOR orders, integrated/NXT realtime, holiday lookup, sellable quantity,
+modify/cancel eligibility lookup, or live-domain behavior.

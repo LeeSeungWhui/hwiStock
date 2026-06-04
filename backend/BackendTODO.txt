@@ -1,0 +1,129 @@
+# Backend Web Template TODO List (FastAPI)
+
+## 1. 설정 파일 구성 🔥
+- [x] config.ini 구조 설정
+  ```ini
+  [DATABASE_1]  # 여러 DB 설정 가능
+  name = main_db  # dbManagers['main_db']로 접근
+  type = mariadb  # mysql, oracle, postgresql, mssql
+  host = localhost
+  port = 3306
+  database = mydb
+  user = root
+  password = password
+
+  [DATABASE_2]
+  name = legacy_db
+  type = oracle
+  host = 10.0.0.1
+  port = 1521
+  database = orcl
+  user = system
+  password = password
+
+  [AUTH]
+  token_enable = true
+  secret_key = your-secret-key
+  token_expire = 3600  # seconds
+
+  [CORS]
+  allow_origins = *  # 또는 http://localhost:5000,http://example.com
+
+  [SERVER]
+  port = 8000
+  ```
+
+## 2. 데이터베이스 연결 🔥
+- [x] Database 클래스 리팩토링
+  - [x] 다중 DB 타입 지원 (mysql, mariadb, oracle, postgresql, mssql)
+  - [ ] DB별 커넥션 풀 관리
+  - [ ] DB별 트랜잭션 매니저
+  - [ ] DB 연결 상태 모니터링
+- [x] 쿼리 관리 시스템 개선
+  - [x] SQL 파일 자동 로드
+  - [x] 실시간 쿼리 파일 변경 감지
+  - [ ] 쿼리 파라미터 검증
+  - [ ] 쿼리 실행 로깅 개선
+
+## 3. 인증/인가 시스템 🔥
+- [x] JWT 인증 구현
+  - [x] 토큰 생성/검증
+  - [ ] 리프레시 토큰
+  - [ ] 토큰 블랙리스트
+- [x] 인증 미들웨어
+  - [x] config.ini의 token_enable 설정 반영
+  - [x] 토큰 검증 로직
+
+## 4. API 응답 표준화 🔥
+- [x] 응답 형식 통일
+  ```python
+  {
+    "status": bool,
+    "message": str,
+    "result": Any | None,
+    "count": int,
+  }
+  ```
+- [x] 전역 예외 처리기
+
+## 5. 로깅 시스템 개선 🔥
+- [x] 파일 로깅
+- [x] 콘솔 로깅
+- [ ] 로그 레벨 설정
+- [x] 로그 포맷 개선
+- [ ] 로그 로테이션
+- [ ] SQL 쿼리 로깅 개선
+
+## 6. API 문서화 🔥
+- [ ] Swagger UI 설정
+  - [ ] 태그 구성
+  - [ ] 스키마 정의
+  - [ ] 응답 예시 추가
+- [ ] JWT 인증 문서화
+- [ ] API 버전 관리
+
+## 7. 트랜잭션 관리 🔥
+- [ ] 트랜잭션 데코레이터
+  ```python
+  @transaction('main_db')  # 단일 DB 트랜잭션
+  async def create_user(user_data: dict):
+      # 실패시 자동 롤백
+      pass
+
+  @transaction(['main_db', 'legacy_db'])  # 다중 DB 트랜잭션
+  async def migrate_data(data: dict):
+      # 모든 DB 작업 성공시에만 커밋
+      # 하나라도 실패시 모두 롤백
+      pass
+  ```
+- [ ] 중첩 트랜잭션 지원
+- [ ] 트랜잭션 로깅
+- [ ] DB별 트랜잭션 격리 수준 설정
+
+## 8. 테스트 환경 ⭐
+- [ ] pytest 설정
+- [ ] DB 테스트 환경
+- [ ] 목업 데이터
+- [ ] API 테스트 케이스
+
+## 9. 유틸리티 ⭐
+- [ ] 페이지네이션
+- [ ] 파일 업로드
+- [ ] 캐시 관리
+- [ ] 비동기 작업 큐
+
+## 진행 순서
+1. 설정 파일 구성
+2. 데이터베이스 연결 개선
+3. API 응답 표준화
+4. 트랜잭션 관리
+5. JWT 인증
+6. 로깅 시스템
+7. API 문서화
+8. 테스트 환경
+
+## 참고사항
+- 현재 구현된 기능 최대한 활용
+- 코드 구조는 라우터 중심으로 단순화
+- 설정의 유연성 확보
+- 실용적인 기능 위주로 구현

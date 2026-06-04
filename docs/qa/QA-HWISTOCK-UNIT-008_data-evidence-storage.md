@@ -10,8 +10,14 @@ module_refs:
 profile_refs:
   - PROFILE-HWISTOCK
 status: set
+ready_set_rebaseline_status: go_check_passed
+implementation_status: go_check_passed
 owner: hwi
-updated_at: 2026-06-02
+updated_at: 2026-06-04
+evidence_refs:
+  - docs/evidence/RUN-20260602_unit-008-data-evidence-storage-set.md
+  - docs/evidence/RUN-20260604_unit-008-go-preflight-rebaseline.md
+  - docs/evidence/RUN-20260604_unit-008-go-check-rebaseline.md
 ---
 
 # Data And Evidence Storage QA
@@ -78,3 +84,20 @@ Out of scope:
 - sample paper-day evidence manifest
 - redaction review
 - artifact-to-DB linkage review
+
+## 6. Current Go-Check Execution Matrix
+
+Current evidence:
+`docs/evidence/RUN-20260604_unit-008-go-check-rebaseline.md`.
+
+| row_id | go_check_result | evidence |
+| --- | --- | --- |
+| QA-001 | PASS | PostgreSQL plus date-partitioned artifacts selected; SQLite excluded. |
+| QA-002 | PASS | `HWISTOCK_DATABASE_URL`, database `hwistock`, and schema `hwistock_core` documented; migration skeleton is schema-qualified and does not use MyWebTemplate names. |
+| QA-003 | PASS | `build_artifact_path` separates required raw, normalized, AI, candidate, trading, report, and evidence paths. |
+| QA-004 | PASS | Typed artifact contracts include shared artifact fields and focused tests compile/instantiate the contract. |
+| QA-005 | PASS | `DailyPnL` enforces `calculation_source: system`; migration adds a DB CHECK for system-only daily PnL. |
+| QA-006 | PASS | `PaperDayEvidenceManifest` requires source, normalized, AI, candidate, order, fill, position, PnL, morning, and daily-close links. |
+| QA-007 | PASS | Sensitive-key validation and marker grep found no actual KIS app key, secret, HTS id, or account number in UNIT-008 files. |
+| QA-008 | PASS | Migration stores artifact id/path/hash/date/environment and child rows link through artifact foreign keys. Runtime DB writes are future scope. |
+| QA-009 | PASS | `SourceArtifact` body storage policy blocks full bodies unless explicitly allowed. |

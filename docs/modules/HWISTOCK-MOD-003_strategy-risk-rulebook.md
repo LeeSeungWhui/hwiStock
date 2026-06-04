@@ -5,8 +5,9 @@ type: module
 domain: backend
 name: Strategy risk rulebook
 spec_status: set
-build_status: planned
-verification_status: pending
+build_status: go_check_passed
+verification_status: go_check_passed
+ready_set_rebaseline_status: go_check_passed
 priority: P0
 source_of_truth: user_intent
 legacy_ids: []
@@ -19,8 +20,8 @@ completeness:
   status: set
   audit_ref: docs/units/HWISTOCK-UNIT-004_strategy-risk-rulebook.md
 owner: hwi
-updated_at: 2026-06-02
-last_verified_at:
+updated_at: 2026-06-04
+last_verified_at: 2026-06-04
 source_inputs:
   - kind: user_prompt
     path_or_url: "종목을 어떻게 고르는지, 한종목에 올인 하는지, 얼마씩 매수할지, 매도 시점은 언제인지"
@@ -40,9 +41,28 @@ source_inputs:
 required_rules:
   - docs/profiles/PROFILE-HWISTOCK.md
 design_refs: []
-code_paths: []
-entrypoints: []
-interfaces: []
+code_paths:
+  - backend/lib/strategy_risk.py
+  - backend/tests/test_strategy_risk_rulebook.py
+entrypoints:
+  - backend.lib.strategy_risk.loadStrategyRiskConfig
+  - backend.lib.strategy_risk.validateEntryIntent
+  - backend.lib.strategy_risk.buildNoOrderDryRunRecord
+interfaces:
+  - backend.lib.strategy_risk.loadStrategyRiskConfig
+  - backend.lib.strategy_risk.validateStrategyRiskConfig
+  - backend.lib.strategy_risk.validateSignalBundle
+  - backend.lib.strategy_risk.validateCandidateOnlyIntent
+  - backend.lib.strategy_risk.validateEntryIntent
+  - backend.lib.strategy_risk.buildNoOrderDryRunRecord
+  - backend.lib.strategy_risk.validateNoOrderDryRunRecord
+  - backend.lib.strategy_risk.computeMaxOrderCashKrw
+evidence_refs:
+  - docs/evidence/RUN-20260602_unit-004-strategy-risk-rulebook-set.md
+  - docs/evidence/RUN-20260604_unit-004-go-preflight-rebaseline.md
+  - docs/evidence/RUN-20260604_unit-004-go-check-rebaseline.md
+  - docs/evidence/RUN-20260604_unit-004-go-preflight.md
+  - docs/evidence/RUN-20260604_unit-004-go-check.md
 links:
   - PROFILE-HWISTOCK
   - HWISTOCK-MOD-001
@@ -154,7 +174,9 @@ when it must stop trading.
   only the draft target band for an individual position. It is not enough to
   justify an entry by itself. The entry must still pass candidate filters,
   liquidity checks, stop policy, cash-reserve floor, and holdings cap.
-- Reward/risk guard is deferred unless a later Set decision adds it.
+- Reward/risk guard is approved for the first-pass paper/sandbox default: an
+  entry must meet `minimum_reward_risk_ratio = 1.2` before it can become a
+  no-order dry-run entry intent.
 - The 08:00-20:00 trading envelope is an observation/opportunity window. It does
   not allow automatic continuous trading every 10-20 minutes.
 - Overtrading guard values are deferred. The first policy still rejects entries
@@ -288,7 +310,20 @@ Set decision if the paper run shows they are needed.
 
 ## 5. Interfaces
 
-No code interfaces exist yet.
+Current current-authority rebaseline implementation files:
+
+- `backend/lib/strategy_risk.py`
+- `backend/tests/test_strategy_risk_rulebook.py`
+
+Current stdlib-only local interfaces:
+
+- `loadStrategyRiskConfig()` — approved paper/sandbox defaults
+- `validateStrategyRiskConfig()` — config contract validation
+- `validateEntryIntent()` — deterministic entry-intent rejection reasons
+- `validateCandidateOnlyIntent()` — watchlist-only boundary
+- `buildNoOrderDryRunRecord()` — no-order dry-run record builder
+- `validateNoOrderDryRunRecord()` — dry-run boundary validation
+- `computeMaxOrderCashKrw()` — reserve-floor sizing helper
 
 Future interfaces may include:
 
@@ -322,7 +357,9 @@ Future interfaces may include:
 - Verify every entry has a stop, target, and exit plan.
 - Verify stale-data, cash-reserve/holdings-cap, and manual kill-switch blocks prevent new
   entries.
-- Verify backtest/paper evidence records candidate, entry, size, exit, and P/L.
+- Verify UNIT-004 no-order dry-run evidence records candidate, entry, size, stop,
+  target, hold window, and rejection reason without fill/PnL simulation; later
+  trading-engine paper evidence owns real exit/fill/PnL fields.
 
 ## 9. Included Units
 
@@ -370,9 +407,9 @@ Future interfaces may include:
   there is no first-pass deterministic fallback stop.
 - Open: exact AI stop-recommendation prompt wording and runtime enablement
   remain governed by `HWISTOCK-UNIT-005` AI network/tool-boundary policy.
-- Pending approval: the first-pass alpha family, chart/realtime source, candle
-  intervals, liquidity behavior, market-alert source, take-profit label, and
-  time-stop behavior are packaged in
+- Decision: the first-pass alpha family, chart/realtime source, candle
+  intervals, liquidity behavior, reward/risk guard, market-alert source,
+  take-profit label, and time-stop behavior are approved by
   `docs/set/READY-SET-STRATEGY-DECISION-PACKET-20260602_hwistock.md`.
 - Open: later refinement of liquidity, take-profit, and trailing parameters after
   backtest/paper evidence.
@@ -383,6 +420,8 @@ Future interfaces may include:
 ## 11. Evidence References
 
 - `docs/evidence/RUN-20260602_strategy-risk-rulebook.md`
+- `docs/evidence/RUN-20260604_unit-004-go-preflight-rebaseline.md`
+- `docs/evidence/RUN-20260604_unit-004-go-check-rebaseline.md`
 
 ## 12. Design References
 

@@ -128,19 +128,32 @@ permissions.
 - QA scenarios: `docs/qa/`
 - Evidence: `docs/evidence/`
 - Archive/backlog: `docs/archive/`
-- Source code: not created yet; planned source roots are selected below
-- Backend/API/trading runtime source: `backend/` (planned)
-- Backend entrypoint: `backend/server.py` (planned)
+- Source code: present after MyWebTemplate backend/frontend-web import; current
+  code baseline requires Ready-Set rebaseline before Go resumes
+- Backend/API/trading runtime source: `backend/` (present; MyWebTemplate-derived
+  FastAPI/backend skeleton)
+- Backend entrypoint: `backend/server.py` (present; imported template entrypoint)
 - Backend layers: `backend/router/`, `backend/service/`, `backend/query/`,
-  `backend/lib/`, and `backend/tests/` (planned)
-- Backend migrations: `backend/migrations/` using Alembic (planned)
-- Frontend dashboard source: `frontend-web/` (planned)
-- Frontend app root: `frontend-web/app/` (planned)
+  `backend/lib/`, and `backend/tests/` (present as imported template layers;
+  hwiStock domain files must be re-ported or re-implemented)
+- Backend migrations: `backend/migrations/` using Alembic (present for the
+  UNIT-008 storage skeleton; future domain migrations must keep
+  hwiStock-specific schema isolation)
+- Frontend dashboard source: `frontend-web/` (present; MyWebTemplate-derived
+  Next.js app skeleton)
+- Frontend app root: `frontend-web/app/` (present)
 - Frontend component/library roots: `frontend-web/components/` and
-  `frontend-web/lib/` (planned)
-- Frontend tests: `frontend-web/tests/` (planned)
+  `frontend-web/lib/` (verify exact imported structure during rebaseline)
+- Frontend tests: `frontend-web/tests/` and `frontend-web/__tests__/` (present
+  as imported template tests)
 - Ops/deployment config: `ops/systemd/` (planned)
 - Environment setup: `source ./env.sh`
+- Local dev ports: dashboard/frontend `127.0.0.1:5000`, backend/API
+  `127.0.0.1:5001`
+- hwibuntu dashboard access: use SSH local forwarding from hwibuntu to
+  hwiServer, for example `ssh -N -L 5000:127.0.0.1:5000 -L
+  5001:127.0.0.1:5001 hwiServer`; do not bind hwiStock services to LAN/public
+  addresses for this access path.
 - Environment files:
   - `env.sh`: project toolchain/default env loader, adapted from
     MyWebTemplate's env layout
@@ -188,7 +201,13 @@ permissions.
     `.env.example` templates remain allowed.
   - `apiRefer/`: present with local KIS reference spreadsheets; excluded from
     external review sharing by default.
-  - `backend/`, `frontend-web/`, `ops/systemd/`, and `data/`: not created yet.
+  - `backend/`: present with MyWebTemplate-derived FastAPI/backend skeleton.
+  - `frontend-web/`: present with MyWebTemplate-derived Next.js app skeleton.
+  - `backend/config.ini`, `frontend-web/config.ini`: local ignored template
+    config; do not read, print, or commit contents.
+  - `ops/systemd/`: not created yet.
+  - `data/`: project data directory policy exists; current runtime contents are
+    not Ready-Set completion evidence.
   - Root baseline evidence:
     `docs/evidence/RUN-20260603_root-vcs-env-scan.md`
   - Git initialization evidence:
@@ -233,13 +252,26 @@ permissions.
 - Dashboard is frontend-web only. No mobile/frontend-app scope exists unless a
   future unit explicitly adds it.
 - Dashboard/API bind policy: default local-only bind to `127.0.0.1`. Operator
-  access uses local browser, Chrome Remote Desktop, or SSH tunnel. LAN/public IP
-  exposure requires a later explicit Set approval with authentication and
-  allowlist/VPN/reverse-proxy controls; "unknown URL" secrecy is not an
-  accepted access-control mechanism.
-- MyWebTemplate reuse is limited to suitable `backend/` and `frontend-web/`
-  skeleton/tooling patterns. MyWebTemplate docs, product PST content, database
-  names, schemas, migrations, seed data, and app-specific behavior are excluded.
+  access uses local browser, Chrome Remote Desktop, or SSH tunnel. The current
+  local dev ports are dashboard/frontend `5000` and backend/API `5001`; hwibuntu
+  access should forward local `127.0.0.1:5000`/`5001` to hwiServer
+  `127.0.0.1:5000`/`5001` through SSH. LAN/public IP exposure requires a later
+  explicit Set approval with authentication and allowlist/VPN/reverse-proxy
+  controls; "unknown URL" secrecy is not an accepted access-control mechanism.
+- MyWebTemplate `backend/` and `frontend-web/` code is now physically imported
+  and is the current skeleton baseline. Its app-specific routes, branding,
+  database/config assumptions, sample data, public routes, and bind behavior are
+  not automatically accepted as hwiStock product behavior; they must be kept,
+  renamed, quarantined, or removed during Ready-Set rebaseline and subsequent
+  Go-Check.
+
+## 2.1 Current Rebaseline Notice
+
+The earlier full Ready-Set closure and Go-Check queue are superseded by
+`docs/evidence/RUN-20260604_ready-set-rebaseline-after-mywebtemplate-import.md`.
+Do not treat prior `implementation_ready: true`, `ready_for_go_check`, or
+`go_check_passed` labels as current until the Ready-Set bundle is reissued
+against the imported MyWebTemplate code baseline.
 
 ## 3. Source Of Truth Order
 
@@ -331,6 +363,8 @@ Manual checklist review always includes:
 - Response envelope: `{ status, message, result, count?, code?, requestId }`
 - Response helpers: `successResponse`, `errorResponse`, and `ServiceError`
   unless a future unit records a profile exception.
+- Request payload reader/helper names: `readRequestPayload` and
+  `validateRequestPayload` unless a future unit records a profile exception.
 - Layer pattern: `router / service / query`.
 - Runtime naming: Hwi-FastAPI preset defaults apply, including camelCase
   variables/functions/methods, PascalCase classes/types, and UPPER_SNAKE_CASE
@@ -352,8 +386,9 @@ Manual checklist review always includes:
 
 - Frontend root: `frontend-web/`
 - App root: `frontend-web/app/`
-- Component root: `frontend-web/components/`
-- Shared utility root: `frontend-web/lib/`
+- Route root: `frontend-web/app/`
+- Component roots: `frontend-web/app/lib/component`, `frontend-web/app/dashboard/components`
+- Shared utility root: `frontend-web/app/lib/`
 - Test root: `frontend-web/tests/`
 - Runtime language policy: TypeScript.
 - Runtime extensions: `.ts`, `.tsx`, plus framework/config files as required by

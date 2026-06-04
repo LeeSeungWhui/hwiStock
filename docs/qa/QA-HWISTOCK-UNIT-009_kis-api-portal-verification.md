@@ -11,10 +11,16 @@ module_refs:
 profile_refs:
   - PROFILE-HWISTOCK
 status: set
+ready_set_rebaseline_status: go_check_passed
+implementation_status: go_check_passed
 owner: hwi
-updated_at: 2026-06-02
+updated_at: 2026-06-04
 evidence_refs:
   - docs/evidence/RUN-20260602_unit-009-kis-api-portal-verification-set.md
+  - docs/evidence/RUN-20260604_unit-009-go-preflight-rebaseline.md
+  - docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md
+  - docs/evidence/RUN-20260604_unit-009-go-preflight.md
+  - docs/evidence/RUN-20260604_unit-009-go-check.md
 ---
 
 # KIS API Portal Verification QA
@@ -23,10 +29,10 @@ evidence_refs:
 
 | row_id | priority | mode | steps | expected_result | evidence |
 | --- | --- | --- | --- | --- | --- |
-| QA-001 | P0 | docs | Review official KIS API service summary | Domestic stock order, account, realtime, and quote endpoints are listed | `RUN-20260602_unit-009-kis-api-portal-verification-set.md` |
-| QA-002 | P0 | docs | Review official paper/mock-investment docs, samples, and local `apiRefer` files | Paper/mock availability, endpoint separation, KRX-supported paths, paper-unsupported APIs, fallback needs, exact balance, and numeric-limit follow-ups are documented | `RUN-20260602_unit-009-kis-api-portal-verification-set.md`; `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md` |
-| QA-003 | P0 | docs | Review KRX/NXT/SOR-related API behavior | KRX/NXT/SOR fields are documented; KIS paper proof is marked KRX-limited where references say paper-unsupported, and NXT/SOR live behavior is marked later verification | `RUN-20260602_unit-009-kis-api-portal-verification-set.md`; `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md` |
-| QA-004 | P0 | safety | Inspect commands/evidence | No credential use, login, token request, broker API call, or order placement occurred | `RUN-20260602_unit-009-kis-api-portal-verification-set.md` |
+| QA-001 | P0 | docs | Review official KIS API service summary | Domestic stock order, account, realtime, and quote endpoints are listed | `RUN-20260602_unit-009-kis-api-portal-verification-set.md`; `docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md` |
+| QA-002 | P0 | docs | Review official paper/mock-investment docs, samples, and local `apiRefer` files | Paper/mock availability, endpoint separation, KRX-supported paths, paper-unsupported APIs, fallback needs, exact balance, and numeric-limit follow-ups are documented | `RUN-20260602_unit-009-kis-api-portal-verification-set.md`; `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md`; `docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md` |
+| QA-003 | P0 | docs | Review KRX/NXT/SOR-related API behavior | KRX/NXT/SOR fields are documented; KIS paper proof is marked KRX-limited where references say paper-unsupported, and NXT/SOR live behavior is marked later verification | `RUN-20260602_unit-009-kis-api-portal-verification-set.md`; `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md`; `docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md` |
+| QA-004 | P0 | safety | Inspect commands/evidence | No credential use, login, token request, broker API call, or order placement occurred | `RUN-20260602_unit-009-kis-api-portal-verification-set.md`; `docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md` |
 
 ## PASS / FAIL / BLOCKED Rules
 
@@ -44,10 +50,23 @@ evidence_refs:
 ## Current Verdict
 
 - QA-001: PASS
-- QA-002: PARTIAL
-- QA-003: PARTIAL
+- QA-002: PASS with partial boundary (paper KRX paths cross-referenced to sanitized
+  `docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md`; budget numeric and some
+  helper APIs still deferred)
+- QA-003: PASS with partial boundary (NXT/SOR remain `live_verify`; paper KRX limits
+  preserved)
 - QA-004: PASS
 
-Overall: SET with future broker-network smoke required before any KIS adapter is
-enabled. Use `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md` as the
-paper/live capability and fallback contract.
+Overall: **Go-Check PASS** for the current-authority rebaseline docs-only capability
+verification per `docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md`.
+No new KIS/broker/network calls are authorized by this closure. Future
+broker-network adapter work still requires an explicitly scoped approved unit.
+Use `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md` as the paper/live
+capability and fallback contract.
+
+After the MyWebTemplate backend/frontend-web import and the 2026-06-04
+Ready-Set reissue, this remains docs-only capability evidence and supporting
+context for the current-authority `go_check_passed` rebaseline row. That
+closure authorizes only local docs/capability-matrix refinement. Any new KIS token/account/quote,
+realtime, order, modify/cancel, WebSocket, broker-network, or credential action
+still requires an explicitly scoped approval and matching Go preflight.

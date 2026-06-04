@@ -1,13 +1,16 @@
 ---
 schema_version: hwi.ready-set-go-preflight/v0
 stage: ready-set
-status: ready_for_full_queue_skeleton_sandbox_safe_go_preflight
-implementation_ready: true
+status: superseded_by_mywebtemplate_code_import
+implementation_ready: false
 project_root: /data/workspace/My/hwiStock
 docs_base: docs
 profile_id: PROFILE-HWISTOCK
 created_at: 2026-06-02
 updated_at: 2026-06-04
+current_authority: false
+superseded_by_rebaseline_ref: docs/evidence/RUN-20260604_ready-set-rebaseline-after-mywebtemplate-import.md
+superseded_reason: MyWebTemplate backend/frontend-web import invalidated prior preflight assumptions; preflight must be reissued.
 completion_report_ref: docs/set/READY-SET-COMPLETION-20260602_hwistock.md
 row_closure_matrix_ref: docs/set/READY-SET-ROW-CLOSURE-20260602_hwistock.md
 owner_decision_brief_ref: docs/set/READY-SET-OWNER-DECISION-BRIEF-20260602_hwistock.md
@@ -25,6 +28,11 @@ selected_queue_scope: full_queue_skeleton_sandbox_safe
 
 # Ready-Set Go Preflight Checklist
 
+> Superseded notice: this checklist is historical after the 2026-06-04
+> MyWebTemplate backend/frontend-web code import. Do not use it as a current
+> Go authorization checklist until Ready-Set is reissued against the imported
+> code baseline.
+
 ## 1. Purpose
 
 This checklist defines the last local gate before any Go implementation work.
@@ -38,10 +46,10 @@ Go must stop before file edits if any row below fails.
 
 | check_id | required_state | current_expected_result |
 | --- | --- | --- |
-| PF-01 | `docs/set/READY-SET-COMPLETION-20260602_hwistock.md` exists | pass |
-| PF-02 | completion report has `implementation_ready: true` for the selected scope | pass for `full_queue_skeleton_sandbox_safe` |
-| PF-03 | selected unit appears in `go_check_queue` | inspect at Go time; all nine units are listed |
-| PF-04 | selected row state is exactly `ready_for_go_check` | pass for all nine rows, subject to row scope |
+| PF-01 | `docs/set/READY-SET-COMPLETION-20260602_hwistock.md` exists | historical_only; superseded by MyWebTemplate code import |
+| PF-02 | completion report has `implementation_ready: true` for the selected scope | superseded; current frontmatter is `implementation_ready: false` |
+| PF-03 | selected unit appears in `go_check_queue` | historical_only; queue must be reissued |
+| PF-04 | selected row state is exactly `ready_for_go_check` | superseded; row closure must be reissued |
 | PF-05 | selected unit, module, QA scenario, and profile refs all exist | inspect at Go time |
 | PF-06 | current final external review is complete, or an explicit local-only narrowed approval phrase is recorded | pass: current final GPT Pro external review complete for full queue |
 | PF-07 | no open P0/P1 external review findings remain | pass: full findings intake records no open P0/P1 after fixes/accepted preflight constraints |
@@ -66,7 +74,7 @@ Go evidence is sent outside the local workspace, verify:
 - The candidate-scoped fail-closed secret-pattern scan over the intended share
   set returns `no_matches`.
 
-For the 2026-06-04 full external review, the current evidence is
+For the historical 2026-06-04 full external review, the evidence was
 `docs/evidence/RUN-20260604_full-ready-set-owner-decisions-presend.md` and
 `docs/evidence/RUN-20260604_gpt-pro-full-ready-set-review.md`.
 
@@ -163,10 +171,15 @@ Every Go report must include:
 
 ## 8. Current Status
 
-This checklist can now be applied to all nine included rows under
-`full_queue_skeleton_sandbox_safe`.
+This checklist is historical and cannot be applied as current Go authorization
+after the MyWebTemplate backend/frontend-web import.
 
-It still blocks any selected row if:
+All nine previously included rows are blocked from Go-Check until a new
+Ready-Set completion report, row-closure matrix, and Go preflight checklist are
+issued against the imported code baseline.
+
+The historical safety boundaries below remain useful as constraints for the
+next checklist. They still block any future selected row if:
 
 - the selected implementation tries to use unscoped broker/KIS, AI provider,
   paper-order, live-order, credential-storage, dashboard-public/LAN,

@@ -5,6 +5,8 @@ type: unit
 domain: ops
 name: Home-server paper runner
 status: set
+ready_set_rebaseline_status: go_check_passed
+implementation_status: go_check_passed
 priority: P0
 source_of_truth: user_intent
 legacy_ids: []
@@ -15,11 +17,11 @@ source_coverage:
   coverage_ref: none
 work_class: quality_only
 completeness:
-  status: set
+  status: sufficient
   audit_ref: docs/qa/QA-HWISTOCK-UNIT-002_home-server-paper-runner.md
 owner: hwi
-updated_at: 2026-06-02
-last_verified_at:
+updated_at: 2026-06-04
+last_verified_at: 2026-06-04
 source_snapshot:
   input_digest: "홈서버에서 프로그램을 24시간 돌리는 운영 목표"
   legacy_doc: none
@@ -42,8 +44,18 @@ code_paths:
   exclude:
     - "**/*credentials*"
     - "**/*.env"
-entrypoints: []
-interfaces: []
+entrypoints:
+  - backend/run.py
+  - backend/run.sh
+  - backend/service/HwiStockRunnerService.py --once
+  - backend/router/HwiStockRunnerRouter.py
+  - ops/systemd/hwistock-api.service
+  - ops/systemd/hwistock-runner.service
+interfaces:
+  - GET /api/v1/hwistock/runner/status
+  - GET /api/v1/hwistock/runner/route-preview
+  - GET /api/v1/hwistock/runner/daily-close-template
+  - POST /api/v1/hwistock/runner/no-order-intent-record
 verification:
   stage_skill_routes:
     ready:
@@ -84,6 +96,10 @@ evidence_refs:
     status: draft
   - run_id: RUN-20260602-unit-002-home-server-paper-runner-set
     status: pass_with_followups
+  - run_id: RUN-20260604-unit-002-go-preflight
+    status: pass
+  - run_id: RUN-20260604-unit-002-go-check
+    status: pass
 links:
   - HWISTOCK-MOD-001
   - docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md
@@ -234,6 +250,7 @@ Closed by Set:
 
 Remaining follow-up:
 
-- Exact systemd service file names and environment-file paths are implementation
-  details, but must follow this unit and the profile.
+- Implemented first-pass systemd template names:
+  `ops/systemd/hwistock-api.service` and
+  `ops/systemd/hwistock-runner.service`.
 - Which market data source can run continuously on the home server?

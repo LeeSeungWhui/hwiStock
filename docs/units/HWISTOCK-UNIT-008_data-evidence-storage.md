@@ -5,17 +5,31 @@ type: unit
 domain: backend
 name: Data and evidence storage
 status: set
+ready_set_rebaseline_status: go_check_passed
+implementation_status: go_check_passed
 priority: P0
 source_of_truth: user_intent
 work_class: product_api
 owner: hwi
-updated_at: 2026-06-02
+updated_at: 2026-06-04
+last_verified_at: 2026-06-04
 profile_refs:
   - PROFILE-HWISTOCK
 module_ids:
   - HWISTOCK-MOD-007
 qa_scenario_refs:
   - docs/qa/QA-HWISTOCK-UNIT-008_data-evidence-storage.md
+evidence_refs:
+  - run_id: RUN-20260602-unit-008-data-evidence-storage-set
+    status: set
+  - run_id: RUN-20260604-unit-008-go-preflight
+    status: superseded_by_code_import
+  - run_id: RUN-20260604-unit-008-go-check
+    status: superseded_by_code_import
+  - run_id: RUN-20260604-unit-008-go-preflight-rebaseline
+    status: current
+  - run_id: RUN-20260604-unit-008-go-check-rebaseline
+    status: current
 links:
   - HWISTOCK-MOD-007
 ---
@@ -113,6 +127,15 @@ The first Go implementation must define JSON schemas or typed models for:
 - `DailyCloseReport`
 - `PaperDayEvidenceManifest`
 
+Current rebaseline Go-Check implementation files:
+
+- `backend/lib/storage_schemas.py`
+- `backend/lib/request_payload.py`
+- `backend/migrations/env.py`
+- `backend/migrations/script.py.mako`
+- `backend/migrations/versions/20260604_0001_create_hwistock_core_storage.py`
+- `backend/tests/test_storage_contract.py`
+
 Required shared fields:
 
 - `schema_version`
@@ -197,3 +220,24 @@ but SQLite is not part of the first implementation.
 - Compression/archive timing after paper test evidence is accepted.
 - Decision: migrations use Alembic under `backend/migrations/` after backend
   implementation begins.
+
+## 10. Go-Check Summary
+
+UNIT-008 passed current-tree rebaseline Go-Check on 2026-06-04 for the local
+storage skeleton scope.
+The implementation defines typed artifact contracts, deterministic content
+hashing, canonical KST date-scoped artifact paths, DailyPnL system-calculation
+validation, a DB CHECK for system-only daily PnL, paper-day evidence linkage
+validation, Alembic migration skeletons for `hwistock_core`, and focused
+contract tests. No live DB connection, broker/API call, AI provider call,
+dashboard UI, paper order, live order, credential storage, or runtime `data/`
+artifact commit was performed.
+
+Current evidence:
+
+- `docs/evidence/RUN-20260604_unit-008-go-preflight-rebaseline.md`
+- `docs/evidence/RUN-20260604_unit-008-go-check-rebaseline.md`
+
+The earlier `RUN-20260604_unit-008-go-preflight.md` and
+`RUN-20260604_unit-008-go-check.md` files remain historical after the
+MyWebTemplate code import.

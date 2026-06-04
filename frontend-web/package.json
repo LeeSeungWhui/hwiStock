@@ -1,0 +1,50 @@
+{
+  "name": "frontend-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -H 127.0.0.1 -p 5000",
+    "build": "next build",
+    "start": "next start -H 127.0.0.1 -p 5000",
+    "lint": "eslint",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@react-pdf-viewer/core": "^3.12.0",
+    "@react-pdf-viewer/default-layout": "^3.12.0",
+    "@tiptap/core": "^3.25.0",
+    "@tiptap/extension-color": "^3.25.0",
+    "@tiptap/extension-image": "^3.25.0",
+    "@tiptap/extension-placeholder": "^3.25.0",
+    "@tiptap/extension-text-align": "^3.25.0",
+    "@tiptap/extension-text-style": "^3.25.0",
+    "@tiptap/extension-underline": "^3.25.0",
+    "@tiptap/react": "^3.25.0",
+    "@tiptap/starter-kit": "^3.25.0",
+    "axios": "^1.17.0",
+    "canvas": "^3.2.3",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.4.0",
+    "next": "16.2.7",
+    "openapi-client-axios": "^7.9.0",
+    "pdfjs-dist": "^3.11.174",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "react-icons": "^5.6.0",
+    "recharts": "^3.8.1",
+    "swr": "^2.4.1",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
+    "@tailwindcss/postcss": "^4.3.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "16.2.7",
+    "jsdom": "^29.1.1",
+    "tailwindcss": "^4.3.0",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.8"
+  }
+}

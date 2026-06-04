@@ -4,7 +4,9 @@ id: HWISTOCK-UNIT-005
 type: unit
 domain: backend
 name: AI orchestration layer
-status: set
+status: go_check_passed
+ready_set_rebaseline_status: go_check_passed
+implementation_status: go_check_passed
 priority: P0
 source_of_truth: user_intent
 legacy_ids: []
@@ -15,11 +17,11 @@ source_coverage:
   coverage_ref: none
 work_class: product_api
 completeness:
-  status: set
-  audit_ref: docs/qa/QA-HWISTOCK-UNIT-005_ai-orchestration-layer.md
+  status: go_check_passed
+  audit_ref: docs/evidence/RUN-20260605_unit-005-go-check-rebaseline.md
 owner: hwi
-updated_at: 2026-06-02
-last_verified_at:
+updated_at: 2026-06-05
+last_verified_at: 2026-06-05
 source_snapshot:
   input_digest: "AI API orchestration for news/disclosure/chart candidate synthesis"
   legacy_doc: none
@@ -39,7 +41,9 @@ required_rules:
   - docs/profiles/PROFILE-HWISTOCK.md
 design_refs: []
 code_paths:
-  include: []
+  include:
+    - backend/lib/ai_orchestration.py
+    - backend/tests/test_ai_orchestration_layer.py
   exclude:
     - "**/*credentials*"
     - "**/*.env"
@@ -78,6 +82,8 @@ last_set:
 evidence_refs:
   - docs/evidence/RUN-20260602_ai-orchestration-layer.md
   - docs/evidence/RUN-20260602_unit-005-ai-orchestration-layer-set.md
+  - docs/evidence/RUN-20260605_unit-005-go-preflight-rebaseline.md
+  - docs/evidence/RUN-20260605_unit-005-go-check-rebaseline.md
 links:
   - HWISTOCK-MOD-004
 ---
@@ -232,3 +238,19 @@ current provider pricing.
   provider-pricing verification and explicit approval.
 - Exact prompt file paths remain implementation details, but must use the
   `*/v0` schema names and job ids above.
+
+## 9. Go-Check Summary
+
+UNIT-005 passed current-tree rebaseline Go-Check on 2026-06-05 for the local
+deterministic AI orchestration foundation in `backend/lib/ai_orchestration.py`
+with focused coverage in `backend/tests/test_ai_orchestration_layer.py`.
+
+Validated scope includes disabled-by-default AI network/provider/cost config,
+job registry separation, structured `ai_recommendation/v0` validation, source
+grounding, sensitive-payload review, draft order intent rejection, deterministic
+UNIT-004 risk-gate handoff, no-order dry-run records, audit records, fallback
+reports, daily-close system-PnL source checks, and tool-use-disabled behavior.
+
+This Go-Check does not authorize AI provider calls, browser automation, nonzero
+AI cost caps, broker/KIS calls, paper/live orders, fake fills, fake balances,
+fake PnL, server start, DB work, or credential reads.

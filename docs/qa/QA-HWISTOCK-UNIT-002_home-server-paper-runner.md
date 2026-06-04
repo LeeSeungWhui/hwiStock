@@ -10,8 +10,14 @@ module_refs:
 profile_refs:
   - PROFILE-HWISTOCK
 status: set
+ready_set_rebaseline_status: go_check_passed
+implementation_status: go_check_passed
 owner: hwi
-updated_at: 2026-06-02
+updated_at: 2026-06-04
+evidence_refs:
+  - docs/evidence/RUN-20260602_unit-002-home-server-paper-runner-set.md
+  - docs/evidence/RUN-20260604_unit-002-go-preflight.md
+  - docs/evidence/RUN-20260604_unit-002-go-check.md
 ---
 
 # Home-Server Paper Runner QA

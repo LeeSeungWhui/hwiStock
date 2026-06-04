@@ -11,11 +11,14 @@ module_refs:
   - HWISTOCK-MOD-004
 profile_refs:
   - PROFILE-HWISTOCK
-status: set
+status: go_check_passed
+ready_set_rebaseline_status: go_check_passed
+implementation_status: go_check_passed
 owner: hwi
-updated_at: 2026-06-02
+updated_at: 2026-06-05
 evidence_refs:
   - docs/evidence/RUN-20260602_unit-005-ai-orchestration-layer-set.md
+  - docs/evidence/RUN-20260605_unit-005-go-check-rebaseline.md
 ---
 
 # AI Orchestration Layer QA
@@ -95,3 +98,27 @@ Out of scope:
 - network absence evidence for broker endpoints
 - AI tool-use disabled config/policy evidence
 - AI network disabled and cost-cap-zero config evidence
+
+## 6. Current Go-Check Execution Matrix
+
+Current execution evidence:
+`docs/evidence/RUN-20260605_unit-005-go-check-rebaseline.md`.
+
+| row_id | current_result | evidence |
+| --- | --- | --- |
+| QA-001 | pass | Static/import review of `backend/lib/ai_orchestration.py` and focused test. |
+| QA-002 | pass | Unknown action and malformed output rejection tests. |
+| QA-003 | pass | Missing/invented source id rejection, including policy-gate route with `known_source_ids`. |
+| QA-004 | pass | UNIT-004 deterministic reserve-floor risk-gate rejection test. |
+| QA-005 | pass | Top-level and nested sensitive payload rejection tests. |
+| QA-006 | pass | AI timeout/unavailable fallback test with no entry unlock. |
+| QA-007 | pass | Audit record model/prompt/input/source/latency/action validation test. |
+| QA-008 | pass | All-in, credit/margin, stop-bypass, and overnight policy rejection tests. |
+| QA-009 | pass | Draft order intent risk-reference/stale/all-in/broker rejection tests. |
+| QA-010 | pass | No-order dry-run record validation with no broker/fake/paper/live execution. |
+| QA-011 | pass | KIS/broker/demo/testbed/paper/live endpoint reference rejection tests. |
+| QA-012 | pass | Six-role job registry separation test. |
+| QA-013 | pass | ChatGPT Pro late/unavailable DeepSeek-only fallback test. |
+| QA-014 | pass | Daily close report system-PnL source validation test. |
+| QA-015 | pass | Tool-use disabled and tool request rejection test. |
+| QA-016 | pass | AI network/provider disabled and cost-cap-zero config test. |

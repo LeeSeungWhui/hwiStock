@@ -1,0 +1,77 @@
+.wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.wrapper:has(:disabled) {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.checkbox {
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #d1d5db;
+    border-radius: 4px;
+    background-color: white;
+    cursor: inherit;
+    position: relative;
+    transition: all 0.2s;
+}
+
+.checkboxPrimary {
+    --checkbox-color: #3b82f6;
+}
+
+.checkboxSuccess {
+    --checkbox-color: #22c55e;
+}
+
+.checkboxWarning {
+    --checkbox-color: #f59e0b;
+}
+
+.checkboxDanger {
+    --checkbox-color: #ef4444;
+}
+
+.checkboxNeutral {
+    --checkbox-color: #6b7280;
+}
+
+.checkbox:checked {
+    background-color: var(--checkbox-color, #3b82f6);
+    border-color: var(--checkbox-color, #3b82f6);
+}
+
+.checkbox:checked::after {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 0px;
+    width: 6px;
+    height: 10px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.checkbox:not(:disabled):hover {
+    border-color: var(--checkbox-color, #3b82f6);
+}
+
+.checkbox:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px white, 0 0 0 4px var(--checkbox-color, #3b82f6);
+}
+
+.label {
+    color: #374151;
+}
+
+.wrapper:has(:disabled) .label {
+    color: #9ca3af;
+}

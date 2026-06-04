@@ -5,6 +5,8 @@ type: unit
 domain: backend
 name: Strategy risk rulebook
 status: set
+ready_set_rebaseline_status: go_check_passed
+implementation_status: go_check_passed
 priority: P0
 source_of_truth: user_intent
 legacy_ids: []
@@ -18,8 +20,8 @@ completeness:
   status: set
   audit_ref: docs/qa/QA-HWISTOCK-UNIT-004_strategy-risk-rulebook.md
 owner: hwi
-updated_at: 2026-06-02
-last_verified_at:
+updated_at: 2026-06-04
+last_verified_at: 2026-06-04
 source_snapshot:
   input_digest: "2,000,000 KRW cash-only short-term trading strategy/risk rulebook"
   legacy_doc: none
@@ -49,12 +51,22 @@ required_rules:
   - docs/profiles/PROFILE-HWISTOCK.md
 design_refs: []
 code_paths:
-  include: []
+  include:
+    - backend/lib/strategy_risk.py
+    - backend/tests/test_strategy_risk_rulebook.py
   exclude:
     - "**/*credentials*"
     - "**/*.env"
 entrypoints: []
-interfaces: []
+interfaces:
+  - backend.lib.strategy_risk.loadStrategyRiskConfig
+  - backend.lib.strategy_risk.validateStrategyRiskConfig
+  - backend.lib.strategy_risk.validateSignalBundle
+  - backend.lib.strategy_risk.validateCandidateOnlyIntent
+  - backend.lib.strategy_risk.validateEntryIntent
+  - backend.lib.strategy_risk.buildNoOrderDryRunRecord
+  - backend.lib.strategy_risk.validateNoOrderDryRunRecord
+  - backend.lib.strategy_risk.computeMaxOrderCashKrw
 verification:
   stage_skill_routes:
     ready:
@@ -87,6 +99,12 @@ last_set:
 evidence_refs:
   - docs/evidence/RUN-20260602_strategy-risk-rulebook.md
   - docs/evidence/RUN-20260602_unit-004-strategy-risk-rulebook-set.md
+  - docs/evidence/RUN-20260604_unit-004-go-preflight-rebaseline.md
+  - docs/evidence/RUN-20260604_unit-004-go-check-rebaseline.md
+  - run_id: RUN-20260604-unit-004-go-preflight
+    status: superseded_by_code_import
+  - run_id: RUN-20260604-unit-004-go-check
+    status: superseded_by_code_import
 links:
   - HWISTOCK-MOD-001
   - HWISTOCK-MOD-003
@@ -102,7 +120,12 @@ contract for the short-term Korea domestic stock trading project.
 ## 2. Baseline Module Contract
 
 This unit implements `HWISTOCK-MOD-003` and updates `HWISTOCK-MOD-001` safety
-expectations. It remains docs-only until a future Go unit creates code.
+expectations. Current-authority rebaseline Go-Check on 2026-06-04 restored a
+stdlib-only local strategy/risk skeleton with config constants, signal and
+entry-intent validators, watchlist-only candidate validation, no-order dry-run
+records, and focused unittest coverage. It does not authorize broker, KIS, AI
+provider, paper order, live order, fake fill, fake balance, or fake PnL
+behavior.
 
 ### Module Change
 
@@ -142,7 +165,7 @@ Initial creation of `HWISTOCK-MOD-003`.
 | AC-03 | P0 | Candidate selection is separate from entry | Candidate reason alone cannot create an order | architecture/code review | QA-003 |
 | AC-04 | P0 | Every entry has a predefined stop policy | Stop trigger, exit reason, and venue route are required | config/log review | QA-004 |
 | AC-05 | P0 | Minimal position risk controls are explicit | Minimum cash reserve ratio 0.25, max simultaneous holdings 5, max -5% stop envelope, and AI stop-validation boundary are documented | config/doc review | QA-005 |
-| AC-06 | P1 | Paper evidence can explain each trade | Candidate, entry, size, exit, and P/L fields are recorded | evidence file | QA-006 |
+| AC-06 | P1 | No-order dry-run evidence can explain each candidate decision | Candidate, entry, size, stop, target, hold window, and rejection reason are recorded without fill/PnL simulation | evidence file | QA-006 |
 | AC-07 | P1 | Fast strategy tempo is bounded | 10-20 minute hypothesis and no automatic continuous trading are documented | config/log review | QA-009 |
 | AC-08 | P1 | 1-5% is not treated as a daily account target | Target band is recorded as per-position price movement only | doc/config review | QA-011 |
 | AC-09 | P0 | Signal bundle combines context and chart confirmation | Entry logs include event/chart path, source ids, chart interval, and stale-data status | config/log review | QA-012 |

@@ -4,6 +4,10 @@
 *.env
 !*.env.example
 !.env.example
+config.ini
+backend/config.ini
+backend/config.test.ini
+frontend-web/config.ini
 
 # Local runtime/cache/output artifacts.
 /cache/
@@ -11,6 +15,8 @@
 /output/
 /logs/
 *.log
+**/logs/*.err
+**/logs/*.out
 
 # Python/tooling caches.
 __pycache__/

@@ -1,21 +1,24 @@
 ---
 schema_version: hwi.ready-set-completion/v0
 stage: ready-set
-status: implementation_ready_full_queue_with_exclusions
-implementation_ready: true
+status: superseded_by_mywebtemplate_code_import
+implementation_ready: false
 project_root: /data/workspace/My/hwiStock
 docs_base: docs
 profile_id: PROFILE-HWISTOCK
 updated_at: 2026-06-04
+current_authority: false
+superseded_by_rebaseline_ref: docs/evidence/RUN-20260604_ready-set-rebaseline-after-mywebtemplate-import.md
+superseded_reason: MyWebTemplate backend/frontend-web import changed the current code baseline; prior Go-Check files are missing and queue must be reissued.
 source_preservation_status: not_applicable
 spec_completeness_status: sufficient
 unit_inventory_status: complete
 qa_inventory_status: complete
 design_inventory_status: complete_for_set
-row_closure_status: full_queue_closed_with_exclusions
-external_review_findings_status: closed_for_full_queue_with_exclusions
-gpt_collaboration_status: complete_for_full_queue
-gpt_final_review_status: complete_for_full_queue
+row_closure_status: superseded_by_code_import
+external_review_findings_status: historical_closed_before_code_import
+gpt_collaboration_status: historical_complete_before_code_import
+gpt_final_review_status: historical_complete_before_code_import
 gpt_final_review_evidence_ref: docs/evidence/RUN-20260604_gpt-pro-full-ready-set-review.md
 external_review_packet_ref: docs/set/READY-SET-EXTERNAL-REVIEW-PACKET-20260602_hwistock.md
 strategy_decision_packet_ref: docs/set/READY-SET-STRATEGY-DECISION-PACKET-20260602_hwistock.md
@@ -52,39 +55,39 @@ selected_queue_scope: full_queue_skeleton_sandbox_safe
 go_check_queue:
   - unit_id: HWISTOCK-UNIT-001
     order: 1
-    queue_status: ready_for_go_check
+    queue_status: superseded_by_code_import
     qa_scenario_ref: docs/qa/QA-HWISTOCK-UNIT-001_project-bootstrap.md
   - unit_id: HWISTOCK-UNIT-008
     order: 2
-    queue_status: ready_for_go_check
+    queue_status: superseded_by_code_import
     qa_scenario_ref: docs/qa/QA-HWISTOCK-UNIT-008_data-evidence-storage.md
   - unit_id: HWISTOCK-UNIT-003
     order: 3
-    queue_status: ready_for_go_check
+    queue_status: superseded_by_code_import
     qa_scenario_ref: docs/qa/QA-HWISTOCK-UNIT-003_market-intelligence-ingestion.md
   - unit_id: HWISTOCK-UNIT-009
     order: 4
-    queue_status: ready_for_go_check
+    queue_status: superseded_by_code_import
     qa_scenario_ref: docs/qa/QA-HWISTOCK-UNIT-009_kis-api-portal-verification.md
   - unit_id: HWISTOCK-UNIT-004
     order: 5
-    queue_status: ready_for_go_check
+    queue_status: superseded_by_code_import
     qa_scenario_ref: docs/qa/QA-HWISTOCK-UNIT-004_strategy-risk-rulebook.md
   - unit_id: HWISTOCK-UNIT-006
     order: 6
-    queue_status: ready_for_go_check
+    queue_status: superseded_by_code_import
     qa_scenario_ref: docs/qa/QA-HWISTOCK-UNIT-006_trading-engine-order-state.md
   - unit_id: HWISTOCK-UNIT-005
     order: 7
-    queue_status: ready_for_go_check
+    queue_status: superseded_by_code_import
     qa_scenario_ref: docs/qa/QA-HWISTOCK-UNIT-005_ai-orchestration-layer.md
   - unit_id: HWISTOCK-UNIT-002
     order: 8
-    queue_status: ready_for_go_check
+    queue_status: superseded_by_code_import
     qa_scenario_ref: docs/qa/QA-HWISTOCK-UNIT-002_home-server-paper-runner.md
   - unit_id: HWISTOCK-UNIT-007
     order: 9
-    queue_status: ready_for_go_check
+    queue_status: superseded_by_code_import
     qa_scenario_ref: docs/qa/QA-HWISTOCK-UNIT-007_dashboard-operator-console.md
 excluded_from_first_go_queue: []
 blocked_go_reasons: []
@@ -107,26 +110,40 @@ residual_denied_approvals:
 
 # Ready-Set Completion Gate
 
+> Superseded notice: this report is historical after the 2026-06-04
+> MyWebTemplate backend/frontend-web code import. Use
+> `docs/evidence/RUN-20260604_ready-set-rebaseline-after-mywebtemplate-import.md`
+> as the current rebaseline evidence. This file no longer authorizes Go-Check.
+
 ## 1. Verdict
 
-Ready-Set bundle status: `implementation_ready_full_queue_with_exclusions`.
+Ready-Set bundle status: `superseded_by_mywebtemplate_code_import`.
 
-Implementation readiness: `true` for the full nine-unit Go-Check queue only
-under the `full_queue_skeleton_sandbox_safe` scope.
+Current implementation readiness: `false`.
 
-This is not operational trading readiness. It authorizes only the next
-HWI Work Harness step: selected-row Go preflight, then Go-Check implementation
-for the selected unit if preflight passes. The earlier absolute KIS denial has
-one bounded exception: the owner-approved KIS paper/mock smoke documented in
-`docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md`. It does not authorize
-unscoped broker/KIS network calls, AI provider calls, additional paper orders,
-live orders, credential storage, public/LAN dashboard exposure, service-control
-actions, buy/sell controls, fake broker fills/balances/PnL, or expected-profit
-claims.
+Historical implementation readiness before the MyWebTemplate code import was
+`true` for the full nine-unit Go-Check queue only under the
+`full_queue_skeleton_sandbox_safe` scope. That historical queue is not current
+authority after the imported backend/frontend-web baseline changed.
+
+This historical report no longer authorizes selected-row Go preflight or
+Go-Check implementation. Use
+`docs/evidence/RUN-20260604_ready-set-rebaseline-after-mywebtemplate-import.md`
+as the current authority until a new Ready-Set completion, row closure, and Go
+preflight are issued against the imported code baseline.
+
+This remains not operational trading readiness. The earlier bounded KIS
+paper/mock smoke documented in
+`docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md` remains evidence for
+that completed smoke only. It does not authorize unscoped broker/KIS network
+calls, AI provider calls, additional paper orders, live orders, credential
+storage, public/LAN dashboard exposure, service-control actions, buy/sell
+controls, fake broker fills/balances/PnL, or expected-profit claims.
 
 ## 2. Closure Basis
 
-Full queue closure is supported by the following current evidence:
+Historical full queue closure before the MyWebTemplate code import was
+supported by the following evidence:
 
 - Owner decisions recorded in
   `docs/evidence/RUN-20260604_full-ready-set-owner-decisions-presend.md`.
@@ -134,7 +151,7 @@ Full queue closure is supported by the following current evidence:
   `docs/evidence/RUN-20260604_dashboard-design-review.md`.
 - Dashboard design findings intake:
   `docs/set/READY-SET-REVIEW-FINDINGS-INTAKE-20260604_dashboard-design.md`.
-- Current final external GPT Pro review:
+- Final external GPT Pro review before the code import:
   `docs/evidence/RUN-20260604_gpt-pro-full-ready-set-review.md`.
 - Full review findings intake:
   `docs/set/READY-SET-REVIEW-FINDINGS-INTAKE-20260604_full.md`.
@@ -147,10 +164,14 @@ Full queue closure is supported by the following current evidence:
 - Completion audit:
   `docs/set/READY-SET-COMPLETION-AUDIT-20260602_hwistock.md`.
 
-External review verdict was `ready_with_exclusions`. The exclusions are now part
-of the authoritative completion status and selected queue scope.
+External review verdict was `ready_with_exclusions` for the pre-import queue.
+The exclusions remain useful safety constraints, but this report is no longer
+the authoritative completion status or selected queue scope.
 
 ## 3. Set Unit Inventory
+
+The table below is historical Set inventory for the superseded queue. It is not
+current Go authorization after the MyWebTemplate code import.
 
 | unit_id | status | work_class | primary_module | qa_scenario | local_set_state |
 | --- | --- | --- | --- | --- | --- |
@@ -166,9 +187,10 @@ of the authoritative completion status and selected queue scope.
 
 ## 4. QA Scenario Inventory
 
-All nine units have QA scenario documents under `docs/qa/`. Go-Check must map
-focused smoke rows from the selected unit's QA scenario and must prove denied
-broker/KIS/AI/order paths remain disabled for the selected implementation.
+All nine units had QA scenario documents under `docs/qa/` for the historical
+queue. The next reissued Ready-Set must remap focused smoke rows from the
+selected unit's QA scenario and prove denied broker/KIS/AI/order paths remain
+disabled for the selected implementation.
 
 ## 5. Design Artifact Inventory
 
@@ -191,9 +213,11 @@ and tooling patterns; its docs/product PST content must not be copied.
 
 ## 7. Spec Completeness Status
 
-Local spec inventory is sufficient for the selected full queue skeleton scope.
-The remaining high-risk operational capabilities are intentionally excluded or
-future-gated, not missing Set requirements:
+Local spec inventory was sufficient for the historical selected full queue
+skeleton scope before the code import. The next Ready-Set must verify those
+contracts against the imported backend/frontend-web baseline. The remaining
+high-risk operational capabilities remain intentionally excluded or
+future-gated:
 
 - additional broker/KIS network use requires later explicit unit scope,
   approval, and evidence; the bounded 2026-06-04 paper/mock smoke is complete;
@@ -202,12 +226,12 @@ future-gated, not missing Set requirements:
 - additional paper orders and all live orders require later explicit approval;
 - live readiness requires the one-week paper/sandbox gate and explicit
   go/no-go;
-- code edits still require selected-row Go preflight; the VCS decision is now
-  resolved by Git initialization evidence.
+- code edits still require a newly issued selected-row Go preflight; the VCS
+  decision is resolved by Git initialization evidence.
 
 ## 8. Go-Check Queue
 
-The active Go-Check queue is:
+The historical pre-import Go-Check queue was:
 
 1. `HWISTOCK-UNIT-001`: bootstrap/profile verification and docs safety boundary.
 2. `HWISTOCK-UNIT-008`: PostgreSQL schema/migration skeleton and evidence

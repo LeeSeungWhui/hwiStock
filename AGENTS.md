@@ -12,13 +12,17 @@ which is this project's profile source of truth.
 - Project root: `.`
 - HWI project profile: `docs/profiles/PROFILE-HWISTOCK.md`
 - Docs root: `docs/`
-- Frontend code: `frontend-web/` planned, not created yet
-- Backend/trading engine code: `backend/` planned, not created yet
+- Frontend code: `frontend-web/` present; currently MyWebTemplate-derived
+  Next.js app skeleton and pending hwiStock Ready-Set rebaseline
+- Backend/trading engine code: `backend/` present; currently MyWebTemplate-
+  derived FastAPI/backend skeleton and pending hwiStock Ready-Set rebaseline
 - Shared packages/libraries: none yet
 - Design artifacts: none yet
 - Automation scripts: `ops/systemd/` planned, not created yet
 - Environment setup: `source ./env.sh`
-- Primary local/dev URL: local-only dashboard/API, exact dev ports not created yet
+- Primary local/dev URL: dashboard `http://127.0.0.1:5000`, backend/API
+  `http://127.0.0.1:5001`; access from hwibuntu uses SSH local forwarding, not
+  LAN/public bind
 - Remote/dev server access: SSH tunnel or Chrome Remote Desktop only by default
 - Version control: Git initialized on `main` as of
   `docs/evidence/RUN-20260604_git-init-ready-set-delta-sync.md`; do not assume
@@ -35,6 +39,10 @@ which is this project's profile source of truth.
   into reports.
 - Project secrets/config values must live outside the repo under
   `/home/hwi/.config/hwistock/*.env`; do not paste or commit API keys.
+- MyWebTemplate `config.ini` files under `backend/` and `frontend-web/` are
+  local ignored template config only. Do not read, print, or commit their
+  contents; migrate durable hwiStock secrets/config to
+  `/home/hwi/.config/hwistock/*.env`.
 
 ## Harness Routing
 
@@ -50,6 +58,10 @@ which is this project's profile source of truth.
 - Source-of-truth order: user instruction > this AGENTS.md >
   `docs/profiles/PROFILE-HWISTOCK.md` > module/unit/QA docs > code/runtime
   evidence > prior memento/evidence.
+- Ready-Set status note: the earlier 2026-06-02/2026-06-04
+  `implementation_ready: true` queue is superseded by
+  `docs/evidence/RUN-20260604_ready-set-rebaseline-after-mywebtemplate-import.md`
+  until Ready-Set is reissued against the imported MyWebTemplate code baseline.
 - Approval additions beyond global defaults: live brokerage login, order
   placement, real-money trading, production deployment, credential storage,
   strategy-risk parameter changes, and any network operation against a broker

@@ -5,12 +5,14 @@ type: module
 domain: backend
 name: Data and evidence storage
 spec_status: set
-build_status: planned
-verification_status: pending
+build_status: go_check_passed
+verification_status: go_check_passed
+ready_set_rebaseline_status: go_check_passed
 priority: P0
 source_of_truth: user_intent
 owner: hwi
-updated_at: 2026-06-02
+updated_at: 2026-06-04
+last_verified_at: 2026-06-04
 required_rules:
   - docs/profiles/PROFILE-HWISTOCK.md
 links:
@@ -206,3 +208,18 @@ Isolation rules:
 - Open: exact backup destination and encryption policy.
 - Open: whether long-term retention should compress or archive artifacts after
   30/90/365 days.
+
+## 8. Go-Check Implementation References
+
+- `backend/lib/storage_schemas.py`: typed artifact contracts, deterministic
+  SHA-256 hashing, KST date/path helper, redaction/sensitive-key checks,
+  DailyPnL system-calculation validation, and paper-day evidence linkage
+  validation.
+- `backend/lib/request_payload.py`: FastAPI-profile request payload helper names
+  introduced before route implementation.
+- `backend/migrations/`: Alembic skeleton using `HWISTOCK_DATABASE_URL`,
+  schema `hwistock_core`, schema-qualified storage tables, and no
+  MyWebTemplate/public table overlap.
+- `backend/tests/test_storage_contract.py`: focused storage contract tests.
+- `docs/evidence/RUN-20260604_unit-008-go-preflight-rebaseline.md`
+- `docs/evidence/RUN-20260604_unit-008-go-check-rebaseline.md`

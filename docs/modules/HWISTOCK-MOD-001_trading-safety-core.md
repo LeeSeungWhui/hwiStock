@@ -5,8 +5,9 @@ type: module
 domain: fullstack
 name: Trading safety core
 spec_status: set
-build_status: planned
-verification_status: pending
+build_status: pending_implementation
+verification_status: go_check_passed
+ready_set_rebaseline_status: go_check_passed
 priority: P0
 source_of_truth: user_intent
 legacy_ids: []
@@ -19,8 +20,8 @@ completeness:
   status: sufficient
   audit_ref: docs/units/HWISTOCK-UNIT-001_project-bootstrap.md
 owner: hwi
-updated_at: 2026-06-02
-last_verified_at:
+updated_at: 2026-06-04
+last_verified_at: 2026-06-04
 source_inputs:
   - kind: user_prompt
     path_or_url: "주식자동매매단타프로젝트"
@@ -44,13 +45,14 @@ required_rules:
   - docs/profiles/PROFILE-HWISTOCK.md
 design_refs: []
 code_paths:
-  - backend/ (planned)
+  - backend/
   - frontend-web/ (planned)
-  - ops/systemd/ (planned)
+  - ops/systemd/
 entrypoints:
-  - backend/server.py (planned)
-  - /api/v1/health (planned)
-  - ops/systemd/ (planned)
+  - backend/server.py
+  - /api/v1/hwistock/runner/status
+  - backend/service/HwiStockRunnerService.py --once
+  - ops/systemd/
 interfaces: []
 links:
   - PROFILE-HWISTOCK
@@ -114,17 +116,20 @@ deployment is forbidden by default.
   (`KIS`, 한국투자증권). KB Securities (`KB증권`) is treated as not usable for this
   personal-account automation project unless a future official confirmation
   proves otherwise. Internal fake broker execution is not used. The first
-  broker-backed execution path is KIS KRX paper/mock-investment only after
-  explicit broker-network smoke approval.
+  broker-backed execution path is KIS KRX paper/mock-investment. The first
+  bounded KIS paper/mock REST and WebSocket smoke was owner-approved and passed
+  on 2026-06-04; ordinary Go rows still require an explicitly scoped approval
+  before any additional broker/KIS network call or paper order.
 
 ### Excluded
 
 - Specific signal rules and exact timeframe.
 - Credit, margin, 미수, borrowed funds, or leveraged-capital trading.
 - Broker/API implementation.
-- KIS/external broker network calls before an explicitly approved
-  broker-network smoke. Official KIS paper/mock-investment APIs are the first
-  broker-backed path, not an internal fake broker replacement.
+- Additional KIS/external broker network calls outside an explicitly scoped
+  approved unit. Official KIS paper/mock-investment APIs are the first
+  broker-backed path, not an internal fake broker replacement; the completed
+  bounded smoke does not authorize unscoped future calls or paper orders.
 - UI/dashboard implementation.
 - Real-money trading.
 - Skipping the one-week test period.
@@ -142,15 +147,17 @@ deployment is forbidden by default.
 - All-in single-stock deployment is forbidden by default.
 - Any order-placement path must be disabled unless the active unit explicitly
   approves the environment and evidence requirement.
-- Before KIS paper approval, the system may run only no-order dry-run validation:
-  it may record candidate, risk, and order-intent decisions, but it must not
-  simulate broker fills or balances. The first broker-backed order path is KIS
-  KRX paper/mock-investment after a future approved unit provides official-doc
-  verification, credentials handling, endpoint mode separation,
-  personal-account eligibility checks, KRX/NXT/SOR support boundaries, and live
-  safety gates. The official paper/mock-investment starting budget is
-  10,000,000 KRW and must not change the intended 2,000,000 KRW live
-  starting-capital policy.
+- Default Go behavior remains no-order dry-run validation: it may record
+  candidate, risk, and order-intent decisions, but it must not simulate broker
+  fills or balances. The first broker-backed order path is KIS KRX paper/mock
+  investment, and the owner-approved 2026-06-04 smoke proved only a bounded
+  token/quote/balance/buyable/mock-order/cancel/daily-order/WebSocket ACK path.
+  Any additional KIS token/account/balance/quote/realtime/order/modify/cancel/
+  WebSocket call, paper order, or adapter integration still requires the active
+  unit to explicitly approve scope, credentials handling, endpoint separation,
+  personal-account eligibility, KRX/NXT/SOR support boundaries, and live safety
+  gates. The official paper/mock-investment starting budget is 10,000,000 KRW
+  and must not change the intended 2,000,000 KRW live starting-capital policy.
 - Live operation must remain disabled until one full week of paper/sandbox
   testing has named evidence and an explicit user go/no-go approval.
 - The trading runner must be an independently restartable home-server service or
@@ -180,7 +187,7 @@ deployment is forbidden by default.
 | information branch | news/disclosure ingestion | 24h collection and normalization | direct order placement | source/evidence logs |
 | strategy/risk rulebook | `HWISTOCK-MOD-003` | stock filters, cash-reserve and holdings checks, exits, minimal stop policy | profit promises and broad account-level loss automation by default | paper/backtest evidence |
 | AI orchestration | `HWISTOCK-MOD-004` | candidate synthesis and structured recommendations | direct broker/order control | schema + policy-gate evidence |
-| broker direction | `KIS`, no-order dry-run, KIS paper API | KIS selected; KB blocked for personal use; internal fake broker execution is not used; first broker-backed execution is approved KIS KRX paper | KIS/external broker or broker-provided paper/mock/live network calls before approval | broker-selection evidence + dry-run smoke + KIS portal verification + KIS paper smoke |
+| broker direction | `KIS`, no-order dry-run, KIS paper API | KIS selected; KB blocked for personal use; internal fake broker execution is not used; first broker-backed execution is approved KIS KRX paper/mock under scoped evidence | unscoped KIS/external broker or broker-provided paper/mock/live network calls outside an approved unit | broker-selection evidence + dry-run smoke + KIS portal verification + KIS paper smoke |
 
 ## 5. Interfaces
 
@@ -209,9 +216,11 @@ Future interfaces may include:
 - Pre-approval dry-run state must distinguish draft order intents, risk-approved
   intents, rejected intents, and kill-switch blocks without broker order ids,
   fills, positions, balances, or simulated PnL.
-- KIS/external broker credentials, account ids, tokens, live/partner endpoints,
-  and broker-provided paper/mock/demo/testbed endpoints are out of scope until a
-  later approved integration unit.
+- KIS paper credentials may exist only in the local external secret file
+  `/home/hwi/.config/hwistock/kis-paper.env` for approved paper/mock work and
+  must not be committed, printed, or copied into docs. Live credentials, account
+  data, tokens, partner endpoints, and any broker-provided live mode remain out
+  of scope until a later approved integration unit.
 - Future audit data must avoid leaking credentials or private account details.
 - AI API calls must avoid credentials, account identifiers, private account
   details, and unapproved raw article bodies.
@@ -219,7 +228,12 @@ Future interfaces may include:
 ## 7. Existing Assets / Reuse Points
 
 - Hwi Work Harness templates and lifecycle.
-- No project code exists yet.
+- Imported MyWebTemplate backend/frontend skeletons are present and must remain
+  quarantined/replaced per unit scope.
+- UNIT-002 now provides the first hwiStock-specific safety runtime skeleton:
+  local-only bind helper, read-only runner status API, no-order intent metadata,
+  audit/alert metadata, `--once` runner tick, focused tests, and systemd
+  templates.
 
 ## 8. Module-Level Verification
 
@@ -230,7 +244,8 @@ Future interfaces may include:
 ## 9. Included Units
 
 - `HWISTOCK-UNIT-001`: project bootstrap and safety-first planning setup.
-- `HWISTOCK-UNIT-002`: 24-hour home-server paper/sandbox runner planning.
+- `HWISTOCK-UNIT-002`: 24-hour home-server paper/sandbox runner skeleton,
+  local-only status API, no-order metadata, and systemd templates.
 - `HWISTOCK-UNIT-003`: 24-hour market intelligence ingestion planning.
 - `HWISTOCK-UNIT-004`: strategy/risk rulebook planning for stock selection,
   position sizing, exits, and kill switch.
@@ -267,11 +282,13 @@ Future interfaces may include:
   broker/API direction.
 - Decision: KB Securities (`KB증권`) is blocked as a practical personal API
   candidate unless future official confirmation proves otherwise.
-- Decision: internal fake broker execution is not used. Before KIS paper
-  approval, only no-order dry-run validation is allowed.
-- Decision: broker-provided paper/mock/demo/testbed/sandbox APIs are deferred,
-  not generally forbidden. The first broker-backed path is KIS KRX paper/mock
-  after KIS API portal verification and explicit approval.
+- Decision: internal fake broker execution is not used. Default Go behavior is
+  still no-order dry-run validation unless the active unit explicitly approves
+  a bounded KIS paper/mock action.
+- Decision: broker-provided paper/mock/demo/testbed/sandbox APIs are deferred by
+  default, not generally forbidden. The first bounded KIS KRX paper/mock REST
+  and WebSocket smoke was approved and passed on 2026-06-04; future integration
+  or additional calls remain scoped-approval work.
 - Decision: official paper/mock-investment initial budget is 10,000,000 KRW;
   intended live starting capital remains 2,000,000 KRW cash.
 - Decision: first-pass market calendar source hierarchy is KRX official
@@ -284,9 +301,13 @@ Future interfaces may include:
 - Decision: one-week paper/sandbox pass criteria require at least 7 consecutive
   calendar days and at least 5 valid Korean market open days, P0 safety and
   evidence criteria, and no profit threshold.
-- Remaining blocking for full Ready-Set: current final external review, final
-  row closure, strategy decision-packet approval or exclusion, and dashboard
-  design review execution or exclusion.
+- Rebaseline Ready-Set completion is closed for the
+  `skeleton_sandbox_safe_rebaseline_queue`; remaining restrictions are
+  operational, not Ready-Set blockers: no unscoped KIS/broker/AI calls, no paper
+  orders outside approved scope, no live orders, no credential storage, no
+  public/LAN dashboard exposure, no fake broker fills/balances/PnL, no
+  MyWebTemplate sample/public exposure without quarantine/replacement, and no
+  expected-profit claims.
 - Remaining strategy follow-up: the first-pass alpha/chart/source/candle/
   liquidity/market-alert defaults are packaged in
   `docs/set/READY-SET-STRATEGY-DECISION-PACKET-20260602_hwistock.md`. They must
@@ -318,6 +339,11 @@ Future interfaces may include:
 - `docs/evidence/RUN-20260602_ai-orchestration-layer.md`
 - `docs/evidence/RUN-20260602_broker-selection-kis.md`
 - `docs/evidence/RUN-20260602_broker-candidate-kb-blocked.md`
+- `docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md`
+- `docs/evidence/RUN-20260604_unit-001-go-preflight.md`
+- `docs/evidence/RUN-20260604_unit-001-go-check.md`
+- `docs/evidence/RUN-20260604_unit-001-go-preflight-rebaseline.md`
+- `docs/evidence/RUN-20260604_unit-001-go-check-rebaseline.md`
 - `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`
 
 ## 12. Design References

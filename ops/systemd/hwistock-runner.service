@@ -1,0 +1,23 @@
+# hwiStock 24h runner worker template (UNIT-002). Do not execute from repo checkout.
+# Scheduler/no-order dry-run skeleton; no broker or KIS network calls in this unit.
+
+[Unit]
+Description=hwiStock home-server paper runner worker (no-order skeleton)
+After=network.target hwistock-api.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=hwi
+Group=hwi
+WorkingDirectory=/data/workspace/My/hwiStock
+EnvironmentFile=/home/hwi/.config/hwistock/hwistock.env
+Environment=HWISTOCK_BIND_HOST=127.0.0.1
+# Skeleton tick loop: --once emits local status; no broker/network/order behavior
+ExecStart=/usr/bin/env bash -c 'while true; do /usr/bin/python3 backend/service/HwiStockRunnerService.py --once || exit 1; sleep 300; done'
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

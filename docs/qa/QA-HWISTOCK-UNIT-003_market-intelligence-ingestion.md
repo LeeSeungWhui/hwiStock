@@ -10,8 +10,14 @@ module_refs:
 profile_refs:
   - PROFILE-HWISTOCK
 status: set
+ready_set_rebaseline_status: go_check_passed
+implementation_status: go_check_passed
 owner: hwi
-updated_at: 2026-06-03
+updated_at: 2026-06-04
+evidence_refs:
+  - docs/evidence/RUN-20260602_unit-003-market-intelligence-set.md
+  - docs/evidence/RUN-20260604_unit-003-go-preflight-rebaseline.md
+  - docs/evidence/RUN-20260604_unit-003-go-check-rebaseline.md
 ---
 
 # Market Intelligence Ingestion QA
@@ -63,6 +69,25 @@ Out of scope:
 | QA-010 | P1 | event-schema | Inspect normalized event schema | Required fields include source ids, timestamps, symbol/corp code, dedupe key, body storage policy, and candidate eligibility | schema review |
 | QA-011 | P0 | network-boundary | Run first foundation Go smoke with source credentials absent/disabled | Fixture/config ingestion succeeds; live OpenDART, Naver, KIS/broker, KRX/KIND, unofficial API, and HTML scraping calls are not attempted | network/config log |
 
+## 3-1. Go Smoke Mapping
+
+Current Go smoke coverage lives in
+`backend/tests/test_market_intelligence_ingestion.py`.
+
+| row_id | Go coverage |
+| --- | --- |
+| QA-001 | `testQa001AndQa003SourceRegistryCarriesPolicyFields` validates source status, method, credential policy, storage policy, rate, terms, and retention fields. |
+| QA-002 | `testQa002AndQa011NoNetworkEnvOrRoutingImports` inspects implementation imports for no broker/order/trading routing modules. |
+| QA-003 | `testQa001AndQa003SourceRegistryCarriesPolicyFields` validates source permission/rate/terms notes. |
+| QA-004 | `testQa004DuplicateFixtureEventsLinkDeterministically` verifies deterministic duplicate linking. |
+| QA-005 | `testQa005AndQa006HealthAndSummaryExposeRequiredOperatorFields` checks last fetch, failures, backlog, source counts, duplicates, and disabled live sources. |
+| QA-006 | `testQa005AndQa006HealthAndSummaryExposeRequiredOperatorFields` checks the returned summary dictionary. No runtime evidence file is written by ingestion. |
+| QA-007 | `testQa007MarketDataContextFieldsAreDeclaredBeforeSignals` verifies venue, interval, OHLCV, and latency fields are declared while live chart sources remain disabled/deferred. |
+| QA-008 | `testQa008AndQa009BlockedSourcesCannotIngestInFoundation` verifies HTML scraping and unofficial APIs are blocked. |
+| QA-009 | `testQa008AndQa009BlockedSourcesCannotIngestInFoundation` verifies KIS/broker market/realtime/news data is deferred and cannot ingest. |
+| QA-010 | `testQa010NormalizedEventSchemaContainsRequiredFields` verifies required normalized event fields and validation. |
+| QA-011 | `testQa011FoundationSmokeSucceedsWithoutCredentialsOrNetwork` and `testQa002AndQa011NoNetworkEnvOrRoutingImports` prove fixture/config ingestion succeeds while live network/credential/order paths are absent. |
+
 ## 4. PASS / FAIL / BLOCKED Rules
 
 - PASS: only approved fixture/config sources are collected in first foundation
@@ -86,3 +111,29 @@ Out of scope:
 - blocked-source review
 - network/config proof that live OpenDART and all conditional/deferred sources
   remain disabled during first foundation Go
+
+Current Go-Check evidence:
+
+- `docs/evidence/RUN-20260604_unit-003-go-check-rebaseline.md`
+- `python -m unittest backend.tests.test_market_intelligence_ingestion`
+- `python -m unittest backend.tests.test_market_intelligence_ingestion backend.tests.test_storage_contract`
+- `python -m py_compile backend/lib/market_intelligence.py backend/service/market_intelligence_ingestion.py backend/tests/test_market_intelligence_ingestion.py`
+
+## 6. Current Go-Check Execution Matrix
+
+Current evidence:
+`docs/evidence/RUN-20260604_unit-003-go-check-rebaseline.md`.
+
+| row_id | go_check_result | evidence |
+| --- | --- | --- |
+| QA-001 | PASS | Source registry config entries expose status, method, credential policy, storage policy, rate, terms, retention, and body policy fields. |
+| QA-002 | PASS | Import inspection confirms no broker/order/trading routing imports in UNIT-003 implementation modules. |
+| QA-003 | PASS | Source policy notes and rate/terms text are present in the implementation config. |
+| QA-004 | PASS | Duplicate disclosure fixtures link deterministically by dedupe key. |
+| QA-005 | PASS | Health output exposes source counts, failures, backlog, disabled live sources, blocked source ids, duplicate links, and last fetch timestamps. |
+| QA-006 | PASS | Summary dictionary exposes source counts, duplicate count, failures, disabled live sources, and retention notes without writing runtime evidence files. |
+| QA-007 | PASS | Market-data context fields include venue, interval, OHLCV schema, and latency budget while live chart sources remain disabled/deferred. |
+| QA-008 | PASS | General HTML scraping and unofficial finance APIs are blocked in foundation mode. |
+| QA-009 | PASS | KIS/broker market/realtime/news source remains deferred and cannot ingest. |
+| QA-010 | PASS | Normalized event schema includes all required UNIT-003 fields; validation rejects non-KST/ambiguous timestamps and caller body-policy overrides. |
+| QA-011 | PASS | Foundation fixture smoke succeeds without credentials, network imports, live source calls, broker/KIS imports, or order-routing imports. |

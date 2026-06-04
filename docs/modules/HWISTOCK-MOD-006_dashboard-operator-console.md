@@ -5,12 +5,23 @@ type: module
 domain: frontend
 name: Dashboard operator console
 spec_status: set
-build_status: planned
-verification_status: pending
+build_status: go_check_passed
+verification_status: browser_prove_passed
+ready_set_rebaseline_status: go_check_passed
+prove_status: pass
 priority: P1
 source_of_truth: user_intent
 owner: hwi
-updated_at: 2026-06-04
+updated_at: 2026-06-05
+go_check_evidence_refs:
+  - docs/evidence/RUN-20260605_unit-007-go-preflight-rebaseline.md
+  - docs/evidence/RUN-20260605_unit-007-go-check-rebaseline.md
+  - docs/evidence/RUN-20260605_port-tunnel-5000-5001-sync.md
+  - docs/evidence/RUN-20260605_local-server-smoke-5000-5001.md
+  - docs/evidence/RUN-20260605_hwibuntu-tunnel-smoke-5000-5001.md
+prove_evidence_refs:
+  - docs/evidence/RUN-20260605_browser-ui-prove-5000-5001.md
+  - docs/evidence/RUN-20260605_browser-ui-reprove-login-api500.md
 required_rules:
   - docs/profiles/PROFILE-HWISTOCK.md
 links:
@@ -41,7 +52,9 @@ positions, logs, and daily review. It must not expose direct buy/sell controls.
 - Dashboard access must be restricted when deployed on the home server.
 - Default access policy is local-only: bind dashboard/API surfaces to
   `127.0.0.1` and access through local browser, Chrome Remote Desktop, or SSH
-  tunnel. LAN/public IP exposure requires a later explicit Set contract with
+  tunnel. The current local ports are dashboard/frontend `5000` and backend/API
+  `5001`; hwibuntu access uses SSH local forwarding to hwiServer loopback.
+  LAN/public IP exposure requires a later explicit Set contract with
   authentication and allowlist/VPN/reverse-proxy controls.
 - "Only people who know the IP/URL can find it" is not accepted as access
   control.
@@ -122,3 +135,11 @@ AI conversation constraints:
   `docs/evidence/RUN-20260604_dashboard-design-review.md`.
   Findings intake:
   `docs/set/READY-SET-REVIEW-FINDINGS-INTAKE-20260604_dashboard-design.md`.
+- Browser UI Prove initially failed on 2026-06-05 because the public login
+  surface still exposed MyWebTemplate sample/demo copy and the authenticated
+  dashboard showed `HTTP_500_INTERNAL` from Decimal JSON serialization. The
+  follow-up re-Prove passed after login copy quarantine and dashboard response
+  JSON-safe conversion. Current evidence:
+  `docs/evidence/RUN-20260605_browser-ui-reprove-login-api500.md`; superseded
+  failure evidence:
+  `docs/evidence/RUN-20260605_browser-ui-prove-5000-5001.md`.

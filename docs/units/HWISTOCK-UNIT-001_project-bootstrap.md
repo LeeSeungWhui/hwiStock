@@ -5,6 +5,8 @@ type: unit
 domain: docs
 name: Project bootstrap
 status: set
+ready_set_rebaseline_status: go_check_passed
+implementation_status: go_check_passed
 priority: P0
 source_of_truth: user_intent
 legacy_ids: []
@@ -18,8 +20,8 @@ completeness:
   status: sufficient
   audit_ref: docs/qa/QA-HWISTOCK-UNIT-001_project-bootstrap.md
 owner: hwi
-updated_at: 2026-06-02
-last_verified_at:
+updated_at: 2026-06-04
+last_verified_at: 2026-06-04
 source_snapshot:
   input_digest: "주식자동매매단타프로젝트 시작 준비"
   legacy_doc: none
@@ -74,6 +76,14 @@ evidence_refs:
     status: set
   - run_id: RUN-20260602-unit-001-project-bootstrap-set
     status: set
+  - run_id: RUN-20260604-unit-001-go-preflight
+    status: historical_after_mywebtemplate_rebaseline
+  - run_id: RUN-20260604-unit-001-go-check
+    status: historical_after_mywebtemplate_rebaseline
+  - run_id: RUN-20260604-unit-001-go-preflight-rebaseline
+    status: pass
+  - run_id: RUN-20260604-unit-001-go-check-rebaseline
+    status: pass
 links:
   - HWISTOCK-MOD-001
 ---
@@ -126,7 +136,7 @@ Initial creation of `HWISTOCK-MOD-001`.
 | AC-02 | P0 | Profile blocks live brokerage/order operations by default | approval policy includes broker/live order gates | file review | QA-002 |
 | AC-03 | P0 | Initial safety module exists | `HWISTOCK-MOD-001` exists | file review | QA-003 |
 | AC-04 | P1 | Bootstrap QA scenario exists | QA file exists and references this unit | file review | QA-004 |
-| AC-05 | P1 | Decisions and remaining blockers are listed | selected broker, stack, strategy/risk, paper-boundary, source registry, and remaining full Ready-Set blockers are visible | file review | QA-005 |
+| AC-05 | P1 | Decisions and remaining Go/operational boundaries are listed | selected broker, stack, strategy/risk, paper-boundary, source registry, closed Ready-Set state, and remaining Go/operational restrictions are visible | file review | QA-005 |
 | AC-06 | P0 | Live operation requires a one-week test gate | profile/module mention one full week of paper/sandbox evidence before live | file review | QA-006 |
 | AC-07 | P0 | Capital policy is cash-only | profile/module forbid credit, margin, 미수, borrowed funds, and leveraged capital by default | file review | QA-007 |
 
@@ -152,18 +162,31 @@ Closed by later Set docs:
 - First source allowlist is DART-first, with Naver/KRX/KIND conditional or
   deferred and general HTML scraping blocked by default.
 
-Still blocking full Ready-Set completion:
+Closed by rebaseline Ready-Set completion (2026-06-04):
 
-- Strategy decision-packet approval or row exclusion.
-- Dashboard design review execution or row exclusion.
-- Current final external review and final row-closure matrix.
+- Strategy decision-packet approval was recorded for paper/sandbox planning
+  defaults.
+- Dashboard design review was executed and its Set-level findings were applied.
+- Historical pre-import closure is recorded in
+  `docs/set/READY-SET-COMPLETION-20260602_hwistock.md` (superseded).
+- Current rebaseline closure, row closure, owner decision, and Go preflight are
+  recorded in `docs/set/READY-SET-COMPLETION-20260604_rebaseline_hwistock.md`,
+  `docs/set/READY-SET-ROW-CLOSURE-20260604_rebaseline_hwistock.md`,
+  `docs/set/READY-SET-OWNER-DECISION-20260604_rebaseline_hwistock.md`, and
+  `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260604_rebaseline_hwistock.md`.
+- The current Ready-Set gate is `implementation_ready: true` only for the
+  `skeleton_sandbox_safe_rebaseline_queue`. It is not live or operational
+  trading readiness.
+- MyWebTemplate sample/public/template quarantine is a documented first-row
+  blocker for affected future units; UNIT-001 verified guardrails only and did
+  not remove product-code surfaces.
 
 Still future strategy/provider follow-up, not permission to infer during Go:
 
 - First-pass alpha/chart/source/candle/liquidity/market-alert defaults are
   packaged in
-  `docs/set/READY-SET-STRATEGY-DECISION-PACKET-20260602_hwistock.md`; they must
-  not be inferred during Go before approval or row exclusion.
+  `docs/set/READY-SET-STRATEGY-DECISION-PACKET-20260602_hwistock.md`; Go must
+  use those recorded defaults rather than inferring new strategy parameters.
 - Nonzero AI API token/cost caps and any AI network enablement.
 
 ## 8. Spec Completeness Audit
@@ -178,6 +201,14 @@ Still future strategy/provider follow-up, not permission to infer during Go:
 
 ## 9. Set Summary
 
-UNIT-001 is Set-ready as a docs-only bootstrap. It does not authorize product
-implementation by itself; Go remains blocked until the Ready-Set completion gate
-has `implementation_ready: true`.
+UNIT-001 passed Go-Check as a docs-only bootstrap verification on 2026-06-04
+against the rebaseline Ready-Set. Current authority:
+`docs/evidence/RUN-20260604_unit-001-go-check-rebaseline.md` (preflight:
+`docs/evidence/RUN-20260604_unit-001-go-preflight-rebaseline.md`). Pre-rebaseline
+evidence is historical only.
+
+The broader rebaseline queue has `implementation_ready: true` for
+`skeleton_sandbox_safe_rebaseline_queue`, but this unit still does not authorize
+product-code implementation beyond its docs-only scope, broker/KIS/AI network
+calls, paper orders, live orders, credential storage, MyWebTemplate surface
+removal, or operational trading readiness.

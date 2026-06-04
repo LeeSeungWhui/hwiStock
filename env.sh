@@ -55,13 +55,13 @@ if JAVA_HOME_PICKED="$(pick_tool_home "jdk-17.0.12")"; then
 fi
 
 # Node
-if NODE_HOME_PICKED="$(pick_tool_home "node-v24.11.0")"; then
+if NODE_HOME_PICKED="$(pick_tool_home "node-v26.3.0")"; then
   export NODE_HOME="$NODE_HOME_PICKED"
   export PATH="$NODE_HOME/bin:$PATH"
 fi
 
 # Python
-if PY_HOME_PICKED="$(pick_tool_home "Python3.12.10")"; then
+if PY_HOME_PICKED="$(pick_tool_home "Python3.14.5")"; then
   export PY_HOME="$PY_HOME_PICKED"
   export PATH="$PY_HOME/bin:$PATH"
 fi
