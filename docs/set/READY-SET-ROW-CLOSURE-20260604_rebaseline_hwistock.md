@@ -8,7 +8,7 @@ profile_id: PROFILE-HWISTOCK
 updated_at: 2026-06-05
 current_authority: true
 implementation_ready: true
-implementation_ready_scope: skeleton_adapter_safe_rebaseline_queue
+implementation_ready_scope: skeleton_adapter_safe_rebaseline_queue_with_dashboard_ai_conversation_correction
 owner_decision_ref: docs/set/READY-SET-OWNER-DECISION-20260604_rebaseline_hwistock.md
 completion_report_ref: docs/set/READY-SET-COMPLETION-20260604_rebaseline_hwistock.md
 go_preflight_checklist_ref: docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260604_rebaseline_hwistock.md
@@ -21,6 +21,7 @@ approval_actions_ref: docs/set/READY-SET-APPROVAL-ACTIONS-20260602_hwistock.md
 external_review_evidence_ref: docs/evidence/RUN-20260604_gpt-pro-full-ready-set-review.md
 external_review_evidence_status: historical_before_mywebtemplate_import_supporting_context
 dashboard_design_findings_intake_ref: docs/set/READY-SET-REVIEW-FINDINGS-INTAKE-20260604_dashboard-design.md
+dashboard_ai_conversation_correction_ref: docs/set/READY-SET-CORRECTION-20260605_dashboard-ai-conversation.md
 owner_decision_receipt_ref: docs/evidence/RUN-20260604_full-ready-set-owner-decisions-presend.md
 git_init_delta_sync_ref: docs/evidence/RUN-20260604_git-init-ready-set-delta-sync.md
 kis_paper_smoke_evidence_ref: docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md
@@ -46,7 +47,7 @@ selected_queue_scope: full_queue_skeleton_adapter_safe
 | 6 | HWISTOCK-UNIT-006 | `docs/units/HWISTOCK-UNIT-006_trading-engine-order-state.md` | `docs/qa/QA-HWISTOCK-UNIT-006_trading-engine-order-state.md` | go_check_passed | Condition compiler, `condition_card/v0`, no-order dry-run records, state-machine skeleton, disabled KIS adapter boundary, and **no sample/demo backend surface exposure**. | Submitted/accepted/fill transitions, broker calls, fake fills, fake balances, fake PnL, MyWebTemplate sample routes. |
 | 7 | HWISTOCK-UNIT-005 | `docs/units/HWISTOCK-UNIT-005_ai-orchestration-layer.md` | `docs/qa/QA-HWISTOCK-UNIT-005_ai-orchestration-layer.md` | go_check_passed | AI job registry, schemas, validators, source grounding, sensitive-payload review, audit/no-order dry-run records with provider network disabled, and **no sample/demo backend surface exposure**. | DeepSeek/ChatGPT provider calls, browser automation, model/tool execution, nonzero AI cost, broker/KIS calls, MyWebTemplate sample routes. |
 | 8 | HWISTOCK-UNIT-002 | `docs/units/HWISTOCK-UNIT-002_home-server-adapter-runner.md` | `docs/qa/QA-HWISTOCK-UNIT-002_home-server-adapter-runner.md` | go_check_passed | systemd files, local runner lifecycle skeleton, health/status, calendar idle behavior, local alert plumbing, no-order mode wiring, and **local-only `127.0.0.1` bind enforcement**. | Broker orders, broker/KIS calls, AI calls, operation runner claim, one-week adapter evidence claim, public/LAN exposure. |
-| 9 | HWISTOCK-UNIT-007 | `docs/units/HWISTOCK-UNIT-007_dashboard-operator-console.md` | `docs/qa/QA-HWISTOCK-UNIT-007_dashboard-operator-console.md` | go_check_passed | Local read-only dashboard UI/API surfaces, masked values, sanitized errors, status/candidate/report/log panels, AI report thread, and **removal/replacement of MyWebTemplate branding, sample routes, publicRoutes, and generic auth/public pages**. | Buy/sell controls, public/LAN exposure, service-control actions, risk/prompt/model changes, MyWebTemplate branding/sample pages as reachable surfaces. |
+| 9 | HWISTOCK-UNIT-007 | `docs/units/HWISTOCK-UNIT-007_dashboard-operator-console.md` | `docs/qa/QA-HWISTOCK-UNIT-007_dashboard-operator-console.md` | go_check_passed_pending_browser_prove | Local read-only dashboard UI/API surfaces, masked values, sanitized errors, status/candidate/report/log panels, stored AI report viewer, frontend AI conversation input/POST wiring, backend conversation/refusal/audit flow, and **removal/replacement of MyWebTemplate branding, sample routes, publicRoutes, and generic auth/public pages** are focused-tested. Existing browser proof remains partial until the authenticated full UI/API conversation flow is proven. | Buy/sell controls, public/LAN exposure, service-control actions, risk/prompt/model changes, direct frontend AI-provider calls, missing backend conversation endpoint/audit, report-only AI panel as PASS, MyWebTemplate branding/sample pages as reachable surfaces. |
 
 ## 2. Scope Result
 
@@ -71,6 +72,8 @@ This matrix is issued after:
 - Historical owner decisions, external review evidence, dashboard design
   evidence, and KIS broker-adapter smoke preserved as supporting context. These
   historical reviews were not re-run after the MyWebTemplate code import.
+- Dashboard AI conversation correction:
+  `docs/set/READY-SET-CORRECTION-20260605_dashboard-ai-conversation.md`.
 
 ## 4. Go Boundary
 
@@ -113,4 +116,4 @@ queue authorization meaning of `row_state`.
 | HWISTOCK-UNIT-005 | pass | `docs/evidence/RUN-20260605_unit-005-go-check-rebaseline.md` | Current-tree stdlib-only AI orchestration foundation with disabled AI network/provider/cost defaults, six-role job registry, `ai_recommendation/v0` validation, source grounding, sensitive-payload review, deterministic UNIT-004 policy-gate handoff, no-order dry-run records, audit/fallback reports, tool-use-disabled behavior, and focused tests. |
 | HWISTOCK-UNIT-006 | pass | `docs/evidence/RUN-20260604_unit-006-go-check-rebaseline.md` | Current-tree stdlib-only trading-engine/order-state foundation skeleton with `condition_card/v0` validation, deterministic compiler, UNIT-004 risk-gate delegation plus SOR/AUTO_SESSION route normalization-or-blocking, dry-run-only state transitions through `dry_run_recorded`, KIS adapter capability flags, fixture-only evidence representation, and focused tests. |
 | HWISTOCK-UNIT-009 | pass | `docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md` | Docs-only current-authority rebaseline closure for KIS capability verification, sanitized KRX adapter smoke cross-reference, and preserved partial boundaries without new broker/KIS network authorization. |
-| HWISTOCK-UNIT-007 | pass | `docs/evidence/RUN-20260605_unit-007-go-check-rebaseline.md` | Current-tree read-only dashboard operator console with tasks/settings subroutes, root/public/sample quarantine, masked/sanitized values, local-only/public boundary, focused frontend tests/eslint, and scoped rule-gate zero findings; broader imported frontend baseline and quarantined route files remain documented limitations. |
+| HWISTOCK-UNIT-007 | pass_pending_browser_tunnel_prove | `docs/evidence/RUN-20260605_unit-007-go-check-rebaseline.md`; `docs/evidence/RUN-20260605_unit-007-lucid-command-dashboard-go.md`; `docs/evidence/RUN-20260605_unit-007-ai-conversation-backend-go-check.md`; `docs/set/READY-SET-CORRECTION-20260605_dashboard-ai-conversation.md` | Current-tree read-only dashboard operator console, tasks/settings subroutes, root/public/sample quarantine, masked/sanitized values, local-only/public boundary, Lucid Command frontend report/conversation split, AI question input/POST wiring, backend conversation endpoint, grounded local answer/refusal, and JSONL audit flow are focused-tested. Browser/tunnel Prove remains required before UNIT-007 can be considered fully proven. |

@@ -5,10 +5,10 @@ type: module
 domain: frontend
 name: Dashboard operator console
 spec_status: set
-build_status: go_check_passed
-verification_status: browser_prove_passed_with_post_pro_readiness_truth_go_check
-ready_set_rebaseline_status: go_check_passed
-prove_status: pass
+build_status: frontend_backend_ai_conversation_done
+verification_status: go_check_passed_backend_frontend_tests_pending_browser_prove
+ready_set_rebaseline_status: ai_conversation_go_check_done
+prove_status: pending_browser_tunnel_conversation_prove
 post_pro_readiness_truth_status: go_check_passed_api_frontend_tunnel_smoke
 priority: P1
 source_of_truth: user_intent
@@ -21,9 +21,15 @@ go_check_evidence_refs:
   - docs/evidence/RUN-20260605_local-server-smoke-5000-5001.md
   - docs/evidence/RUN-20260605_hwibuntu-tunnel-smoke-5000-5001.md
   - docs/evidence/RUN-20260605_post-pro-corrective-go-check-unit-011-015.md
+  - docs/evidence/RUN-20260605_unit-007-lucid-command-dashboard-go.md
+  - docs/evidence/RUN-20260605_unit-007-ai-conversation-backend-go-check.md
 prove_evidence_refs:
   - docs/evidence/RUN-20260605_browser-ui-prove-5000-5001.md
   - docs/evidence/RUN-20260605_browser-ui-reprove-login-api500.md
+corrective_set_refs:
+  - docs/set/READY-SET-CORRECTION-20260605_dashboard-ai-conversation.md
+design_refs:
+  - docs/design/HWISTOCK-DESIGN-20260605_lucid-command-dashboard.md
 required_rules:
   - docs/profiles/PROFILE-HWISTOCK.md
 links:
@@ -42,6 +48,12 @@ links:
 > The local API/frontend/tunnel Go-Check for this readiness truth surface passed
 > in `docs/evidence/RUN-20260605_post-pro-corrective-go-check-unit-011-015.md`;
 > browser visual re-Prove is still a later evidence row.
+>
+> AI conversation correction (2026-06-05): the dashboard report cards are not
+> enough. The Lucid Command frontend now has separate stored report and Q&A
+> surfaces with POST wiring. The backend conversation endpoint, grounded local
+> answer/refusal behavior, and audit evidence are implemented and focused-tested;
+> browser/tunnel Prove remains the next evidence row.
 
 ## 1. Purpose
 
@@ -54,8 +66,8 @@ positions, logs, and daily review. It must not expose direct buy/sell controls.
 - Dashboard is read-only for trading actions.
 - No direct manual buy/sell buttons.
 - It may show current holdings, today PnL, candidate cards, AI analysis state,
-  news/disclosure timeline, risk flags, order/fill logs, 07:00 morning report,
-  20:00 daily report, service health, and AI conversation.
+  news/disclosure timeline, risk flags, order/fill logs, stored Pro/Flash
+  reports, service health, and AI conversation.
 - It may include operator controls for non-ordering actions such as refresh,
   filter, log export, and kill-switch visibility. Any future kill-switch action
   requires an explicit Set decision.
@@ -82,15 +94,17 @@ positions, logs, and daily review. It must not expose direct buy/sell controls.
     order eligibility state
   - holdings/positions and order-state timeline
   - market-intelligence timeline for news/disclosures/source events
-  - AI job/report panel for hourly analysis, 07:00 morning review, and 20:00
-    daily close
+  - AI job/report viewer for hourly Pro analysis, Flash trade documents, 07:00
+    morning review, and 20:00 daily close
   - audit log/error panel
-  - AI conversation panel scoped to stored reports and sanitized current state
+  - AI conversation panel scoped to stored reports and sanitized current state,
+    with a real question input, submit flow, answer display, safe refusal display,
+    and request/audit metadata
 - Dashboard visual model is desktop-first for the initial implementation. Use a
   persistent global status header and a three-pane operator layout:
   left summary/context, center holdings/candidates/intelligence data, and right
-  AI/report thread plus audit/error timeline. Mobile responsiveness is deferred
-  unless a future unit explicitly adds it.
+  AI report viewer plus AI Q&A conversation plus audit/error timeline. Mobile
+  responsiveness is deferred unless a future unit explicitly adds it.
 - Dashboard interactions must look read-only. Do not use primary action button
   variants, trade-like red/green execution affordances, or command-console
   styling for filters, tabs, sorts, refresh, or report controls. Reserve strong
@@ -99,8 +113,12 @@ positions, logs, and daily review. It must not expose direct buy/sell controls.
 - Sensitive display must go through a masking/redaction primitive such as
   `MaskedValue`. Account identifiers, credential-like values, raw balances, and
   raw API/error JSON must be masked or sanitized before rendering.
-- The AI conversation surface must look like a read-only report/explanation
-  thread, not a terminal or command shell.
+- The AI report viewer must let the operator read stored Pro/Flash outputs.
+- The AI conversation surface must let the operator ask a natural-language
+  question and receive a grounded answer. It must look like a read-only
+  report/explanation Q&A thread, not a terminal or command shell.
+- A static `aiThread`/report-card panel without question input and backend answer
+  flow does not satisfy the AI conversation capability.
 
 ## 3. Interfaces
 
@@ -113,13 +131,21 @@ Future interfaces:
 - position/PnL viewer
 - order log viewer
 - market-intelligence timeline
-- AI conversation endpoint
+- AI report viewer endpoint or report slice from the operator snapshot
+- AI conversation endpoint, for example a POST endpoint that accepts a sanitized
+  operator question and returns a grounded answer/refusal plus request metadata
 
 AI conversation constraints:
 
 - The frontend never calls AI providers directly.
 - The conversation backend may read stored reports, candidate cards, sanitized
   current state, and audit summaries.
+- The conversation backend must accept an operator question, build a sanitized
+  context bundle from stored artifacts/current state, and return either a
+  grounded answer or an explicit refusal.
+- The conversation backend must log question metadata, sanitized context refs,
+  answer/refusal result, model/provider route, latency, and request id without
+  credentials or raw secret values.
 - It must not receive broker credentials, raw account numbers, API keys, or
   private account identifiers.
 - It cannot place orders, change risk parameters, enable broker adapters, change
@@ -136,10 +162,15 @@ AI conversation constraints:
   contract is approved.
 - Decision: first screen is an operator console with status, PnL, candidates,
   positions, market-intelligence timeline, AI reports, logs, and AI conversation.
+- Decision: AI report viewing and AI conversation are separate capabilities;
+  report viewing alone is partial and cannot close the conversation requirement.
 - Decision: dashboard design review result is `ready_with_changes`; P0/P1
   findings are incorporated as read-only styling, `MaskedValue` redaction,
   desktop-first three-pane layout, and report-style AI conversation
   requirements.
+- Decision: Lucid Command visual model and implementation guardrails are
+  recorded in
+  `docs/design/HWISTOCK-DESIGN-20260605_lucid-command-dashboard.md`.
 - Decision: MyWebTemplate docs are not reused.
 - Design review evidence:
   `docs/evidence/RUN-20260604_dashboard-design-review.md`.
@@ -149,7 +180,9 @@ AI conversation constraints:
   surface still exposed MyWebTemplate sample/demo copy and the authenticated
   dashboard showed `HTTP_500_INTERNAL` from Decimal JSON serialization. The
   follow-up re-Prove passed after login copy quarantine and dashboard response
-  JSON-safe conversion. Current evidence:
+  JSON-safe conversion. That evidence is now interpreted as static report-viewer
+  and browser-rendering proof only, not interactive AI conversation proof.
+  Current evidence:
   `docs/evidence/RUN-20260605_browser-ui-reprove-login-api500.md`; superseded
   failure evidence:
   `docs/evidence/RUN-20260605_browser-ui-prove-5000-5001.md`.

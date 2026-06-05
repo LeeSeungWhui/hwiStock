@@ -10,8 +10,8 @@ export const LANG_KO = {
     initFetchFailedLog: "운영 콘솔 초기 데이터 조회 실패",
   },
   view: {
-    consoleTitle: "hwiStock 운영 콘솔",
-    consoleSubtitle: "자동매매 운영 모니터링 · 주문 실행은 runner가 처리",
+    consoleTitle: "hwiStock Lucid Command",
+    consoleSubtitle: "읽기 전용 운영 콘솔 · 주문 실행은 runner 전용",
     dataSource: {
       api: "운영 API 연동",
       fixture: "로컬 폴백 스냅샷",
@@ -49,7 +49,12 @@ export const LANG_KO = {
     panes: {
       summary: "계좌 · 운영 요약",
       data: "보유 · 후보 · 인텔리전스",
-      review: "AI 리포트 · 감사 로그",
+      review: "AI · 감사",
+    },
+    sectionNav: {
+      console: "운영 콘솔",
+      aiReport: "AI 리포트",
+      aiConversation: "AI 대화",
     },
     summary: {
       accountId: "계좌 식별자",
@@ -81,9 +86,24 @@ export const LANG_KO = {
       title: "시장 인텔리전스",
       empty: "타임라인 항목이 없습니다.",
     },
-    aiThread: {
-      title: "AI 리포트 · 설명 스레드",
-      empty: "리포트 스레드가 없습니다.",
+    aiReport: {
+      title: "AI 리포트",
+      subtitle: "저장된 Pro/Flash 분석 문서",
+      empty: "저장된 리포트가 없습니다.",
+      roleReport: "리포트",
+      roleAssistant: "설명",
+    },
+    aiConversation: {
+      title: "AI 대화",
+      subtitle: "리포트·상태에 대한 읽기 전용 질의",
+      disclaimer: "이 패널은 설명·분석 전용입니다. 주문 실행, 리스크 설정 변경, 자격증명 노출, 서비스 제어는 지원하지 않습니다.",
+      inputLabel: "질문 입력",
+      inputPlaceholder: "예: 오늘 Flash 리포트에서 거절된 후보는 무엇인가요?",
+      submitLabel: "질문 보내기",
+      empty: "아직 대화가 없습니다. 저장된 리포트나 현재 상태에 대해 질문해 보세요.",
+      pending: "답변을 생성하는 중입니다…",
+      unavailable: "AI 대화 백엔드에 연결되지 않았습니다. UI만 준비된 상태입니다.",
+      refusedPrefix: "요청 거절",
     },
     audit: {
       title: "감사 · 오류 타임라인",

@@ -1,14 +1,14 @@
 ---
 schema_version: hwi.ready-set-completion/v0
 stage: ready-set
-status: rebaseline_complete_skeleton_only
+status: rebaseline_complete_skeleton_only_with_dashboard_ai_conversation_correction
 project_root: /data/workspace/My/hwiStock
 docs_base: docs
 profile_id: PROFILE-HWISTOCK
-updated_at: 2026-06-04
+updated_at: 2026-06-05
 current_authority: true
 implementation_ready: true
-implementation_ready_scope: skeleton_adapter_safe_rebaseline_queue
+implementation_ready_scope: skeleton_adapter_safe_rebaseline_queue_with_dashboard_ai_conversation_correction
 operational_trading_readiness: false
 owner_decision_ref: docs/set/READY-SET-OWNER-DECISION-20260604_rebaseline_hwistock.md
 rebaseline_evidence_ref: docs/evidence/RUN-20260604_ready-set-rebaseline-after-mywebtemplate-import.md
@@ -25,6 +25,7 @@ external_review_evidence_ref: docs/evidence/RUN-20260604_gpt-pro-full-ready-set-
 external_review_evidence_status: historical_before_mywebtemplate_import_supporting_context
 dashboard_design_review_evidence_ref: docs/evidence/RUN-20260604_dashboard-design-review.md
 dashboard_design_review_evidence_status: historical_before_mywebtemplate_import_constraints_only
+dashboard_ai_conversation_correction_ref: docs/set/READY-SET-CORRECTION-20260605_dashboard-ai-conversation.md
 kis_paper_smoke_evidence_ref: docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md
 git_init_delta_sync_ref: docs/evidence/RUN-20260604_git-init-ready-set-delta-sync.md
 reviewed_after_latest_set_closure: false
@@ -43,7 +44,8 @@ selected_queue_scope: full_queue_skeleton_adapter_safe
 
 ## 1. Verdict
 
-Ready-Set bundle status: `rebaseline_complete_skeleton_only`.
+Ready-Set bundle status:
+`rebaseline_complete_skeleton_only_with_dashboard_ai_conversation_correction`.
 
 Current implementation readiness: `true` **for the rebaseline scope only**.
 
@@ -53,6 +55,12 @@ first Go scope includes MyWebTemplate sample/public quarantine and local-only
 bind/access enforcement. It does **not** authorize operational trading,
 brokerage integration, account-affecting order flow, AI provider runtime calls,
 or public/LAN dashboard exposure.
+
+2026-06-05 correction: UNIT-007's earlier static AI/report-thread dashboard
+proof is partial only. The Lucid Command frontend follow-up proves the question
+input and POST wiring, and the backend follow-up proves the conversation
+endpoint, grounded answer/refusal flow, and local audit logging. UNIT-007 still
+requires browser/tunnel Prove for the authenticated full UI/API flow.
 
 ## 2. What This Report Does Not Authorize
 
@@ -108,7 +116,7 @@ bind/access enforcement as a **first-row requirement**, not optional cleanup.
 | HWISTOCK-UNIT-006 | set | product_api | HWISTOCK-MOD-005 | QA-HWISTOCK-UNIT-006 | included; no-order dry-run condition/order-state skeleton with no sample/demo backend surface |
 | HWISTOCK-UNIT-005 | set | product_api | HWISTOCK-MOD-004 | QA-HWISTOCK-UNIT-005 | included; AI schemas/jobs/prompts/audit skeleton with provider network disabled and no sample/demo backend surface |
 | HWISTOCK-UNIT-002 | set | ops/product_api | HWISTOCK-MOD-001 | QA-HWISTOCK-UNIT-002 | included; local runner/systemd lifecycle skeleton with `127.0.0.1` bind and no sample/demo surface |
-| HWISTOCK-UNIT-007 | set | product_ui | HWISTOCK-MOD-006 | QA-HWISTOCK-UNIT-007 | included; local read-only dashboard UI/API with MyWebTemplate branding/sample/public routes replaced |
+| HWISTOCK-UNIT-007 | go_check_passed_pending_browser_prove | product_ui | HWISTOCK-MOD-006 | QA-HWISTOCK-UNIT-007 | included; local read-only dashboard UI/API with MyWebTemplate branding/sample/public routes replaced, stored AI report viewer retained, frontend conversation input/POST wiring implemented, and backend conversation/refusal/audit flow focused-tested. Browser/tunnel Prove remains required. |
 
 ## 5. QA Scenario Inventory
 
@@ -129,6 +137,8 @@ claims still require current Check/design review evidence:
 - `MaskedValue` or equivalent sensitive-value masking;
 - sanitized error rendering without raw JSON/error dumps;
 - report/mail-style read-only AI explanation thread;
+- separate AI report viewer and interactive AI conversation flow; report cards
+  alone cannot close the conversation requirement;
 - local-only dashboard behavior, with no public/LAN exposure;
 - **no MyWebTemplate branding, sample pages, or publicRoutes**.
 
@@ -163,7 +173,7 @@ The rebaseline Go-Check queue is:
 6. `HWISTOCK-UNIT-006`: no-order dry-run condition/order-state skeleton, `condition_card/v0`, and disabled broker/KIS adapter boundary with no sample/demo surface.
 7. `HWISTOCK-UNIT-005`: AI job registry, schemas, validators, prompt templates, fixture outputs, and audit records with `AI_NETWORK_ENABLED=false` and no sample/demo surface.
 8. `HWISTOCK-UNIT-002`: local runner/systemd lifecycle skeleton, `127.0.0.1` bind, health/status, calendar idle behavior, local alert plumbing, and no-order wiring.
-9. `HWISTOCK-UNIT-007`: local read-only dashboard UI/API surfaces with MyWebTemplate branding/sample/public routes replaced, masked values, sanitized errors, status/candidate/report/log panels, and AI report thread.
+9. `HWISTOCK-UNIT-007`: local read-only dashboard UI/API surfaces with MyWebTemplate branding/sample/public routes replaced, masked values, sanitized errors, status/candidate/report/log panels, stored AI report viewer, and interactive AI conversation input/backend/refusal/audit flow.
 
 Every selected row must still run Go preflight immediately before file edits.
 

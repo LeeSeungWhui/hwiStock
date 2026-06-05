@@ -5,8 +5,10 @@ hwiStock read-only operator console runtime.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
+import time
 from html import unescape
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +25,55 @@ DEFAULT_DATA_ROOT = Path(os.getenv("HWISTOCK_DATA_DIR", str(REPO_ROOT / "data"))
 DEFAULT_RUNNER_SERVICE_PATHS = (
     Path.home() / ".config" / "systemd" / "user" / "hwistock-kis-paper-runner.service",
     REPO_ROOT / "ops" / "systemd" / "user" / "hwistock-kis-paper-runner.service",
+)
+AI_CONVERSATION_RESPONSE_SCHEMA_VERSION = "ai_conversation_response/v0"
+AI_CONVERSATION_AUDIT_SCHEMA_VERSION = "ai_conversation_audit/v0"
+AI_CONVERSATION_ROUTE = "local_deterministic_dashboard_answer"
+_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(api[_-]?key|app[_-]?key|appkey|secret|client[_-]?secret|appsecret|password|passwd|token|authorization)\s*[:=]\s*['\"]?[^\s,'\"]+"
+)
+_LONG_SECRET_LIKE_RE = re.compile(r"\b[A-Za-z0-9_\-]{20,}\b")
+_UNSAFE_CONVERSATION_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "order_execution_request",
+        re.compile(
+            r"(?i)(매수|매도|사줘|팔아줘|주문|체결|진입해|청산해|buy|sell|order|execute|submit|place)"
+            r".{0,16}(해|해줘|넣|보내|접수|걸어|등록|취소|cancel|now|바로|실행|submit|place|execute)"
+        ),
+    ),
+    (
+        "settings_mutation_request",
+        re.compile(
+            r"(?i)(설정|리스크|손절|익절|트레일링|비중|킬스위치|kill switch|adapter|broker|모델|프롬프트)"
+            r".{0,18}(바꿔|변경|수정|켜|꺼|enable|disable|set|update|edit|patch|적용)"
+        ),
+    ),
+    (
+        "credential_disclosure_request",
+        re.compile(
+            r"(?i)(비번|비밀번호|secret|api\s*key|apikey|client\s*secret|토큰|키|자격증명|credential|authorization|계좌번호)"
+            r".{0,18}(보여|알려|출력|print|show|reveal|dump|노출)"
+        ),
+    ),
+    (
+        "service_lifecycle_request",
+        re.compile(
+            r"(?i)(서비스|systemd|timer|daemon|서버|프로세스|runner|worker)"
+            r".{0,18}(시작|중지|재시작|켜|꺼|restart|start|stop|enable|disable)"
+        ),
+    ),
+)
+_BLOCKER_LABEL_PAIRS: tuple[tuple[str, str], ...] = (
+    ("paper_network_disabled", "시장/브로커 네트워크 플래그 미확인"),
+    ("paper_orders_not_submitted", "주문 제출 증거 없음"),
+    ("paper_observation_not_accepted", "관찰 리포트 승인 없음"),
+    ("operational_trading_readiness_false", "운영 준비 플래그 미충족"),
+    ("artifact_missing_or_safe_blocked", "필수 런타임 산출물 누락"),
+    ("systemd_order_enabled_contradicts_readiness", "서비스 주문 플래그와 준비 상태 불일치"),
+    ("blocked_calendar_unconfigured", "거래 캘린더 미설정"),
+    ("blocked_calendar_stale", "거래 캘린더 만료"),
+    ("blocked_source_unconfigured", "시장 데이터 소스 미설정"),
+    ("blocked_kill_switch", "킬스위치 활성"),
 )
 
 
@@ -720,6 +771,251 @@ def buildReadinessTruthPanel(
         "servicePolicy": policy,
         "fallbackArtifactKeys": fallbackArtifactKeys,
         "serviceVisibilityIsNotReadiness": True,
+    }
+
+
+def sanitizeConversationQuestion(value: Any, limit: int = 500) -> str:
+    text = cleanDisplayText(value, "")
+    text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:limit]
+
+
+def redactSensitiveConversationText(value: str, limit: int = 180) -> str:
+    text = sanitizeConversationQuestion(value, limit=limit)
+
+    def replaceAssignment(match: re.Match[str]) -> str:
+        key = match.group(1)
+        return f"{key}=[REDACTED]"
+
+    text = _SECRET_ASSIGNMENT_RE.sub(replaceAssignment, text)
+    return _LONG_SECRET_LIKE_RE.sub("[REDACTED]", text)
+
+
+def classifyUnsafeConversationRequest(question: str) -> Optional[str]:
+    for reason, pattern in _UNSAFE_CONVERSATION_RULES:
+        if pattern.search(question):
+            return reason
+    return None
+
+
+def humanizeBlocker(value: Any) -> str:
+    raw = str(value or "").strip()
+    for blockerKey, label in _BLOCKER_LABEL_PAIRS:
+        if blockerKey == raw:
+            return label
+    return raw or "확인 필요"
+
+
+def buildAiConversationArtifactContext(
+    *,
+    snapshotAt: datetime,
+    dataRoot: Optional[Path] = None,
+) -> Dict[str, Any]:
+    runtimeRoot = dataRoot or DEFAULT_DATA_ROOT
+    dayKey = snapshotAt.astimezone(KST).date().isoformat()
+    runnerStatus = baseRunner.get_runner_status(snapshotAt.strftime("%Y-%m-%dT%H:%M:%S"))
+    latestArtifactPaths = latestRuntimePaths(runtimeRoot, dayKey)
+    runtimeArtifacts = loadRuntimeArtifacts(latestArtifactPaths)
+    servicePolicy = inspectKisPaperRunnerServicePolicy([])
+    readiness = runnerStatus.get("readiness") if isinstance(runnerStatus.get("readiness"), dict) else {}
+    readinessTruth = buildReadinessTruthPanel(
+        runnerStatus=runnerStatus,
+        latestArtifactPaths=latestArtifactPaths,
+        servicePolicy=servicePolicy,
+        paperNetworkEnabled=False,
+        paperOrderEnabled=False,
+        paperOrdersSubmitted=False,
+        paperObservationAccepted=bool(readiness.get("paperObservationAccepted")),
+        operationalTradingReadiness=bool(readiness.get("liveRunnerReady")),
+    )
+    contextRefs = [
+        {
+            "key": artifactKey,
+            "status": pathStatus(artifactPath),
+            "basename": Path(artifactPath).name if artifactPath else None,
+        }
+        for artifactKey, artifactPath in latestArtifactPaths.items()
+    ]
+    return {
+        "snapshotAtKst": snapshotAt.isoformat(),
+        "dayKey": dayKey,
+        "runnerStatus": runnerStatus,
+        "latestArtifactPaths": latestArtifactPaths,
+        "artifacts": runtimeArtifacts,
+        "intelligence": buildIntelligenceRows(latestArtifactPaths.get("marketIntelligence"), snapshotAt, limit=5),
+        "candidates": buildCandidateRows(runtimeArtifacts, limit=5),
+        "aiThread": buildAiThreadRows(runtimeArtifacts, snapshotAt),
+        "readinessTruth": readinessTruth,
+        "contextRefs": contextRefs,
+        "networkCallMade": False,
+        "brokerCallMade": False,
+        "orderMutationAttempted": False,
+        "serviceMutationAttempted": False,
+        "credentialValuesPrinted": False,
+    }
+
+
+def buildAllowedConversationAnswer(question: str, context: Dict[str, Any]) -> str:
+    artifacts = context.get("artifacts") if isinstance(context.get("artifacts"), dict) else {}
+    runnerStatus = context.get("runnerStatus") if isinstance(context.get("runnerStatus"), dict) else {}
+    readinessTruth = context.get("readinessTruth") if isinstance(context.get("readinessTruth"), dict) else {}
+    candidates = context.get("candidates") if isinstance(context.get("candidates"), list) else []
+    intelligence = context.get("intelligence") if isinstance(context.get("intelligence"), list) else []
+    pro = artifacts.get("ai") if isinstance(artifacts.get("ai"), dict) else {}
+    flash = artifacts.get("flashTradeDocument") if isinstance(artifacts.get("flashTradeDocument"), dict) else {}
+    lines: list[str] = []
+
+    if pro:
+        marketRegime = pro.get("market_regime") if isinstance(pro.get("market_regime"), dict) else {}
+        mode = cleanDisplayText(marketRegime.get("market_mode"), "UNKNOWN")
+        summary = cleanDisplayText(pro.get("summary"), "요약 없음")
+        strong = ", ".join(cleanDisplayText(item, "") for item in (pro.get("strong_conditions") or [])[:3])
+        avoid = ", ".join(cleanDisplayText(item, "") for item in (pro.get("avoid_conditions") or [])[:3])
+        lines.append(f"Pro 정각 분석 기준 시장 모드는 {mode}이고, 핵심 요약은 “{summary}”입니다.")
+        if strong:
+            lines.append(f"강한 조건: {strong}.")
+        if avoid:
+            lines.append(f"피해야 할 조건: {avoid}.")
+    else:
+        lines.append("현재 저장된 Pro 정각 분석 파일은 아직 확인되지 않습니다.")
+
+    if flash:
+        actionCount = len(flash.get("actions") or [])
+        validationStatus = cleanDisplayText(flash.get("validation_status"), "unknown")
+        lines.append(f"Flash 매매문서는 후보 {actionCount}개를 포함하고 validation={validationStatus} 상태입니다.")
+    else:
+        lines.append("현재 저장된 Flash 매매문서는 아직 확인되지 않습니다.")
+
+    orderGate = cleanDisplayText(runnerStatus.get("orderGate"), "unknown")
+    blockers = [humanizeBlocker(item) for item in (readinessTruth.get("blockers") or [])[:5]]
+    if blockers:
+        lines.append(f"운영 준비 차단 요인: {', '.join(blockers)}.")
+    lines.append(f"현재 주문 게이트는 {orderGate}입니다. 이 대화 API는 설명 전용이며 주문·설정 변경은 수행하지 않습니다.")
+
+    if candidates:
+        topCandidates = ", ".join(
+            f"{cleanDisplayText(item.get('name'), '종목명 없음')}({cleanDisplayText(item.get('signal'), '-')})"
+            for item in candidates[:3]
+            if isinstance(item, dict)
+        )
+        if topCandidates:
+            lines.append(f"대시보드 후보 상위 항목은 {topCandidates}입니다.")
+
+    if intelligence:
+        titles = ", ".join(cleanDisplayText(item.get("title"), "") for item in intelligence[:3] if isinstance(item, dict))
+        if titles:
+            lines.append(f"최근 수집 이슈: {titles}.")
+
+    if "왜" in question or "근거" in question:
+        lines.append("근거는 저장된 Pro/Flash 리포트, 최신 수집 이벤트, 후보 카드, runner 상태의 sanitized snapshot만 사용했습니다.")
+
+    return " ".join(lines)
+
+
+def buildConversationRequestId(createdAt: datetime, question: str) -> str:
+    digest = hashlib.sha256(f"{createdAt.isoformat()}::{question}".encode("utf-8")).hexdigest()[:10]
+    return f"aiq-{createdAt.strftime('%Y%m%d%H%M%S')}-{digest}"
+
+
+def writeAiConversationAuditRecord(
+    *,
+    dataRoot: Path,
+    createdAt: datetime,
+    record: Dict[str, Any],
+    auditRoot: Optional[Path] = None,
+) -> Dict[str, Any]:
+    root = auditRoot
+    if root is None:
+        configured = str(os.getenv("HWISTOCK_AI_CONVERSATION_AUDIT_DIR") or "").strip()
+        root = Path(configured) if configured else dataRoot / "audit" / "ai_conversation"
+    auditDir = root / createdAt.astimezone(KST).date().isoformat()
+    auditPath = auditDir / "ai-conversation.jsonl"
+    try:
+        auditDir.mkdir(parents=True, exist_ok=True)
+        with auditPath.open("a", encoding="utf-8") as fp:
+            fp.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+        return {"written": True, "path": str(auditPath), "errorType": None}
+    except OSError as exc:
+        return {"written": False, "path": str(auditPath), "errorType": type(exc).__name__}
+
+
+def answerAiConversation(
+    *,
+    question: Any,
+    atKst: Optional[str] = None,
+    dataRoot: Optional[Path] = None,
+    auditRoot: Optional[Path] = None,
+) -> Dict[str, Any]:
+    started = time.perf_counter()
+    snapshotAt = parseKstTime(atKst)
+    runtimeRoot = dataRoot or DEFAULT_DATA_ROOT
+    sanitizedQuestion = sanitizeConversationQuestion(question)
+    createdAt = snapshotAt.replace(microsecond=0)
+    requestId = buildConversationRequestId(createdAt, sanitizedQuestion)
+    unsafeReason = classifyUnsafeConversationRequest(sanitizedQuestion) if sanitizedQuestion else "empty_question"
+    context = buildAiConversationArtifactContext(snapshotAt=snapshotAt, dataRoot=runtimeRoot)
+    refused = bool(unsafeReason)
+    refusal = None
+    if unsafeReason:
+        refusal = (
+            "이 대화는 저장된 리포트와 현재 상태를 설명하는 용도입니다. "
+            "주문 실행, 설정 변경, 자격증명 노출, 서비스 제어 요청은 처리하지 않습니다."
+        )
+        answer = refusal
+    else:
+        answer = buildAllowedConversationAnswer(sanitizedQuestion, context)
+
+    latencyMs = int((time.perf_counter() - started) * 1000)
+    questionHash = hashlib.sha256(sanitizedQuestion.encode("utf-8")).hexdigest() if sanitizedQuestion else None
+    contextRefs = context["contextRefs"]
+    auditRecord = {
+        "schema_version": AI_CONVERSATION_AUDIT_SCHEMA_VERSION,
+        "auditCategory": "ai_conversation",
+        "requestId": requestId,
+        "createdAtKst": createdAt.isoformat(),
+        "questionHash": questionHash,
+        "questionPreview": redactSensitiveConversationText(sanitizedQuestion),
+        "refused": refused,
+        "refusalReason": unsafeReason,
+        "answerPreview": redactSensitiveConversationText(answer),
+        "contextRefs": contextRefs,
+        "modelProvider": "local",
+        "modelRoute": AI_CONVERSATION_ROUTE,
+        "latencyMs": latencyMs,
+        "credentialValuesPrinted": False,
+        "networkCallMade": False,
+        "brokerCallMade": False,
+        "orderMutationAttempted": False,
+        "serviceMutationAttempted": False,
+    }
+    audit = writeAiConversationAuditRecord(
+        dataRoot=runtimeRoot,
+        createdAt=createdAt,
+        record=auditRecord,
+        auditRoot=auditRoot,
+    )
+    return {
+        "schema_version": AI_CONVERSATION_RESPONSE_SCHEMA_VERSION,
+        "requestId": requestId,
+        "createdAtKst": createdAt.isoformat(),
+        "answer": None if refused else answer,
+        "refusal": refusal,
+        "refused": refused,
+        "refusalReason": unsafeReason,
+        "contextRefs": contextRefs,
+        "modelProvider": "local",
+        "modelRoute": AI_CONVERSATION_ROUTE,
+        "latencyMs": latencyMs,
+        "auditCategory": "ai_conversation",
+        "auditWritten": audit["written"],
+        "auditPath": audit["path"],
+        "auditErrorType": audit["errorType"],
+        "credentialValuesPrinted": False,
+        "networkCallMade": False,
+        "brokerCallMade": False,
+        "orderMutationAttempted": False,
+        "serviceMutationAttempted": False,
     }
 
 

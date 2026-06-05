@@ -3,7 +3,7 @@
  * 설명: hwiStock 운영 콘솔 뷰 테스트
  */
 
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 
 import { apiJSON } from "@/app/lib/runtime/api";
@@ -97,15 +97,70 @@ describe("hwiStock operator console view", () => {
     expect(screen.getByTestId("operator-holdings")).toBeInTheDocument();
     expect(screen.getByTestId("operator-candidates")).toBeInTheDocument();
     expect(screen.getByTestId("operator-intelligence")).toBeInTheDocument();
-    expect(screen.getByTestId("operator-ai-thread")).toBeInTheDocument();
+    expect(screen.getByTestId("operator-ai-report")).toBeInTheDocument();
+    expect(screen.getByTestId("operator-ai-conversation")).toBeInTheDocument();
+    expect(screen.getByTestId("operator-ai-conversation-disclaimer")).toBeInTheDocument();
+    expect(screen.getByTestId("operator-ai-question-input")).toBeInTheDocument();
+    expect(screen.getByTestId("operator-ai-question-submit")).toBeInTheDocument();
+    expect(screen.getByTestId("operator-section-nav")).toBeInTheDocument();
     expect(screen.getByTestId("operator-audit-log")).toBeInTheDocument();
-    expect(screen.getByText("hwiStock 운영 콘솔")).toBeInTheDocument();
+    expect(screen.getByText("hwiStock Lucid Command")).toBeInTheDocument();
     expect(screen.queryByText("업무 바로가기")).not.toBeInTheDocument();
     expect(screen.queryByText("MyWebTemplate")).not.toBeInTheDocument();
+    expect(screen.queryByText("paper_sandbox")).not.toBeInTheDocument();
+    expect(screen.queryByText(/모의매매/)).not.toBeInTheDocument();
+    expect(screen.getByText("운영 관찰")).toBeInTheDocument();
     expect(screen.getByText("자동매매 준비 전")).toBeInTheDocument();
     expect(screen.getByText("준비 전")).toBeInTheDocument();
     expect(screen.getByText(/주문 실행 허용/)).toBeInTheDocument();
     expect(screen.getAllByText("시장 시간표 설정 필요").length).toBeGreaterThan(0);
+  });
+
+  test("AI 대화 패널은 읽기 전용 안내와 질문 입력을 노출한다", () => {
+    render(
+      <DashboardView
+        initialDataObj={buildSsrInitialDataObj()}
+        initialErrorObj={{}}
+      />,
+    );
+
+    expect(screen.getByText(/설명·분석 전용/)).toBeInTheDocument();
+    expect(screen.getByLabelText("질문 입력")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "질문 보내기" })).toBeInTheDocument();
+    expect(screen.getAllByText("AI 리포트").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("AI 대화").length).toBeGreaterThan(0);
+  });
+
+  test("AI 대화 질문은 백엔드 대화 endpoint로 전달되고 거절 응답을 표시한다", async () => {
+    apiJSON.mockResolvedValueOnce({
+      result: {
+        refused: true,
+        refusal: "주문 실행은 지원하지 않습니다.",
+        requestId: "rid-ai-conversation-1",
+      },
+    });
+
+    render(
+      <DashboardView
+        initialDataObj={buildSsrInitialDataObj()}
+        initialErrorObj={{}}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("질문 입력"), {
+      target: { value: "지금 바로 주문해줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "질문 보내기" }));
+
+    await waitFor(() => {
+      expect(apiJSON).toHaveBeenCalledWith("/api/v1/hwistock/ai/conversation", {
+        method: "POST",
+        body: { question: "지금 바로 주문해줘" },
+      });
+    });
+    expect(await screen.findByText(/요청 거절/)).toBeInTheDocument();
+    expect(screen.getByText("주문 실행은 지원하지 않습니다.")).toBeInTheDocument();
+    expect(screen.getByText("requestId: rid-ai-conversation-1")).toBeInTheDocument();
   });
 
   test("매수/매도/주문 실행 버튼이 없다", () => {
@@ -297,7 +352,8 @@ describe("hwiStock operator console view", () => {
     await waitFor(() => {
       expect(screen.getByText("ORDER_GATE")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("operator-ai-thread")).toBeInTheDocument();
+    expect(screen.getByTestId("operator-ai-report")).toBeInTheDocument();
+    expect(screen.getByTestId("operator-ai-conversation")).toBeInTheDocument();
     expect(screen.getAllByText("시장 시간표 설정 필요").length).toBeGreaterThan(0);
     expect(screen.queryByText("blocked_calendar_unconfigured")).not.toBeInTheDocument();
   });

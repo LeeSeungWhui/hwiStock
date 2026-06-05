@@ -306,8 +306,15 @@ Go-Check evidence are now historical, not current Go authorization.
   - `docs/evidence/RUN-20260605_local-server-smoke-5000-5001.md`
 - Current hwibuntu tunnel smoke evidence:
   - `docs/evidence/RUN-20260605_hwibuntu-tunnel-smoke-5000-5001.md`
-- Current browser UI Prove evidence:
+- Current browser UI Prove evidence, now partial for static dashboard/report
+  rendering only:
   - `docs/evidence/RUN-20260605_browser-ui-reprove-login-api500.md`
+- Current dashboard AI conversation correction:
+  - `docs/set/READY-SET-CORRECTION-20260605_dashboard-ai-conversation.md`
+- Current UNIT-007 Lucid Command dashboard Go evidence:
+  - `docs/evidence/RUN-20260605_unit-007-lucid-command-dashboard-go.md`
+- Current UNIT-007 AI conversation backend Go-Check evidence:
+  - `docs/evidence/RUN-20260605_unit-007-ai-conversation-backend-go-check.md`
 - Current UNIT-010 local Go-Check evidence:
   - `docs/evidence/RUN-20260605_unit-010-go-check.md`
 - Current commit-prep scope audit:
@@ -324,13 +331,18 @@ Go-Check evidence are now historical, not current Go authorization.
 
 Ready-Set has been reissued against the imported MyWebTemplate code baseline.
 MyWebTemplate sample/public quarantine and local-only bind/access enforcement
-are first-row requirements for Go-Check, not optional cleanup. All nine units
-are in the `skeleton_adapter_safe_rebaseline_queue`; all nine units
-(`HWISTOCK-UNIT-001` through `HWISTOCK-UNIT-009`) have current Go-Check PASS
-evidence, including `HWISTOCK-UNIT-007`
-(`docs/evidence/RUN-20260605_unit-007-go-check-rebaseline.md`). Current local
-dashboard/API defaults are dashboard/frontend `127.0.0.1:5000` and backend/API
-`127.0.0.1:5001`; hwibuntu access uses SSH local forwarding, recorded in
+are first-row requirements for Go-Check, not optional cleanup. The original
+nine-unit `skeleton_adapter_safe_rebaseline_queue` is preserved as history, but
+`HWISTOCK-UNIT-007` has a current 2026-06-05 correction: static dashboard/report
+thread proof was partial only. The Lucid Command frontend now proves separate
+AI report and AI conversation UI plus POST wiring, and the backend follow-up
+proves the conversation endpoint, grounded local answer/refusal, and local audit
+logging. Browser/tunnel Prove remains pending
+(`docs/evidence/RUN-20260605_unit-007-lucid-command-dashboard-go.md`;
+`docs/evidence/RUN-20260605_unit-007-ai-conversation-backend-go-check.md`;
+`docs/set/READY-SET-CORRECTION-20260605_dashboard-ai-conversation.md`).
+Current local dashboard/API defaults are dashboard/frontend `127.0.0.1:5000`
+and backend/API `127.0.0.1:5001`; hwibuntu access uses SSH local forwarding, recorded in
 `docs/evidence/RUN-20260605_port-tunnel-5000-5001-sync.md`. Local server smoke
 confirmed both loopback ports can serve the runtime after local ignored config
 override cleanup, and frontend BFF now reaches the same 5001 backend as direct
@@ -345,10 +357,15 @@ Browser UI Prove through the same hwibuntu tunnel initially failed on
 the authenticated dashboard showed `HTTP_500_INTERNAL` due to backend Decimal
 JSON serialization failures
 (`docs/evidence/RUN-20260605_browser-ui-prove-5000-5001.md`). The follow-up
-login/API 500 fix re-Prove passed: Chrome confirmed a hwiStock-branded public
+login/API 500 fix re-Prove passed for static rendering only: Chrome confirmed a hwiStock-branded public
 login surface without template/demo residue, authenticated dashboard rendering,
 masked account-like values, and no visible API 500
-(`docs/evidence/RUN-20260605_browser-ui-reprove-login-api500.md`).
+(`docs/evidence/RUN-20260605_browser-ui-reprove-login-api500.md`). It did not
+prove a dashboard question input or backend AI conversation endpoint; the
+frontend input/POST wiring was later covered by
+`docs/evidence/RUN-20260605_unit-007-lucid-command-dashboard-go.md`, while
+grounded backend answer/refusal flow and audit logging were later covered by
+`docs/evidence/RUN-20260605_unit-007-ai-conversation-backend-go-check.md`.
 Commit-prep scope audit confirmed `git add -A --dry-run` candidates exclude
 local config/env/log/cache paths after `.gitignore` cleanup, and no staging or
 commit has been performed
@@ -406,6 +423,8 @@ timer installation, while operational readiness remains false.
   safe sharing scope for the pre-import final external review.
 - `docs/set/READY-SET-DASHBOARD-DESIGN-REVIEW-PACKET-20260602_hwistock.md`:
   prepared `agy` Gemini Pro dashboard design review packet.
+- `docs/design/HWISTOCK-DESIGN-20260605_lucid-command-dashboard.md`: Lucid
+  Command dark desktop-first operator cockpit design artifact for UNIT-007.
 - `docs/set/READY-SET-COMPLETION-AUDIT-20260602_hwistock.md`: historical
   pre-import requirement-by-requirement audit. The current post-import authority
   is the 2026-06-04 rebaseline completion, row closure, and Go preflight set.
@@ -483,9 +502,13 @@ timer installation, while operational readiness remains false.
 - `docs/modules/HWISTOCK-MOD-005_trading-engine-order-state.md`: trading engine,
   condition compiler, order state, and broker adapter contract.
 - `docs/modules/HWISTOCK-MOD-006_dashboard-operator-console.md`: read-only
-  dashboard/operator console and AI conversation surface contract;
-  `go_check_passed`
-  (`docs/evidence/RUN-20260605_unit-007-go-check-rebaseline.md`).
+  dashboard/operator console, stored AI report viewer, and interactive AI
+  conversation surface contract; Lucid Command frontend report/conversation UI
+  is validated, backend conversation answer/refusal/audit is focused-tested, and
+  browser/tunnel Prove remains pending
+  (`docs/evidence/RUN-20260605_unit-007-lucid-command-dashboard-go.md`;
+  `docs/evidence/RUN-20260605_unit-007-ai-conversation-backend-go-check.md`;
+  `docs/set/READY-SET-CORRECTION-20260605_dashboard-ai-conversation.md`).
 - `docs/modules/HWISTOCK-MOD-007_data-evidence-storage.md`: date-based data,
   analysis artifact, PostgreSQL storage, trade log, and evidence storage
   contract.
@@ -539,13 +562,18 @@ timer installation, while operational readiness remains false.
   adapter capability flags
   (`docs/evidence/RUN-20260604_unit-006-go-check-rebaseline.md`).
 - `docs/units/HWISTOCK-UNIT-007_dashboard-operator-console.md`:
-  `go_check_passed` read-only dashboard/operator console with tasks/settings
-  subroutes, root/public/sample quarantine, masked/sanitized values, and
-  local-only/public exposure boundary. Current local ports are
-  dashboard/frontend `5000` and backend/API `5001`, with hwibuntu access through
-  SSH local forwarding
+  `go_check_passed_pending_browser_tunnel_prove` for read-only dashboard/operator console with
+  tasks/settings subroutes, root/public/sample quarantine, masked/sanitized
+  values, local-only/public exposure boundary, stored AI report viewer, and
+  frontend AI conversation input/POST wiring plus backend answer/refusal/audit
+  focused tests. Current
+  local ports are dashboard/frontend `5000` and backend/API `5001`, with
+  hwibuntu access through SSH local forwarding
   (`docs/evidence/RUN-20260605_unit-007-go-check-rebaseline.md`;
-  `docs/evidence/RUN-20260605_port-tunnel-5000-5001-sync.md`).
+  `docs/evidence/RUN-20260605_unit-007-lucid-command-dashboard-go.md`;
+  `docs/evidence/RUN-20260605_unit-007-ai-conversation-backend-go-check.md`;
+  `docs/evidence/RUN-20260605_port-tunnel-5000-5001-sync.md`;
+  `docs/set/READY-SET-CORRECTION-20260605_dashboard-ai-conversation.md`).
 - `docs/units/HWISTOCK-UNIT-008_data-evidence-storage.md`:
   `go_check_passed` storage and evidence skeleton using PostgreSQL database
   `hwistock`, schema `hwistock_core`, date-partitioned artifacts, hwiStock DB
@@ -607,12 +635,17 @@ timer installation, while operational readiness remains false.
   fixture-only broker-evidence representation
   (`docs/evidence/RUN-20260604_unit-006-go-check-rebaseline.md`).
 - `docs/qa/QA-HWISTOCK-UNIT-007_dashboard-operator-console.md`:
-  `go_check_passed` QA for read-only dashboard behavior, sensitive-data masking,
-  design review route, MyWebTemplate branding/sample/public route quarantine,
-  local-only access boundary, and dashboard/API `5000`/`5001` port defaults
-  with SSH local forwarding
+  `go_check_passed_pending_browser_tunnel_prove` QA for read-only dashboard behavior,
+  sensitive-data masking, stored AI report viewer, frontend AI conversation
+  input/POST wiring, backend answer/refusal/audit focused tests, design review
+  route, MyWebTemplate
+  branding/sample/public route quarantine, local-only access boundary, and
+  dashboard/API `5000`/`5001` port defaults with SSH local forwarding
   (`docs/evidence/RUN-20260605_unit-007-go-check-rebaseline.md`;
-  `docs/evidence/RUN-20260605_port-tunnel-5000-5001-sync.md`).
+  `docs/evidence/RUN-20260605_unit-007-lucid-command-dashboard-go.md`;
+  `docs/evidence/RUN-20260605_unit-007-ai-conversation-backend-go-check.md`;
+  `docs/evidence/RUN-20260605_port-tunnel-5000-5001-sync.md`;
+  `docs/set/READY-SET-CORRECTION-20260605_dashboard-ai-conversation.md`).
 - `docs/qa/QA-HWISTOCK-UNIT-008_data-evidence-storage.md`:
   `go_check_passed` QA for PostgreSQL isolation, storage separation,
   system-calculated PnL, hwiStock DB isolation, and operator-selected operation
@@ -804,6 +837,19 @@ timer installation, while operational readiness remains false.
 - `docs/evidence/RUN-20260602_unit-007-dashboard-operator-console-set.md`: Set
   evidence for read-only dashboard scope, local-only access, no-design fallback,
   first-screen sections, and AI conversation boundary.
+- `docs/set/READY-SET-CORRECTION-20260605_dashboard-ai-conversation.md`:
+  corrective Ready-Set source that separates stored AI report viewing from
+  interactive AI conversation and makes missing backend endpoint/refusal/audit
+  flow a blocker after the Lucid Command frontend input follow-up.
+- `docs/evidence/RUN-20260605_unit-007-lucid-command-dashboard-go.md`: current
+  UNIT-007 Lucid Command dashboard Go evidence for frontend report/conversation
+  split, AI conversation input and POST wiring, focused tests, rule-gate, lint,
+  diff check, and production build.
+- `docs/evidence/RUN-20260605_unit-007-ai-conversation-backend-go-check.md`:
+  current UNIT-007 backend Go-Check evidence for
+  `POST /api/v1/hwistock/ai/conversation`, grounded local answer/refusal,
+  JSONL audit, secret-preview redaction, and no broker/order/service/AI-provider
+  side-effect flags.
 - `docs/evidence/RUN-20260605_unit-007-go-preflight-rebaseline.md`: current
   UNIT-007 rebaseline Go preflight evidence for read-only dashboard operator
   console doc-sync closure.
@@ -830,9 +876,11 @@ timer installation, while operational readiness remains false.
   browser UI Prove failure evidence for the earlier login sample/demo residue
   and dashboard Decimal JSON serialization 500.
 - `docs/evidence/RUN-20260605_browser-ui-reprove-login-api500.md`: current
-  browser UI re-Prove PASS evidence after login public-surface quarantine and
-  dashboard Decimal JSON-safe response conversion. Captures the hwibuntu
-  tunnel/Chrome Extension route, focused backend/frontend tests, BFF login and
+  browser UI re-Prove evidence after login public-surface quarantine and
+  dashboard Decimal JSON-safe response conversion. After the 2026-06-05 AI
+  conversation correction, treat it as static dashboard/report rendering proof
+  only, not interactive AI conversation proof. Captures the hwibuntu tunnel/
+  Chrome Extension route, focused backend/frontend tests, BFF login and
   dashboard API smoke, and login/dashboard screenshots.
 - `docs/evidence/RUN-20260605_commit-prep-scope-audit.md`: current commit-prep
   scope audit. It records the read-only Cursor worker audit, `.gitignore`
@@ -957,8 +1005,10 @@ timer installation, while operational readiness remains false.
   sizing-budget change. KIS adapter proof is KRX-limited where the local API
   references mark NXT/SOR, integrated realtime, holiday, sellable quantity, or
   helper lookup APIs as adapter-unsupported.
-- UI/dashboard scope is selected as read-only status, reports, logs, AI
-  conversation, and operator visibility. Direct buy/sell controls are excluded.
+- UI/dashboard scope is selected as read-only status, stored AI reports, logs,
+  interactive AI conversation, and operator visibility. Direct buy/sell controls
+  are excluded. A report-only AI panel without question input and backend answer
+  flow does not satisfy the conversation scope.
   Default access is local-only `127.0.0.1` through local browser, SSH tunnel, or
   Chrome Remote Desktop. Public/LAN exposure needs later authenticated Set
   approval.
