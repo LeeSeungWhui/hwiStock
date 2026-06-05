@@ -14,7 +14,6 @@ export const LANG_KO = {
     consoleSubtitle: "읽기 전용 운영 모니터링 · 주문 실행 UI 없음",
     dataSource: {
       api: "운영 API 연동",
-      legacyNormalized: "레거시 응답 정규화",
       fixture: "로컬 폴백 스냅샷",
     },
     error: {

@@ -5,7 +5,7 @@
  * 설명: hwiStock 읽기 전용 감시 로그 뷰(CSR 목록 조회)
  */
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { normalizePageConfig } from "@/app/lib/runtime/pageData";
 import Badge from "@/app/lib/component/Badge";
@@ -22,99 +22,169 @@ import { useEasyList } from "@/app/lib/dataset/EasyList";
 import { PAGE_CONFIG } from "./initData";
 import LANG_KO from "./lang.ko";
 
+const PAGE_SIZE = 10;
+const DEFAULT_SORT = "at_desc";
+
+const getSearchParamText = (searchParams, key) => (
+  String(searchParams?.get(key) || "").trim()
+);
+
+const toTagList = (value) => {
+  if (Array.isArray(value)) return value.filter(Boolean).map(String);
+  if (typeof value !== "string" || !value.trim()) return [];
+  const parsedValue = safeJsonParse(value, null);
+  if (Array.isArray(parsedValue)) return parsedValue.filter(Boolean).map(String);
+  return value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+};
+
+const toAuditRows = (responsePayload) => {
+  const auditRows = responsePayload?.result?.auditLog;
+  if (!Array.isArray(auditRows)) return [];
+  return auditRows.map((entry, index) => {
+    const level = String(entry?.level || "info").trim().toLowerCase();
+    const code = String(entry?.code || "AUDIT_EVENT").trim();
+    const at = String(entry?.at || "").trim();
+    const message = String(entry?.message || "").trim();
+    const tagList = toTagList(entry?.tags);
+    return {
+      id: `${at || "audit"}-${code}-${index}`,
+      at: at || "-",
+      level: level || "info",
+      code,
+      message: message || "-",
+      tags: tagList,
+    };
+  });
+};
+
+const filterAuditRows = ({ auditRows, keyword, status }) => {
+  const keywordText = String(keyword || "").trim().toLowerCase();
+  const statusText = String(status || "").trim().toLowerCase();
+  return auditRows.filter((entry) => {
+    const matchesStatus = !statusText || entry.level === statusText;
+    if (!matchesStatus) return false;
+    if (!keywordText) return true;
+    return [
+      entry.at,
+      entry.level,
+      entry.code,
+      entry.message,
+      ...(entry.tags || []),
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(keywordText);
+  });
+};
+
+const sortAuditRows = ({ auditRows, sort }) => {
+  const sortText = String(sort || DEFAULT_SORT).trim().toLowerCase();
+  const nextRows = [...auditRows];
+  nextRows.sort((leftEntry, rightEntry) => {
+    if (sortText === "at_asc") {
+      return String(leftEntry.at).localeCompare(String(rightEntry.at));
+    }
+    if (sortText === "code_asc") {
+      return String(leftEntry.code).localeCompare(String(rightEntry.code));
+    }
+    if (sortText === "code_desc") {
+      return String(rightEntry.code).localeCompare(String(leftEntry.code));
+    }
+    if (sortText === "level_asc") {
+      return String(leftEntry.level).localeCompare(String(rightEntry.level));
+    }
+    return String(rightEntry.at).localeCompare(String(leftEntry.at));
+  });
+  return nextRows;
+};
+
 const TasksView = () => {
 
   /* 1. 상수 ======================================================================================================================= */
-  const pageSize = 10;
-  const defaultSort = "reg_dt_desc";
   const statusFilterList = LANG_KO.initData.statusFilterList;
   const sortFilterList = LANG_KO.initData.sortFilterList;
   const allowedStatus = useMemo(
-    () => new Set(statusFilterList.map((statusFilterObj) => statusFilterObj.value).filter(Boolean)),
+    () => new Set(statusFilterList.map((statusFilterItem) => statusFilterItem.value).filter(Boolean)),
     [statusFilterList],
   );
   const allowedSort = useMemo(
-    () => new Set(sortFilterList.map((sortFilterObj) => sortFilterObj.value)),
+    () => new Set(sortFilterList.map((sortFilterItem) => sortFilterItem.value)),
     [sortFilterList],
   );
   const statusBadgeMapObj = {
-    ready: "neutral",
-    pending: "warning",
-    running: "outline",
-    done: "success",
-    failed: "danger",
+    info: "neutral",
+    warn: "warning",
+    warning: "warning",
+    error: "danger",
   };
 
   /* 2. 데이터 ======================================================================================================================= */
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const keywordValue = String(searchParams?.get("q") || "").trim();
-  const statusCandidate = String(searchParams?.get("status") || "").trim().toLowerCase();
-  const statusValue = allowedStatus.has(statusCandidate) ? statusCandidate : "";
-  const sortCandidate = String(searchParams?.get("sort") || "").trim().toLowerCase();
-  const sortValue = allowedSort.has(sortCandidate) ? sortCandidate : defaultSort;
-  const pageCandidate = Number.parseInt(String(searchParams?.get("page") || ""), 10);
-  const pageValue = Number.isFinite(pageCandidate) && pageCandidate > 0 ? pageCandidate : 1;
+  const pageMode = normalizePageConfig(PAGE_CONFIG).MODE;
+  const pageApi = PAGE_CONFIG.API || {};
+  const hasListEndpoint = Boolean(pageApi.list);
+  const listEndpointPath = typeof pageApi.list === "string"
+    ? pageApi.list
+    : String(pageApi.list?.path || "");
+
+  const initialKeyword = getSearchParamText(searchParams, "q");
+  const initialStatusCandidate = getSearchParamText(searchParams, "status").toLowerCase();
+  const initialSortCandidate = getSearchParamText(searchParams, "sort").toLowerCase();
+  const initialPageCandidate = Number.parseInt(getSearchParamText(searchParams, "page"), 10);
 
   const ui = EasyObj({
-    keyword: keywordValue,
-    status: statusValue,
-    sort: sortValue,
-    page: pageValue,
+    keyword: initialKeyword,
+    status: allowedStatus.has(initialStatusCandidate) ? initialStatusCandidate : "",
+    sort: allowedSort.has(initialSortCandidate) ? initialSortCandidate : DEFAULT_SORT,
+    page: Number.isFinite(initialPageCandidate) && initialPageCandidate > 0 ? initialPageCandidate : 1,
     isLoading: true,
-    error: null,
+    errorMessage: "",
+    errorRequestId: "",
   });
-  const taskList = useEasyList([]);
+  const auditRowList = useEasyList([]);
   const taskMetaObj = EasyObj({ totalCount: 0 });
+  const didInitialLoadRef = useRef(false);
   const taskTotalText = LANG_KO.view.action.totalCountTemplate.replace(
     "{total}",
     taskMetaObj.totalCount.toLocaleString("ko-KR"),
   );
-  const pageMode = normalizePageConfig(PAGE_CONFIG).MODE;
-  const pageApi = PAGE_CONFIG.API || {};
-  const hasListEndpoint = Boolean(pageApi.list);
-
-  const toTagList = (value) => {
-    if (Array.isArray(value)) return value.filter(Boolean).map(String);
-    if (typeof value !== "string" || !value.trim()) return [];
-    const parsedValue = safeJsonParse(value, null);
-    if (Array.isArray(parsedValue)) return parsedValue.filter(Boolean).map(String);
-    return value
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter(Boolean);
-  };
+  const pageCount = Math.max(1, Math.ceil(taskMetaObj.totalCount / PAGE_SIZE));
 
   /* 3. UI ========================================================================================================================= */
   const tableColumnList = [
     {
-      key: "title",
-      header: LANG_KO.view.table.titleHeader,
-      align: "left",
-      width: "2fr",
-      render: (row) => <span className="text-gray-900">{row?.title || LANG_KO.view.misc.noData}</span>,
+      key: "at",
+      header: LANG_KO.view.table.atHeader,
+      width: 120,
+      render: (row) => <span className="font-mono text-xs text-gray-700">{row?.at || LANG_KO.view.misc.dateUnknown}</span>,
     },
     {
-      key: "status",
-      header: LANG_KO.view.table.statusHeader,
-      width: 140,
+      key: "level",
+      header: LANG_KO.view.table.levelHeader,
+      width: 120,
       render: (row) => (
-        <Badge variant={statusBadgeMapObj[row?.status] || "neutral"} pill>
-          {LANG_KO.view.statusLabelMap[row?.status] || row?.status || LANG_KO.view.misc.noData}
+        <Badge variant={statusBadgeMapObj[row?.level] || "neutral"} pill>
+          {LANG_KO.view.statusLabelMap[row?.level] || row?.level || LANG_KO.view.misc.noData}
         </Badge>
       ),
     },
     {
-      key: "amount",
-      header: LANG_KO.view.table.amountHeader,
-      width: 140,
-      align: "right",
-      render: (row) => {
-        const amount = Number(row?.amount || 0);
-        if (Number.isNaN(amount)) return LANG_KO.view.misc.currencyZero;
-        return amount.toLocaleString("ko-KR");
-      },
+      key: "code",
+      header: LANG_KO.view.table.codeHeader,
+      width: 180,
+      render: (row) => <span className="font-mono text-xs text-gray-800">{row?.code || LANG_KO.view.misc.noData}</span>,
+    },
+    {
+      key: "message",
+      header: LANG_KO.view.table.messageHeader,
+      align: "left",
+      width: "2fr",
+      render: (row) => <span className="text-gray-900">{row?.message || LANG_KO.view.misc.noData}</span>,
     },
     {
       key: "tags",
@@ -122,12 +192,12 @@ const TasksView = () => {
       align: "left",
       width: "2fr",
       render: (row) => {
-        const tagList = toTagList(row?.tags) || [];
+        const tagList = row?.tags || [];
         if (!tagList.length) return <span className="text-gray-400">{LANG_KO.view.misc.dateUnknown}</span>;
         return (
           <div className="flex flex-wrap gap-1">
             {tagList.map((tag) => (
-              <Badge key={`${row?.id || "row"}-${tag}`} variant="outline" pill>
+              <Badge key={`${row?.id || "audit"}-${tag}`} variant="outline" pill>
                 {tag}
               </Badge>
             ))}
@@ -135,114 +205,7 @@ const TasksView = () => {
         );
       },
     },
-    {
-      key: "createdAt",
-      header: LANG_KO.view.table.createdAtHeader,
-      width: 140,
-      render: (row) => {
-        if (!row?.createdAt) return LANG_KO.view.misc.dateUnknown;
-        const createdAtDate = new Date(row.createdAt);
-        if (Number.isNaN(createdAtDate.getTime())) return LANG_KO.view.misc.dateUnknown;
-        return createdAtDate.toISOString().slice(0, 10);
-      },
-    },
   ];
-  const pageCount = Math.max(1, Math.ceil(taskMetaObj.totalCount / pageSize));
-
-  /* 7. 함수 ======================================================================================================================= */
-  const buildTasksQueryString = useCallback((options = {}) => {
-    const {
-      keyword = "",
-      status = "",
-      sort = defaultSort,
-      page = 1,
-    } = options;
-    const taskQueryParams = new URLSearchParams();
-    const keywordText = String(keyword || "").trim();
-    const statusText = String(status || "").trim().toLowerCase();
-    const sortText = String(sort || defaultSort).trim().toLowerCase();
-    const pageNum = Number.parseInt(String(page || 1), 10);
-
-    if (keywordText) taskQueryParams.set("q", keywordText);
-    if (allowedStatus.has(statusText)) taskQueryParams.set("status", statusText);
-    if (allowedSort.has(sortText) && sortText !== defaultSort) {
-      taskQueryParams.set("sort", sortText);
-    }
-    if (Number.isFinite(pageNum) && pageNum > 1) {
-      taskQueryParams.set("page", String(pageNum));
-    }
-    return taskQueryParams.toString();
-  }, [allowedSort, allowedStatus, defaultSort]);
-
-  const syncBrowserQuery = useCallback(({ nextKeyword, nextStatus, nextSort, nextPage }) => {
-    if (!pathname) return;
-    const queryString = buildTasksQueryString({
-      keyword: nextKeyword,
-      status: nextStatus,
-      sort: nextSort,
-      page: nextPage,
-    });
-    const href = queryString ? `${pathname}?${queryString}` : pathname;
-    router.replace(href, { scroll: false });
-  }, [buildTasksQueryString, pathname, router]);
-
-  const loadTasks = useCallback(async (options = {}) => {
-    const {
-      nextKeyword = ui.keyword,
-      nextStatus = ui.status,
-      nextSort = ui.sort,
-      nextPage = ui.page,
-      syncQuery = true,
-    } = options;
-    if (!hasListEndpoint) {
-      ui.error = { message: LANG_KO.view.error.listEndpointMissing };
-      taskList.copy([]);
-      taskMetaObj.totalCount = 0;
-      ui.isLoading = false;
-      return;
-    }
-    const taskQueryParams = new URLSearchParams();
-    taskQueryParams.set("page", String(nextPage));
-    taskQueryParams.set("size", String(pageSize));
-    taskQueryParams.set("sort", nextSort || defaultSort);
-    if (nextKeyword?.trim()) taskQueryParams.set("q", nextKeyword.trim());
-    if (nextStatus) taskQueryParams.set("status", nextStatus);
-    const queryString = taskQueryParams.toString();
-    const listPath = typeof pageApi.list === "string" ? pageApi.list : String(pageApi.list?.path || "");
-    const requestPath = queryString ? `${listPath}?${queryString}` : listPath;
-    const requestSpec = typeof pageApi.list === "string" || !pageApi.list || typeof pageApi.list !== "object"
-      ? requestPath
-      : { ...pageApi.list, path: requestPath };
-
-    ui.isLoading = true;
-    ui.error = null;
-    try {
-      const taskListResponse = await apiJSON(requestSpec);
-      taskList.copy(taskListResponse?.result?.dataTemplateList || []);
-      const totalSource = taskListResponse?.count ?? taskListResponse?.result?.listMetaObj?.totalCount ?? taskList.size();
-      const total = Number(totalSource || 0);
-      taskMetaObj.totalCount = total;
-      ui.page = nextPage;
-      ui.sort = nextSort || defaultSort;
-      if (syncQuery) {
-        syncBrowserQuery({
-          nextKeyword,
-          nextStatus,
-          nextSort: nextSort || defaultSort,
-          nextPage,
-        });
-      }
-    } catch (err) {
-      taskList.copy([]);
-      taskMetaObj.totalCount = 0;
-      ui.error = {
-        message: err?.message || LANG_KO.view.error.listLoadFailed,
-        requestId: err?.requestId,
-      };
-    } finally {
-      ui.isLoading = false;
-    }
-  }, [hasListEndpoint, pageApi.list, syncBrowserQuery, taskList, taskMetaObj, ui]);
 
   /* 4. 팝업 ======================================================================================================================= */
 
@@ -256,8 +219,115 @@ const TasksView = () => {
 
   // 없음
 
+  /* 7. 함수 ======================================================================================================================= */
+  const buildTasksQueryString = (options = {}) => {
+    const {
+      keyword = "",
+      status = "",
+      sort = DEFAULT_SORT,
+      page = 1,
+    } = options;
+    const taskQueryParams = new URLSearchParams();
+    const keywordText = String(keyword || "").trim();
+    const statusText = String(status || "").trim().toLowerCase();
+    const sortText = String(sort || DEFAULT_SORT).trim().toLowerCase();
+    const pageNum = Number.parseInt(String(page || 1), 10);
+
+    if (keywordText) taskQueryParams.set("q", keywordText);
+    if (allowedStatus.has(statusText)) taskQueryParams.set("status", statusText);
+    if (allowedSort.has(sortText) && sortText !== DEFAULT_SORT) {
+      taskQueryParams.set("sort", sortText);
+    }
+    if (Number.isFinite(pageNum) && pageNum > 1) {
+      taskQueryParams.set("page", String(pageNum));
+    }
+    return taskQueryParams.toString();
+  };
+
+  const syncBrowserQuery = ({ nextKeyword, nextStatus, nextSort, nextPage }) => {
+    if (!pathname) return;
+    const queryString = buildTasksQueryString({
+      keyword: nextKeyword,
+      status: nextStatus,
+      sort: nextSort,
+      page: nextPage,
+    });
+    const href = queryString ? `${pathname}?${queryString}` : pathname;
+    router.replace(href, { scroll: false });
+  };
+
+  const loadTasks = async (options = {}) => {
+    const {
+      nextKeyword = ui.keyword,
+      nextStatus = ui.status,
+      nextSort = ui.sort,
+      nextPage = ui.page,
+      syncQuery = true,
+    } = options;
+    if (!hasListEndpoint || !listEndpointPath) {
+      ui.errorMessage = LANG_KO.view.error.listEndpointMissing;
+      ui.errorRequestId = "";
+      auditRowList.copy([]);
+      taskMetaObj.totalCount = 0;
+      ui.isLoading = false;
+      return;
+    }
+    const taskQueryParams = new URLSearchParams();
+    taskQueryParams.set("page", String(nextPage));
+    taskQueryParams.set("size", String(PAGE_SIZE));
+    taskQueryParams.set("sort", nextSort || DEFAULT_SORT);
+    if (String(nextKeyword || "").trim()) taskQueryParams.set("q", String(nextKeyword).trim());
+    if (nextStatus) taskQueryParams.set("status", nextStatus);
+    const queryString = taskQueryParams.toString();
+    const requestPath = queryString ? `${listEndpointPath}?${queryString}` : listEndpointPath;
+    const requestSpec = typeof pageApi.list === "string" || !pageApi.list || typeof pageApi.list !== "object"
+      ? requestPath
+      : { ...pageApi.list, path: requestPath };
+
+    ui.isLoading = true;
+    ui.errorMessage = "";
+    ui.errorRequestId = "";
+    try {
+      const taskResponse = await apiJSON(requestSpec);
+      const auditRows = toAuditRows(taskResponse);
+      const filteredRows = filterAuditRows({
+        auditRows,
+        keyword: nextKeyword,
+        status: nextStatus,
+      });
+      const sortedRows = sortAuditRows({ auditRows: filteredRows, sort: nextSort });
+      const total = sortedRows.length;
+      const pageNum = Math.max(1, Number.parseInt(String(nextPage || 1), 10) || 1);
+      const sliceStart = (pageNum - 1) * PAGE_SIZE;
+      const pageRows = sortedRows.slice(sliceStart, sliceStart + PAGE_SIZE);
+      auditRowList.copy(pageRows);
+      taskMetaObj.totalCount = total;
+      ui.page = pageNum;
+      ui.sort = nextSort || DEFAULT_SORT;
+      ui.status = nextStatus || "";
+      ui.keyword = String(nextKeyword || "");
+      if (syncQuery) {
+        syncBrowserQuery({
+          nextKeyword,
+          nextStatus,
+          nextSort: nextSort || DEFAULT_SORT,
+          nextPage: pageNum,
+        });
+      }
+    } catch (err) {
+      auditRowList.copy([]);
+      taskMetaObj.totalCount = 0;
+      ui.errorMessage = err?.message || LANG_KO.view.error.listLoadFailed;
+      ui.errorRequestId = err?.requestId || "";
+    } finally {
+      ui.isLoading = false;
+    }
+  };
+
   /* 8. useEffect ================================================================================================================== */
   useEffect(() => {
+    if (didInitialLoadRef.current) return;
+    didInitialLoadRef.current = true;
     loadTasks({
       nextKeyword: ui.keyword,
       nextStatus: ui.status,
@@ -265,7 +335,7 @@ const TasksView = () => {
       nextPage: ui.page,
       syncQuery: false,
     });
-  }, [hasListEndpoint, loadTasks, ui.keyword, ui.page, ui.sort, ui.status]);
+  }, []);
 
   /* 9. 내부 컴포넌트 ============================================================================================================== */
 
@@ -274,13 +344,13 @@ const TasksView = () => {
   /* 10. 렌더링 ==================================================================================================================== */
   return (
     <div className="space-y-3" data-page-mode={pageMode} data-readonly="true">
-      {ui.error?.message && (
+      {ui.errorMessage && (
         <section aria-label={LANG_KO.view.error.listLoadFailed}>
           <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
-            <div>{ui.error.message}</div>
-            {ui.error.requestId && (
+            <div>{ui.errorMessage}</div>
+            {ui.errorRequestId && (
               <div className="mt-1 text-xs text-red-700/80">
-                {LANG_KO.view.error.requestIdLabel}: {ui.error.requestId}
+                {LANG_KO.view.error.requestIdLabel}: {ui.errorRequestId}
               </div>
             )}
           </div>
@@ -331,11 +401,11 @@ const TasksView = () => {
             onClick={() => {
               ui.keyword = "";
               ui.status = "";
-              ui.sort = defaultSort;
+              ui.sort = DEFAULT_SORT;
               loadTasks({
                 nextKeyword: "",
                 nextStatus: "",
-                nextSort: defaultSort,
+                nextSort: DEFAULT_SORT,
                 nextPage: 1,
               });
             }}
@@ -349,10 +419,10 @@ const TasksView = () => {
 
       <Card title={LANG_KO.view.card.tableTitle}>
         <EasyTable
-          dataList={taskList}
+          dataList={auditRowList}
           loading={ui.isLoading}
           columns={tableColumnList}
-          pageSize={pageSize}
+          pageSize={PAGE_SIZE}
           empty={LANG_KO.view.table.emptyFallback}
           rowKey={(row, index) => row?.id ?? index}
         />

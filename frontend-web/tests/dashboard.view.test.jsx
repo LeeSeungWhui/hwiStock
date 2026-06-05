@@ -20,25 +20,43 @@ describe("hwiStock operator console view", () => {
   const originalMode = PAGE_CONFIG.MODE;
 
   const buildSsrInitialDataObj = ({
-    statList = [{ status: "ready", count: 1, amountSum: 1000 }],
-    dataList = [
-      {
-        id: 1,
-        title: "삼성전자",
-        status: "running",
-        amount: 120,
-        createdAt: "2026-02-23T00:00:00.000Z",
+    operatorSnapshot = {
+      schema_version: "operator_console_snapshot/v0",
+      status: {
+        mode: "paper_sandbox",
+        serviceHealth: "observable",
+        orderGate: "blocked_calendar_unconfigured",
       },
-    ],
-  } = {}) => ({
-    stats: {
-      result: {
-        statusSummaryList: statList,
+      summary: {
+        accountId: "paper_account_alias:masked",
+        paperNetworkEnabled: false,
+        paperOrdersSubmitted: false,
+        paperObservationAccepted: false,
+        operationalTradingReadiness: false,
       },
+      readinessTruth: {
+        headline: "NOT_READY_FOR_PAPER_TRADING",
+        operatorMessage: "서비스가 떠 있어도 모의매매 준비 완료가 아닙니다.",
+        blockers: ["paper_network_disabled", "blocked_calendar_unconfigured"],
+        paperNetworkEnabled: false,
+        paperOrdersSubmitted: false,
+        paperObservationAccepted: false,
+        operationalTradingReadiness: false,
+        orderGate: "blocked_calendar_unconfigured",
+        serviceVisibilityIsNotReadiness: true,
+      },
+      holdings: [],
+      candidates: [],
+      intelligence: [],
+      aiThread: [],
+      auditLog: [
+        { at: "18:00", level: "info", code: "ORDER_GATE", message: "blocked_calendar_unconfigured" },
+      ],
     },
-    list: {
+  } = {}) => ({
+    operator: {
       result: {
-        dataTemplateList: dataList,
+        ...operatorSnapshot,
       },
     },
   });
@@ -98,7 +116,7 @@ describe("hwiStock operator console view", () => {
   test("계좌 식별자와 잔고류 값은 마스킹된다", () => {
     render(
       <DashboardView
-        initialDataObj={buildSsrInitialDataObj({ statList: [], dataList: [] })}
+        initialDataObj={buildSsrInitialDataObj()}
         initialErrorObj={{}}
       />,
     );
@@ -114,7 +132,7 @@ describe("hwiStock operator console view", () => {
       <DashboardView
         initialDataObj={buildSsrInitialDataObj()}
         initialErrorObj={{
-          stats: {
+          operator: {
             key: "INIT_FETCH_FAILED",
             code: "OPERATOR_500",
             requestId: "rid-operator-init",
@@ -195,17 +213,18 @@ describe("hwiStock operator console view", () => {
             orderGate: "blocked_calendar_unconfigured",
             serviceVisibilityIsNotReadiness: true,
           },
-          holdings: [
-            { symbol: "005930", name: "삼성전자", qty: 0, pnl: "system", weight: "0%" },
+          holdings: [],
+          auditLog: [
+            { at: "18:00", level: "info", code: "ORDER_GATE", message: "blocked_calendar_unconfigured" },
           ],
         },
       });
     });
 
     await waitFor(() => {
-      expect(screen.getByText("삼성전자")).toBeInTheDocument();
+      expect(screen.getByText("ORDER_GATE")).toBeInTheDocument();
     });
     expect(screen.getByTestId("operator-ai-thread")).toBeInTheDocument();
-    expect(screen.getByText("blocked_calendar_unconfigured")).toBeInTheDocument();
+    expect(screen.getAllByText("blocked_calendar_unconfigured").length).toBeGreaterThan(0);
   });
 });

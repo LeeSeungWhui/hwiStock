@@ -89,21 +89,17 @@ describe("tasks query state", () => {
     vi.clearAllMocks();
     setSearchParams();
     apiJSON.mockResolvedValue({
-      count: 0,
       result: {
-        dataTemplateList: [],
-        listMetaObj: {
-          totalCount: 0,
-        },
+        auditLog: [],
       },
     });
   });
 
   test("검색 파라미터를 안전하게 정규화해 목록 API를 호출한다", async () => {
     setSearchParams({
-      q: "  백엔드  ",
-      status: "RUNNING",
-      sort: "AMT_DESC",
+      q: "  ORDER  ",
+      status: "WARN",
+      sort: "CODE_ASC",
       page: "3",
     });
 
@@ -115,11 +111,13 @@ describe("tasks query state", () => {
     const requestSpec = apiJSON.mock.calls[0][0];
     const requestUrl = typeof requestSpec === "string" ? requestSpec : requestSpec.path;
     const decodedRequestUrl = decodeURIComponent(requestUrl);
-    expect(decodedRequestUrl).toContain("q=백엔드");
-    expect(requestUrl).toContain("status=running");
-    expect(requestUrl).toContain("sort=amt_desc");
+    expect(requestUrl).toContain("/api/v1/hwistock/runner/operatorSnapshot");
+    expect(decodedRequestUrl).toContain("q=ORDER");
+    expect(requestUrl).toContain("status=warn");
+    expect(requestUrl).toContain("sort=code_asc");
     expect(requestUrl).toContain("page=3");
     expect(requestUrl).toContain("size=10");
+    expect(requestUrl).not.toContain("/api/v1/dashboard");
   });
 
   test("허용되지 않은 값은 기본값으로 보정한다", async () => {
@@ -139,12 +137,12 @@ describe("tasks query state", () => {
     const requestUrl = typeof requestSpec === "string" ? requestSpec : requestSpec.path;
     expect(requestUrl).toContain("q=first");
     expect(requestUrl).not.toContain("status=");
-    expect(requestUrl).toContain("sort=reg_dt_desc");
+    expect(requestUrl).toContain("sort=at_desc");
     expect(requestUrl).toContain("page=1");
   });
 
   test("초기 목록 조회는 브라우저 쿼리 문자열을 재기록하지 않는다", async () => {
-    setSearchParams({ q: "테스트", status: "ready", sort: "amt_desc", page: "2" });
+    setSearchParams({ q: "테스트", status: "warn", sort: "code_asc", page: "2" });
 
     render(<TasksView initialDataObj={{}} initialErrorObj={{}} />);
 
@@ -154,8 +152,8 @@ describe("tasks query state", () => {
     expect(replaceMock).not.toHaveBeenCalled();
   });
 
-  test("유효 상태값이면 상태 필터를 유지한다", async () => {
-    setSearchParams({ status: "pending" });
+  test("유효 레벨값이면 레벨 필터를 유지한다", async () => {
+    setSearchParams({ status: "error" });
 
     render(<TasksView initialDataObj={{}} initialErrorObj={{}} />);
 
@@ -164,7 +162,26 @@ describe("tasks query state", () => {
     });
     const requestSpec = apiJSON.mock.calls[0][0];
     const requestUrl = typeof requestSpec === "string" ? requestSpec : requestSpec.path;
-    expect(requestUrl).toContain("status=pending");
+    expect(requestUrl).toContain("status=error");
+  });
+
+  test("초기 조회는 한 번만 실행하고 operator auditLog만 대상으로 삼는다", async () => {
+    apiJSON.mockResolvedValue({
+      result: {
+        auditLog: [
+          { at: "18:00", level: "info", code: "ORDER_GATE", message: "blocked" },
+        ],
+      },
+    });
+
+    render(<TasksView initialDataObj={{}} initialErrorObj={{}} />);
+
+    await waitFor(() => {
+      expect(apiJSON).toHaveBeenCalledTimes(1);
+    });
+    const requestSpec = apiJSON.mock.calls[0][0];
+    const requestUrl = typeof requestSpec === "string" ? requestSpec : requestSpec.path;
+    expect(requestUrl).toContain("/api/v1/hwistock/runner/operatorSnapshot");
   });
 
   test("생성·수정·삭제·저장 버튼이 노출되지 않는다", async () => {

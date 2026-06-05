@@ -57,6 +57,11 @@ async def operatorSnapshot(atKst: Optional[str] = None):
     return hwiStockJsonResponse(result)
 
 
+@router.get("/operatorSnapshot")
+async def operatorSnapshotCamel(atKst: Optional[str] = None):
+    return await operatorSnapshot(atKst=atKst)
+
+
 @router.get("/route-preview")
 async def routePreview(atKst: str):
     result = HwiStockRunnerService.preview_route(atKst)

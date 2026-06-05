@@ -6,22 +6,22 @@ describe("dashboard layout meta", () => {
       pathname: "/dashboard/tasks",
       searchParams: new URLSearchParams({
         q: "로그",
-        status: "running",
-        sort: "amt_desc",
+        status: "warn",
+        sort: "code_asc",
         page: "2",
       }),
     });
 
     expect(layoutMeta.title).toBe("감시 로그");
     expect(layoutMeta.subtitle).toContain("hwiStock > 감시 로그");
-    expect(layoutMeta.subtitle).toContain("상태: 진행중");
-    expect(layoutMeta.subtitle).toContain("정렬: 금액 높은순");
+    expect(layoutMeta.subtitle).toContain("상태: 경고");
+    expect(layoutMeta.subtitle).toContain("정렬: 코드 오름차순");
     expect(layoutMeta.subtitle).toContain("검색: 로그");
     expect(layoutMeta.subtitle).toContain("페이지: 2");
     expect(layoutMeta.menuList.find((menuItemObj) => menuItemObj.menuId === "tasks")?.active).toBe(true);
     expect(layoutMeta.menuList.find((menuItemObj) => menuItemObj.menuId === "tasks")?.menuNm).toBe("감시 로그");
     expect(
-      layoutMeta.subMenuList.find((subMenuItemObj) => subMenuItemObj.subMenuId === "running")?.active
+      layoutMeta.subMenuList.find((subMenuItemObj) => subMenuItemObj.subMenuId === "warn")?.active
     ).toBe(true);
   });
 

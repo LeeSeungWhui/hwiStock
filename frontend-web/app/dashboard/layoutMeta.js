@@ -8,7 +8,7 @@
 import LANG_KO from "./lang.ko";
 import TASKS_LANG_KO from "./tasks/lang.ko";
 
-const DEFAULT_SORT = "reg_dt_desc";
+const DEFAULT_SORT = "at_desc";
 const STATUS_FILTER_LIST = TASKS_LANG_KO.initData.statusFilterList.map((statusFilterObj) => ({
   ...statusFilterObj,
 }));

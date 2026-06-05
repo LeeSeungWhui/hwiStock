@@ -8,7 +8,7 @@ export const PAGE_CONFIG = {
   INIT_API: {},
   API: {
     list: {
-      path: "/api/v1/dashboard",
+      path: "/api/v1/hwistock/runner/operatorSnapshot",
       method: "GET",
     },
   },
