@@ -105,7 +105,9 @@ def formatAccountLabel(accountNo: str, productCode: str) -> str:
 
 
 def _numericOrNone(value: Any) -> Optional[int]:
-    raw = str(value or "").strip().replace(",", "")
+    if value is None:
+        return None
+    raw = str(value).strip().replace(",", "")
     if not raw:
         return None
     try:
@@ -154,13 +156,19 @@ def _summaryFromPayload(
         "todayPnl": pnl if pnl is not None else "손익 조회 실패",
         "openPositions": positions,
         "status": payload.get("status") or "cached",
-        "balanceStatus": payload.get("balance_status"),
-        "buyableStatus": payload.get("buyable_status"),
+        "balanceStatus": payload.get("balance_status") or payload.get("balanceStatus"),
+        "buyableStatus": payload.get("buyable_status") or payload.get("buyableStatus"),
         "source": source,
         "accountDisplayed": bool(accountNo),
         "rawProviderPayloadDisplayed": False,
         "credentialValuesPrinted": False,
     }
+
+
+def _accountSummaryHasNumericPnl(summary: Optional[Dict[str, Any]]) -> bool:
+    if not summary:
+        return False
+    return _numericOrNone(summary.get("todayPnl")) is not None
 
 
 def _readDashboardAccountSummaryFromRunnerEvidence(
@@ -258,7 +266,7 @@ def buildDashboardAccountSummary(
         productCode=productCode,
         reserveFloor=reserveFloor,
     )
-    if evidenceSummary:
+    if evidenceSummary and _accountSummaryHasNumericPnl(evidenceSummary):
         return evidenceSummary
     cachedSummary = _readDashboardAccountSummaryCache(
         dataRoot=runtimeRoot,
@@ -266,7 +274,7 @@ def buildDashboardAccountSummary(
         productCode=productCode,
         reserveFloor=reserveFloor,
     )
-    if cachedSummary:
+    if cachedSummary and _accountSummaryHasNumericPnl(cachedSummary):
         return cachedSummary
     if not boolEnv("HWISTOCK_DASHBOARD_ACCOUNT_READ_ENABLED", True):
         return {

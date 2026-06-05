@@ -316,6 +316,127 @@ def test_unit015_operator_snapshot_is_read_only_and_exposes_local_account_summar
     assert Path(report["reportPath"]).is_file()
 
 
+def test_unit015_account_summary_refreshes_stale_pnl_failure_cache(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("HWISTOCK_DASHBOARD_ACCOUNT_READ_ENABLED", "true")
+    monkeypatch.setenv("KIS_PAPER_ACCOUNT_NO", "12345678")
+    monkeypatch.setenv("KIS_PAPER_ACCOUNT_PRODUCT_CODE", "01")
+    monkeypatch.setenv("HWISTOCK_KIS_HEALTH_SYMBOL", "005930")
+    cache_path = tmp_path / "account" / "dashboard-account-summary-latest.json"
+    cache_path.parent.mkdir(parents=True)
+    cache_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "dashboard_account_summary/v0",
+                "accountId": "12345678-01",
+                "cashBalance": 9_950_000,
+                "reserveBalance": 500_000,
+                "todayPnl": "손익 조회 실패",
+                "openPositions": 0,
+                "status": "warn",
+                "source": "kis-live-read",
+                "rawProviderPayloadDisplayed": False,
+                "credentialValuesPrinted": False,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    class FakeDashboardAdapter:
+        def __init__(self, *, env, transport):
+            self.env = env
+            self.transport = transport
+
+        def missingEnvKeys(self):
+            return []
+
+        def inquireAccountSummaryForDashboard(self, token, symbol):
+            assert token == "fake-token"
+            assert symbol == "005930"
+            return {
+                "status": "warn",
+                "account_label": "12345678-01",
+                "cash_balance_krw": 9_950_000,
+                "total_eval_krw": 9_950_000,
+                "stock_eval_krw": 0,
+                "today_pnl_krw": -84_200,
+                "positions_count": 0,
+                "balance_status": "pass",
+                "buyable_status": "warn",
+                "credential_values_printed": False,
+                "raw_response_stored": False,
+            }
+
+    monkeypatch.setattr(operator_console, "KisPaperAdapter", FakeDashboardAdapter)
+    monkeypatch.setattr(
+        operator_console,
+        "loadKisPaperAccessToken",
+        lambda adapter, env, now: ({"status": "pass", "token_present": True}, "fake-token", True),
+    )
+    monkeypatch.setattr(operator_console, "tokenCacheRevokeSkippedStep", lambda: None)
+
+    summary = operator_console.buildDashboardAccountSummary(
+        operator_console.parseKstTime("2026-06-05T09:40:00+09:00"),
+        dataRoot=tmp_path,
+    )
+
+    assert summary["source"] == "kis-live-read"
+    assert summary["cashBalance"] == 9_950_000
+    assert summary["todayPnl"] == -84_200
+    assert summary["balanceStatus"] == "pass"
+    assert summary["buyableStatus"] == "warn"
+
+    refreshed = json.loads(cache_path.read_text(encoding="utf-8"))
+    assert refreshed["todayPnl"] == -84_200
+    assert refreshed["credentialValuesPrinted"] is False
+
+
+def test_unit015_account_summary_preserves_zero_pnl_from_runner_evidence(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("KIS_PAPER_ACCOUNT_NO", "12345678")
+    monkeypatch.setenv("KIS_PAPER_ACCOUNT_PRODUCT_CODE", "01")
+    evidence_path = tmp_path / "evidence" / "2026-06-05" / "kis-paper-continuous-latest.json"
+    evidence_path.parent.mkdir(parents=True)
+    evidence_path.write_text(
+        json.dumps(
+            {
+                "steps": [
+                    {
+                        "step": "balance_inquire",
+                        "status": "pass",
+                        "dashboard_account_summary": {
+                            "cash_balance_krw": 10_000_000,
+                            "total_eval_krw": 10_000_000,
+                            "stock_eval_krw": 0,
+                            "today_pnl_krw": 0,
+                            "positions_count": 0,
+                        },
+                    },
+                    {
+                        "step": "buyable_inquire_psbl_order",
+                        "status": "warn",
+                        "dashboard_buyable_summary": {"buyable_cash_krw": None},
+                    },
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    summary = operator_console.buildDashboardAccountSummary(
+        operator_console.parseKstTime("2026-06-05T09:40:00+09:00"),
+        dataRoot=tmp_path,
+        dayKey="2026-06-05",
+    )
+
+    assert summary["source"] == "kis-paper-runner-evidence"
+    assert summary["cashBalance"] == 10_000_000
+    assert summary["todayPnl"] == 0
+    assert summary["openPositions"] == 0
+    assert summary["balanceStatus"] == "pass"
+    assert summary["buyableStatus"] == "warn"
+
+
 def test_unit015_operator_snapshot_detects_order_enabled_service_contradiction(tmp_path: Path, monkeypatch):
     _disable_dashboard_account_network(monkeypatch)
     risky_unit = tmp_path / "hwistock-kis-paper-runner.service"

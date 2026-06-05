@@ -112,7 +112,9 @@ def sanitizeKisResponse(
 
 
 def _to_int_or_none(value: Any) -> Optional[int]:
-    raw = str(value or "").strip().replace(",", "")
+    if value is None:
+        return None
+    raw = str(value).strip().replace(",", "")
     if not raw:
         return None
     try:

@@ -23,6 +23,7 @@ from service.kis_paper_adapter import (  # noqa: E402
     KisPaperAdapter,
     KisPaperAdapterError,
     describeKisPaperEnv,
+    summarizeKisBalancePayload,
     validatePaperBaseUrl,
 )
 
@@ -187,6 +188,31 @@ def test_adapter_account_summary_for_dashboard_extracts_display_values_without_r
     assert summary["positions_count"] == 2
     assert summary["credential_values_printed"] is False
     assert summary["raw_response_stored"] is False
+
+
+def test_adapter_balance_summary_preserves_zero_pnl_value():
+    summary = summarizeKisBalancePayload(
+        {
+            "http_status": 200,
+            "payload": {
+                "rt_cd": "0",
+                "output1": [],
+                "output2": [
+                    {
+                        "dnca_tot_amt": 10_000_000,
+                        "tot_evlu_amt": 10_000_000,
+                        "scts_evlu_amt": 0,
+                        "evlu_pfls_smtl_amt": 0,
+                    }
+                ],
+            },
+        }
+    )
+
+    assert summary["cash_balance_krw"] == 10_000_000
+    assert summary["stock_eval_krw"] == 0
+    assert summary["today_pnl_krw"] == 0
+    assert summary["positions_count"] == 0
 
 
 def test_observation_manifest_is_operator_controlled_not_fixed_duration():
