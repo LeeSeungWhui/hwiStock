@@ -9,6 +9,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/data/workspace/My/hwiStock
+ExecStartPre=/usr/bin/env mkdir -p /data/workspace/My/hwiStock/logs/systemd
+StandardOutput=append:/data/workspace/My/hwiStock/logs/systemd/hwistock-ai-flash.log
+StandardError=append:/data/workspace/My/hwiStock/logs/systemd/hwistock-ai-flash.err.log
 EnvironmentFile=-/home/hwi/.config/hwistock/deepseek.env
 Environment=HWISTOCK_DEEPSEEK_MODEL=deepseek-v4-flash
 Environment=HWISTOCK_AI_EVENT_LIMIT=20

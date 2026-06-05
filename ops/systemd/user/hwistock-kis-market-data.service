@@ -9,6 +9,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/data/workspace/My/hwiStock
+ExecStartPre=/usr/bin/env mkdir -p /data/workspace/My/hwiStock/logs/systemd
+StandardOutput=append:/data/workspace/My/hwiStock/logs/systemd/hwistock-kis-market-data.log
+StandardError=append:/data/workspace/My/hwiStock/logs/systemd/hwistock-kis-market-data.err.log
 EnvironmentFile=-/home/hwi/.config/hwistock/hwistockApi.env
 Environment=HWISTOCK_KIS_SIGNAL_INPUTS=krx_realtime_trade_price_ws,krx_realtime_orderbook_ws,rest_volume_rank,rest_volume_power_rank,rest_fluctuation_rank,rest_program_trading_aggregate
 ExecStart=/usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/kis_market_data_collector.py --once --write-evidence'

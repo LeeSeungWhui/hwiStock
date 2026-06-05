@@ -9,6 +9,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/data/workspace/My/hwiStock
+ExecStartPre=/usr/bin/env mkdir -p /data/workspace/My/hwiStock/logs/systemd
+StandardOutput=append:/data/workspace/My/hwiStock/logs/systemd/hwistock-intel-collector.log
+StandardError=append:/data/workspace/My/hwiStock/logs/systemd/hwistock-intel-collector.err.log
 EnvironmentFile=-/home/hwi/.config/hwistock/hwistock.env
 Environment=HWISTOCK_BIND_HOST=127.0.0.1
 ExecStart=/usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/market_intelligence_ingestion.py --once'

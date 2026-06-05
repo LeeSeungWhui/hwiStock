@@ -9,6 +9,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/data/workspace/My/hwiStock
+ExecStartPre=/usr/bin/env mkdir -p /data/workspace/My/hwiStock/logs/systemd
+StandardOutput=append:/data/workspace/My/hwiStock/logs/systemd/hwistock-kis-paper-runner.log
+StandardError=append:/data/workspace/My/hwiStock/logs/systemd/hwistock-kis-paper-runner.err.log
 EnvironmentFile=-/home/hwi/.config/hwistock/hwistock.env
 EnvironmentFile=-/home/hwi/.config/hwistock/hwistockApi.env
 Environment=HWISTOCK_BIND_HOST=127.0.0.1
