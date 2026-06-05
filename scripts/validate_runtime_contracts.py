@@ -159,6 +159,47 @@ def has_unavailable_refs(values: Any) -> bool:
     return any(unavailable_ref(value) for value in values)
 
 
+def ref_has_prefix(value: Any, prefixes: tuple[str, ...]) -> bool:
+    return isinstance(value, str) and any(value.startswith(prefix) for prefix in prefixes)
+
+
+def refs_have_allowed_prefixes(values: Any, prefixes: tuple[str, ...]) -> bool:
+    if has_unavailable_refs(values):
+        return False
+    return all(ref_has_prefix(value, prefixes) for value in values)
+
+
+def validate_paper_order_intent_refs(artifact: Mapping[str, Any], errors: list[str]) -> None:
+    source_refs = artifact.get("source_refs")
+    market_data_refs = artifact.get("market_data_refs")
+    flash_ref = artifact.get("flash_trade_document_ref")
+    portfolio_ref = artifact.get("portfolio_snapshot_ref")
+    order_state_ref = artifact.get("order_state_snapshot_ref")
+    input_refs = artifact.get("input_refs")
+
+    missing_or_weak = (
+        not ref_has_prefix(flash_ref, ("art_flash_",))
+        or not refs_have_allowed_prefixes(
+            source_refs,
+            ("art_news_", "art_disclosure_", "art_market_notice_", "art_source_"),
+        )
+        or not refs_have_allowed_prefixes(market_data_refs, ("art_kis_snapshot_", "art_market_"))
+        or not ref_has_prefix(portfolio_ref, ("art_portfolio_",))
+        or not ref_has_prefix(order_state_ref, ("art_order_state_",))
+        or parse_kst(artifact.get("authoritative_refs_verified_at_kst")) is None
+        or has_unavailable_refs(input_refs)
+    )
+    if not missing_or_weak and isinstance(input_refs, list):
+        required_input_refs = [flash_ref, portfolio_ref, order_state_ref]
+        required_input_refs.extend(source_refs)
+        required_input_refs.extend(market_data_refs)
+        if any(ref not in input_refs for ref in required_input_refs):
+            missing_or_weak = True
+
+    if missing_or_weak:
+        errors.append("paper_order_intent_authoritative_refs_missing")
+
+
 def require_fields(prefix: str, value: Mapping[str, Any], fields: list[str], errors: list[str]) -> None:
     for field in fields:
         if field not in value:
@@ -343,6 +384,7 @@ def validate_artifact(artifact: Mapping[str, Any], catalog: Mapping[str, Any]) -
             errors.append("order_state_freshness_failed")
 
     if schema_version == "paper_order_intent/v0":
+        validate_paper_order_intent_refs(artifact, errors)
         validate_quantity_rule(artifact, errors)
 
     if schema_version == "executor_decision/v0":

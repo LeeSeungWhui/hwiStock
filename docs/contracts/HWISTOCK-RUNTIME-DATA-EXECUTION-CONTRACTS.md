@@ -126,6 +126,14 @@ decision bucket**.
   and order-state refs. Missing, stale, unavailable, or advisory-only refs may
   produce watch/reject records, but cannot produce a clean
   `paper_order_intent/v0`.
+- A clean `paper_order_intent/v0` must carry the authoritative refs that made it
+  executable, not merely rely on the parent Flash document. Required intent-level
+  refs are `flash_trade_document_ref`, `source_refs`, `market_data_refs`,
+  `portfolio_snapshot_ref`, `order_state_snapshot_ref`, and
+  `authoritative_refs_verified_at_kst`. The `input_refs` array must include
+  those same source, market-data, portfolio, order-state, and Flash artifact refs
+  so the executor can prove why the intent was accepted before it re-checks
+  fresh state.
 
 ## 6. Deterministic IDs
 

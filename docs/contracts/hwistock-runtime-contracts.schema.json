@@ -1084,7 +1084,13 @@
         "max_cash_krw",
         "gate_results",
         "reservation_status",
-        "executable_intent_allowed"
+        "executable_intent_allowed",
+        "flash_trade_document_ref",
+        "source_refs",
+        "market_data_refs",
+        "portfolio_snapshot_ref",
+        "order_state_snapshot_ref",
+        "authoritative_refs_verified_at_kst"
       ],
       "fields": {
         "schema_version": {
@@ -1243,6 +1249,30 @@
         "ticker": {
           "type": "string",
           "pattern": "^\\d{6}$"
+        },
+        "flash_trade_document_ref": {
+          "type": "string",
+          "pattern": "^art_flash_[a-z0-9_:-]+$"
+        },
+        "source_refs": {
+          "type": "array",
+          "min_items": 1
+        },
+        "market_data_refs": {
+          "type": "array",
+          "min_items": 1
+        },
+        "portfolio_snapshot_ref": {
+          "type": "string",
+          "pattern": "^art_portfolio_[a-z0-9_:-]+$"
+        },
+        "order_state_snapshot_ref": {
+          "type": "string",
+          "pattern": "^art_order_state_[a-z0-9_:-]+$"
+        },
+        "authoritative_refs_verified_at_kst": {
+          "type": "string",
+          "format": "kst_datetime"
         }
       }
     },

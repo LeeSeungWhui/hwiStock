@@ -1,5 +1,7 @@
 # hwiStock 24h runner worker template (UNIT-002). Do not execute from repo checkout.
 # Scheduler/no-order dry-run skeleton; no broker or KIS network calls in this unit.
+# This service file is infrastructure scaffolding only and is not evidence that
+# the paper/mock trading runtime is ready to run.
 
 [Unit]
 Description=hwiStock home-server paper runner worker (no-order skeleton)

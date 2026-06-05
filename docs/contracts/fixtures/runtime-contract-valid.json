@@ -439,6 +439,9 @@
       "producer": "trade_document_intent_pipeline",
       "input_refs": [
         "art_flash_tdoc_20260605_0940",
+        "art_news_20260605_0001",
+        "art_disclosure_20260605_0001",
+        "art_kis_snapshot_20260605_090300",
         "art_portfolio_20260605_090455",
         "art_order_state_20260605_090455"
       ],
@@ -497,7 +500,18 @@
         "finalized_at_kst": "2026-06-05T09:05:01+09:00",
         "atomic_rename_complete": true,
         "manifest_hash_verified": true
-      }
+      },
+      "flash_trade_document_ref": "art_flash_tdoc_20260605_0940",
+      "source_refs": [
+        "art_news_20260605_0001",
+        "art_disclosure_20260605_0001"
+      ],
+      "market_data_refs": [
+        "art_kis_snapshot_20260605_090300"
+      ],
+      "portfolio_snapshot_ref": "art_portfolio_20260605_090455",
+      "order_state_snapshot_ref": "art_order_state_20260605_090455",
+      "authoritative_refs_verified_at_kst": "2026-06-05T09:05:00+09:00"
     },
     {
       "schema_version": "executor_decision/v0",

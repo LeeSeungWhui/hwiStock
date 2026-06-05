@@ -97,6 +97,9 @@ cancel, balance-changing, or live endpoints.
   - all input artifacts are schema-valid and manifest/hash complete;
   - source ids are grounded;
   - KIS market-data confirmation is fresh;
+  - the final intent artifact itself records `flash_trade_document_ref`,
+    `source_refs`, `market_data_refs`, `portfolio_snapshot_ref`,
+    `order_state_snapshot_ref`, and `authoritative_refs_verified_at_kst`;
   - current holdings, pending orders, open exits, cooldowns, and prior
     still-valid trade decisions do not conflict;
   - reservation accounting shows cash reserve and holding slots remain safe
@@ -157,3 +160,8 @@ change after Flash writes the document.
 If portfolio or order-state refs are missing, unavailable, stale, or only
 advisory, this unit may write watch/reject records but must not produce a clean
 entry `paper_order_intent/v0`.
+
+If source, KIS market-data, Flash trade-document, portfolio, or order-state refs
+are present only on the parent Flash document but absent from the final
+`paper_order_intent/v0`, the intent is invalid and must be rejected before
+UNIT-014 can consume it.

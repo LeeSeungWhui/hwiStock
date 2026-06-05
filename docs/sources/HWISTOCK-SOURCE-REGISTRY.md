@@ -100,6 +100,7 @@ Checked on 2026-06-02.
   - `dedupe_key`
   - `source_hash`
   - `collection_watermark`
+  - `terms_policy_ref`
   - `last_success_at`
   - `last_failure_at`
 

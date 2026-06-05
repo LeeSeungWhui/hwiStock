@@ -110,6 +110,8 @@ source ./env.sh && python3 scripts/validate_runtime_contracts.py
 - Define portfolio/order conflict model:
   - Flash portfolio snapshots are advisory context only;
   - executor portfolio/order snapshots are authoritative at submit time;
+  - final `paper_order_intent/v0` artifacts must carry their own
+    Flash/source/KIS-market/portfolio/order refs and verification timestamp;
   - held symbols, pending orders, active exits, cooldowns, position locks,
     consumed trade docs, and still-valid prior decisions block conflicts unless
     deterministic strategy rules explicitly allow scale-in/exit behavior.

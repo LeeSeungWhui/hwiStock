@@ -95,14 +95,15 @@ Result:
 ```text
 runtime_contract_validation=PASS
 valid_artifacts=12
-invalid_cases=27
+invalid_cases=28
 schema_count=12
 ```
 
 The validator uses the standard library only. It checks required fields,
 primitive types, const/enum/pattern/min/max rules, KST timestamps, Flash
-candidate caps, nested Flash action refs, exact deterministic hash id patterns,
-`NO_TRADE` conditional behavior, KIS snapshot/portfolio/order freshness,
+candidate caps, nested Flash action refs, final paper-order intent authoritative
+refs, exact deterministic hash id patterns, `NO_TRADE` conditional behavior,
+KIS snapshot/portfolio/order freshness,
 paper-only broker request guards, cancel-target requirements, executor state
 transitions, duplicate artifact ids/intent ids, deterministic sizing bounds,
 ambiguous-submit reconciliation, publication-manifest completeness, and obvious
@@ -120,6 +121,7 @@ The invalid fixture set proves the validator blocks:
 - short `trade_doc_id`, `intent_id`, and `client_order_key` values;
 - invalid Flash action enum and missing authoritative portfolio/order refs;
 - `NO_TRADE` documents with actions or missing reason;
+- final paper-order intents missing source/KIS-market/portfolio/order refs;
 - stale KIS/portfolio/order snapshots;
 - missing source dedupe/hash/watermark fields;
 - bad resolved KIS paper host guard;

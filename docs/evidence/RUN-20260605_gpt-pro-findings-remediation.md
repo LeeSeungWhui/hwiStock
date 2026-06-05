@@ -5,7 +5,7 @@ type: evidence
 name: GPT Pro findings remediation
 stage: go-check
 environment: local_docs_validation
-status: local_remediation_complete_pending_gpt_pro_re_review
+status: local_remediation_followup_complete_pending_gpt_pro_re_review
 owner: hwi
 created_at: 2026-06-05
 updated_at: 2026-06-05
@@ -37,6 +37,7 @@ credential readout, strategy-risk numeric change, or push was performed.
 | Abstract KIS snapshot | `kis_market_snapshot/v0` now requires venue, as-of time, heartbeat, sequence, latency, rate-limit bucket, raw payload ref, redacted payload hash, and structured payload fields. |
 | Pro/Flash race | Flash trade documents now require Pro artifact ref, manifest completion/cutoff timestamps, and `pro_manifest_status`; non-latest Pro manifests force `NO_TRADE`. |
 | Missing portfolio/order context | Clean Flash entry actions require authoritative portfolio and order-state refs; missing/stale/unavailable refs may only produce watch/reject behavior. |
+| GPT Pro re-review P1: final intent-level refs | `paper_order_intent/v0` now requires its own `flash_trade_document_ref`, `source_refs`, `market_data_refs`, `portfolio_snapshot_ref`, `order_state_snapshot_ref`, and `authoritative_refs_verified_at_kst`; validator rejects missing/weak final intent refs. |
 | Cancel request gaps | `broker_order_request/v0` cancel side requires target request id, target client order key, broker-order alias, reason, superseding trade doc, and cancel deadline. |
 | Ledger/locks/crash recovery | Runtime contract now defines write-ahead log, unique constraints, single-writer account/symbol lock, lock expiry, fsync/transaction semantics, and `SUBMIT_UNKNOWN` replay/reconciliation. |
 | Broker alias resolution | Paper-only guard now records sanitized resolved REST/WebSocket host classes, allowlist version, redacted paper alias, and live/unknown-domain false assertions. |
@@ -60,7 +61,7 @@ Result:
 ```text
 runtime_contract_validation=PASS
 valid_artifacts=12
-invalid_cases=27
+invalid_cases=28
 schema_count=12
 ```
 
@@ -76,7 +77,27 @@ Result:
 58 passed
 ```
 
-## 4. Pending
+## 4. Follow-Up Re-Review Finding
+
+GPT Pro re-reviewed commit `8e3549124d56512850b9f9f0ed980b474740dfbd`
+through GitHub raw/web access and found no P0, but raised one P1:
+the final `paper_order_intent/v0` artifact/validator layer still under-enforced
+authoritative source/KIS-market/portfolio/order provenance refs. It also raised
+two P2 wording/evidence-interpretation cleanups: align `terms_policy_ref`
+registry wording and ensure `ops/systemd` no-order skeleton files are not
+treated as runtime-ready evidence.
+
+Follow-up changes:
+
+- `paper_order_intent/v0` schema requires final intent-level authoritative refs.
+- `scripts/validate_runtime_contracts.py` rejects missing/weak final
+  authoritative refs with `paper_order_intent_authoritative_refs_missing`.
+- Valid fixture carries final source, market-data, portfolio, order-state, and
+  Flash refs directly on the intent.
+- Invalid fixtures include `paper_order_intent_missing_authoritative_refs`.
+- Source registry and systemd runner wording were aligned with the Pro P2 notes.
+
+## 5. Pending
 
 GPT Pro re-review is still pending for this remediation run. The re-review must
 use the GitHub URL plus exact path list, and Codex must locally interpret the
