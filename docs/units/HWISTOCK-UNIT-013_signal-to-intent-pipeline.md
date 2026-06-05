@@ -68,7 +68,7 @@ cancel, balance-changing, or live endpoints.
 ## 2. Included Scope
 
 - Build a trade-action pipeline from:
-  - normalized disclosure/news events;
+  - normalized OpenDART disclosure events and NAVER Search News API events;
   - KIS intraday WebSocket snapshots for realtime trade price/orderbook where
     paper-supported;
   - KIS REST ranking/analysis snapshots refreshed every 1-3 minutes, including
@@ -79,20 +79,23 @@ cancel, balance-changing, or live endpoints.
   - previous trade-document chain and current portfolio/order-state snapshots;
   - approved symbol mapping sources such as DART stock codes or approved KRX/KIS
     symbol master data;
-  - approved quote/chart/market features available in the paper runtime.
-- Implement or wire the KIS intraday market-data collector for:
-  - `inquire-price`;
-  - `inquire-time-itemchartprice`;
-  - `inquire-time-itemconclusion`;
-  - `volume-rank`;
-  - `ranking/fluctuation`;
-  - `ranking/volume-power`;
-  - program-trading aggregate status where paper-supported;
-  - `ranking/top-interest-stock`;
-  - KRX realtime trade price/orderbook subscription contracts where supported.
+  - deterministic candidate-universe artifacts built before Flash runs.
+- Implement or wire the KIS intraday market-data collector for exactly six
+  first-scope paper-read inputs:
+  - KRX realtime trade price WebSocket;
+  - KRX realtime orderbook WebSocket;
+  - REST `volume-rank`;
+  - REST `ranking/volume-power` or equivalent execution-strength upper-rank
+    endpoint;
+  - REST `ranking/fluctuation`;
+  - REST program-trading aggregate status where paper-supported.
   Unsupported NXT/SOR/integrated broker-facing market-data branches must produce
   disabled/fallback evidence and cannot be treated as paper-proven.
 - Produce deterministic `condition_card/v0` and `compiled_watch/v0` records.
+- `compiled_watch/v0` is the deterministic candidate universe. Flash may score,
+  rank, reject, or explain only symbols already present in that universe. If
+  Flash outputs a ticker outside the compiled universe, the action is rejected
+  and cannot produce `paper_order_intent/v0`.
 - Produce `paper_order_intent/v0` only when:
   - all input artifacts are schema-valid and manifest/hash complete;
   - source ids are grounded;
@@ -124,6 +127,10 @@ cancel, balance-changing, or live endpoints.
 - Direct KIS order calls.
 - KIS cancel/modify/order submission calls, even when paper/mock credentials are
   present.
+- KIS signal inputs outside the owner-selected six-input UNIT-013 scope,
+  including REST current-price, intraday bars, intraday executions, top-interest
+  stocks, fill notices, balances, buyable cash, or helper APIs unless a future
+  approved unit explicitly moves them into scope.
 - Live trading.
 - Fake fills/balances/PnL.
 - News-only automatic orders.
@@ -147,6 +154,8 @@ cancel, balance-changing, or live endpoints.
 | AC-10 | P0 | UNIT-016 contracts are applied | Intent generation consumes only schema-valid, manifest-complete, fresh, idempotent, reservation-safe artifacts defined by UNIT-016. |
 | AC-11 | P0 | Pending waits are superseded safely | A new accepted trade document cancels prior unfilled `WAIT_BUY` orders unless renewed explicitly and still gate-valid. |
 | AC-12 | P0 | UNIT-013 is paper-read only | KIS order/cancel/modify endpoints are not called by this unit; unsupported NXT/SOR broker-facing branches write disabled/fallback evidence. |
+| AC-13 | P0 | Flash cannot invent candidate symbols | A Flash action whose ticker is absent from deterministic `compiled_watch/v0` is rejected and produces no paper intent. |
+| AC-14 | P0 | KIS signal collector is six-input bounded | UNIT-013 attempts only KRX realtime trade price, KRX realtime orderbook, volume rank, execution-strength/volume-power rank, fluctuation rank, and program-trading aggregate status; any other KIS signal endpoint is safe-blocked. |
 
 ## 5. Go Notes
 

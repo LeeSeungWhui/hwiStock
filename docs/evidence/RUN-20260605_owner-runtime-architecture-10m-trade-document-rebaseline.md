@@ -25,7 +25,7 @@ supersedes:
 The owner rebaselined the operational paper-trading target to this structure:
 
 1. 24-hour collection:
-   - NAVER Search News API;
+   - NAVER Search News API as the selected first runtime news source;
    - OpenDART disclosure search;
    - deduplication;
    - symbol mapping;
@@ -48,6 +48,7 @@ The owner rebaselined the operational paper-trading target to this structure:
    - recent 10-minute news/disclosures;
    - KIS ranking changes;
    - current price/orderbook for candidate symbols;
+   - deterministic candidate universe compiled before Flash runs;
    - holdings and pending-order state;
    - writes one trade document.
 6. Always-on trading program:
@@ -112,6 +113,10 @@ Allowed action values:
   before any KIS paper submission.
 - Stop-loss, take-profit, and trailing-stop handling belongs to the always-on
   executor using realtime KIS state, not to a delayed AI tick.
+- Follow-up owner decision on 2026-06-05: keep NAVER as the single first-runtime
+  news source and keep all six KIS signal inputs above. Public RSS is fallback
+  only, and Flash must not invent tickers outside the deterministic candidate
+  universe.
 
 ## 4. Files Rebaselined
 

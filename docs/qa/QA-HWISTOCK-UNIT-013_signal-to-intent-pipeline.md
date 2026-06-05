@@ -47,6 +47,8 @@ trades.
 | QA-012 | P0 | freshness | Provide expired price, orderbook, ranking, Pro, Flash, portfolio, order-state, or calendar artifacts | Intent is rejected with the matching TTL/freshness reason | queue artifact |
 | QA-013 | P0 | wait-cancel | Accept a new trade document after an older unfilled WAIT_BUY is still pending | Prior unfilled wait is canceled unless renewed by the new document and all gates still pass | queue artifact |
 | QA-014 | P0 | paper-read-boundary | Enable UNIT-013 KIS paper-read collector with paper/mock credentials | Only market-data endpoints are attempted; order/cancel/modify endpoints remain uncalled and unsupported NXT/SOR branches are disabled/fallback-only | endpoint audit |
+| QA-015 | P0 | candidate-universe | Provide a Flash trade document containing one ticker outside `compiled_watch/v0` | Off-universe action is rejected/watch-only and no `paper_order_intent/v0` is queued for that ticker | queue artifact |
+| QA-016 | P0 | kis-six-input-scope | Attempt UNIT-013 collector startup with configured KIS endpoints outside the six-input signal allowlist | Collector safe-blocks the extra endpoint and still proves no order/cancel/modify endpoint call | endpoint audit |
 
 ## 3. PASS / FAIL / BLOCKED Rules
 
@@ -57,8 +59,11 @@ trades.
   order endpoints are called in this row, re-runs duplicate active intents, or
   a held/pending/exiting/cooldown symbol can queue a conflicting new intent, an
   older unfilled wait survives a superseding document without renewal, or
-  stale/incomplete artifacts can produce an intent.
+  stale/incomplete artifacts can produce an intent, or Flash can create a paper
+  intent for a ticker absent from `compiled_watch/v0`.
 - BLOCKED: approved KIS market-data source is not available for rows requiring
   fresh market confirmation.
 - BLOCKED: any UNIT-013 path attempts KIS order/cancel/modify transport or
   treats NXT/SOR broker-facing data as paper-proven.
+- BLOCKED: the selected NAVER news source or one of the six KIS signal inputs is
+  unavailable and no explicit safe-block artifact is produced.

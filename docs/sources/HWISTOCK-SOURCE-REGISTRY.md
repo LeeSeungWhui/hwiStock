@@ -43,6 +43,8 @@ Default policy:
 - `conditional_after_key`: allowed only after explicit API-key/config approval.
 - `conditional_after_terms_check`: source is official, but implementation must
   first record terms, rate, and access method.
+- `fallback_only`: do not run in parallel with the selected primary source;
+  enable only after an explicit owner decision or primary-source outage plan.
 - `approved_unit_013_paper_read_pending_proof`: broker API market-data read
   source is allowed only for UNIT-013 Go-Check with paper/mock credentials,
   sanitized artifacts, rate/backoff evidence, and no order endpoint calls.
@@ -55,11 +57,11 @@ Default policy:
 | source_id | source | status | method | env / credential | storage policy | notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | `dart_openapi_disclosures` | OPENDART / DART Open API | `approved_first_go` | official API | `DART_API_KEY` | metadata, filing ids, timestamps, summaries, selected XML snapshots only when needed | Primary disclosure source for first Go. Use list/search endpoints and source ids. |
-| `public_news_rss_search` | Public news search RSS metadata feed | `approved_first_go` | public RSS/search feed metadata | none | title, link, source, published timestamp, query metadata, and RSS summary/excerpt only | No-key news source for first live collector hotfix. No article-body crawling, login scraping, paywall scraping, or general HTML scraping. |
-| `naver_search_news_api` | NAVER Developers Search API - news | `conditional_after_key` | official API | `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` | title, original link, Naver link, description/excerpt, timestamps, query metadata | General news source after API credentials and query/rate config are approved. No article-body scraping. |
+| `public_news_rss_search` | Public news search RSS metadata feed | `fallback_only` | public RSS/search feed metadata | none | title, link, source, published timestamp, query metadata, and RSS summary/excerpt only | Not part of the selected first runtime loop. Keep as a no-key fallback only; do not run alongside NAVER unless a later owner decision enables fallback mode. No article-body crawling, login scraping, paywall scraping, or general HTML scraping. |
+| `naver_search_news_api` | NAVER Developers Search API - news | `approved_first_go` | official API | `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` aliases only | title, original link, Naver link, description/excerpt, timestamps, query metadata | Owner-selected primary news source for the first operational runtime. If env aliases, query list, daily cap, or backoff config are missing, fail closed instead of silently switching to RSS. No article-body scraping. |
 | `kind_krx_disclosure_portal` | KRX KIND disclosure portal | `conditional_after_terms_check` | official web portal / future approved method | none until approved | metadata only until method is approved | Official disclosure portal, but automated collection needs source-specific terms/access confirmation. DART remains first source. |
 | `krx_data_marketplace_delayed` | KRX Data Marketplace | `conditional_after_terms_check` | official data portal/product | none until approved | delayed market-data metadata/OHLCV only after terms/access confirmation | Use for delayed/context data only after access policy is recorded. Realtime trading feed is not approved here. |
-| `kis_market_or_realtime_data` | KIS market/realtime/news APIs | `approved_unit_013_paper_read_pending_proof` | broker API paper-read only | `/home/hwi/.config/hwistock/hwistockApi.env` alias only; values never stored | sanitized metadata/snapshot fields, payload refs, hashes, watermarks; no raw secrets/account ids | UNIT-013 may collect KIS paper-supported KRX market-data snapshots for signal confirmation. UNIT-013 must not call KIS order endpoints. NXT/SOR/integrated broker-facing branches stay disabled/fallback-only until later proof. |
+| `kis_market_or_realtime_data` | KIS market/realtime/news APIs | `approved_unit_013_paper_read_pending_proof` | broker API paper-read only | `/home/hwi/.config/hwistock/hwistockApi.env` alias only; values never stored | sanitized metadata/snapshot fields, payload refs, hashes, watermarks; no raw secrets/account ids | UNIT-013 signal input allowlist is exactly six paper-read inputs: KRX realtime trade price, KRX realtime orderbook, volume rank, execution-strength/volume-power rank, fluctuation rank, and program-trading aggregate status where paper-supported. UNIT-013 must not call KIS order endpoints. NXT/SOR/integrated broker-facing branches stay disabled/fallback-only until later proof. |
 | `krx_nxt_market_calendar_cache` | KRX trading-days/holidays + NXT session references | `approved_first_go` | local cached calendar generated from official sources | none | trading-day/session metadata only | Runtime scheduler source for open/closed/stale-calendar decisions. See `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`. |
 | `general_media_html_scrape` | General news/media HTML scraping | `forbidden_default` | HTML scraping | none | none | Blocked by default due copyright/terms/anti-bot risk. |
 | `unofficial_finance_apis` | Unofficial finance/news/quote APIs | `forbidden_default` | unofficial API/scraping | none | none | Blocked unless a later source-specific review approves terms and data quality. |
@@ -84,10 +86,12 @@ Checked on 2026-06-02.
 
 - OPENDART: respect official API limits and error codes. First implementation
   should also apply a local conservative cap and backoff.
-- Public RSS news search: no credential required; use conservative polling,
-  metadata/excerpt-only storage, and no article-body HTML crawling.
-- NAVER Search API: use only after credentials are approved; first config must
-  include daily cap, query list, and backoff.
+- Selected first runtime news loop: NAVER Search News API only. Public RSS is
+  fallback-only and must not run in parallel with NAVER in the first runtime
+  loop.
+- NAVER Search API: use only via env aliases; first config must include daily
+  cap, query list, and backoff. Missing NAVER config is a safe block, not an
+  implicit RSS switch.
 - KRX/KIND: no automated collection until terms/access method is recorded.
 - Every source must record:
   - `source_id`
@@ -154,3 +158,8 @@ Duplicates must be linked, not discarded silently.
   attempted only inside UNIT-013's paper-read market-data collector where
   paper-supported. Unsupported NXT/SOR/integrated feeds must write
   disabled/fallback evidence and cannot unlock broker-facing orders.
+- UNIT-013's first signal input collector is intentionally narrow: two KIS KRX
+  WebSocket streams and four KIS REST ranking/context endpoints only. Additional
+  KIS endpoints such as current-price REST, intraday bars, intraday executions,
+  top-interest stocks, fills, balances, or buyable cash belong to later units or
+  future approved scope changes.

@@ -13,6 +13,7 @@ module_ref: docs/modules/HWISTOCK-MOD-009_operational-paper-trading-program.md
 ready_set_ref: docs/set/READY-SET-COMPLETION-20260605_operational-paper-trading-program_hwistock.md
 superseded_by:
   - docs/evidence/RUN-20260605_owner-runtime-architecture-10m-trade-document-rebaseline.md
+  - docs/evidence/RUN-20260605_owner-selected-naver-kis6-scope.md
 ---
 
 # Owner Runtime Architecture Clarification
@@ -59,6 +60,10 @@ Initial free/public source recommendation:
 - KRX KIND or other portal collection remains deferred until terms/access are
   explicitly recorded.
 
+Historical note: this recommendation is superseded by the later owner-selected
+`NAVER + KIS 6` scope. Current first-runtime news source is NAVER Search News
+API, with public RSS fallback-only.
+
 KIS intraday collection scope:
 
 - REST/current quote: `inquire-price`.
@@ -70,6 +75,10 @@ KIS intraday collection scope:
 - WebSocket/realtime, where paper-supported:
   KRX realtime trade price `H0STCNT0`, KRX realtime orderbook `H0STASP0`, and
   paper fill notice `H0STCNI9`.
+
+Historical note: this broad KIS list is not the current UNIT-013 signal scope.
+Current UNIT-013 signal scope is the six-input allowlist recorded in
+`docs/evidence/RUN-20260605_owner-selected-naver-kis6-scope.md`.
 
 ## 3. Files Updated
 

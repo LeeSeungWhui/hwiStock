@@ -61,31 +61,32 @@ The operational paper program is one coordinated system with these branches:
 
 1. `news_disclosure_collector`
    - Runs 24 hours.
-   - Collects approved/free public news and disclosure metadata.
-   - Initial source recommendation is:
+   - Collects approved public news and disclosure metadata.
+   - Selected first runtime source set is:
      - OpenDART official disclosure API for disclosure events;
-     - NAVER Developers Search News API when keys are configured;
-     - public RSS/news-search metadata as a no-key fallback;
+     - NAVER Developers Search News API as the primary news source via env
+       aliases and configured query/rate limits;
+     - public RSS/news-search metadata as fallback-only, not a parallel first
+       runtime source;
      - KRX KIND only after terms/access are explicitly recorded.
    - Never places orders.
 2. `kis_intraday_market_collector`
    - Runs continuously during the approved intraday window.
    - Collects KIS paper-supported KRX realtime price/orderbook data and
      1-3-minute REST ranking/analysis snapshots.
-   - WebSocket priority set where paper-supported:
+   - UNIT-013 first signal input set is exactly six KIS paper-read inputs.
+   - WebSocket signal inputs where paper-supported:
      - KRX realtime trade price (`H0STCNT0`);
-     - KRX realtime orderbook (`H0STASP0`);
-     - paper fill notice (`H0STCNI9`) for reconciliation.
-   - REST priority set, refreshed every 1-3 minutes during market hours:
-     - current price (`inquire-price`);
-     - intraday minute bars (`inquire-time-itemchartprice`);
-     - intraday executions (`inquire-time-itemconclusion`);
+     - KRX realtime orderbook (`H0STASP0`).
+   - REST signal inputs, refreshed every 1-3 minutes during market hours:
      - volume rank (`volume-rank`);
      - fluctuation rank (`ranking/fluctuation`);
      - volume power (`ranking/volume-power`);
      - program-trading aggregate status where the KIS paper capability matrix
-       proves the endpoint/support contract;
-     - top-interest stocks (`ranking/top-interest-stock`).
+       proves the endpoint/support contract.
+   - Paper fill notice (`H0STCNI9`), balances, buyable cash, and order/fill
+     reconciliation belong to `paper_execution` / UNIT-014, not UNIT-013 signal
+     generation.
    - NXT/SOR broker-facing collection remains disabled or fallback-only until a
      later approved support-confirmation gate.
 3. `deepseek_pro_hourly`
@@ -97,8 +98,8 @@ The operational paper program is one coordinated system with these branches:
 4. `deepseek_flash_decision_10m`
    - Runs every 10 minutes during market hours.
    - Reads the latest Pro file, the recent 10-minute news/disclosure window,
-     KIS REST ranking changes, current KIS price/orderbook snapshots, and
-     deterministic risk context.
+     KIS REST ranking changes, current KIS realtime price/orderbook snapshots,
+     deterministic candidate universe, and deterministic risk context.
    - Reads the previous trade-document chain and the current portfolio/order
      snapshot when available: holdings, pending orders, active stop/take-profit
      exits, cooldowns, and still-valid prior trade-action decisions.
@@ -111,6 +112,9 @@ The operational paper program is one coordinated system with these branches:
    - Supported action values are `WAIT_BUY`, `BUY_NOW`, `HOLD`, `SELL`, and
      `NO_TRADE`.
    - AI artifacts are not executable orders by themselves.
+   - Flash may score/select only symbols present in the deterministic
+     `compiled_watch/v0` candidate universe; off-universe tickers are rejected
+     and cannot become paper intents.
 5. `trade_document_executor`
    - Watches newly written `flash_trade_document/v0` files.
    - Cancels unfilled previous `WAIT_BUY` orders when a newer accepted document

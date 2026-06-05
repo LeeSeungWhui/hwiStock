@@ -57,8 +57,9 @@ The current contract is:
 - DeepSeek Pro: during market hours, include market-regime/session analysis in
   the same hourly Pro artifact instead of running it as a detached subsystem.
 - DeepSeek Flash: every 10 minutes during market hours, read the latest Pro
-  file, the recent 10-minute news/disclosure window, KIS REST ranking changes,
-  current KIS price/orderbook snapshots, and risk context. It must also read the
+  file, the recent 10-minute NAVER news/OpenDART disclosure window, KIS REST
+  ranking changes, current KIS realtime trade/orderbook snapshots, the
+  deterministic candidate universe, and risk context. It must also read the
   previous trade-document chain and/or current portfolio/order-state snapshot so
   actions do not conflict with held positions, pending orders, active
   stop/take-profit exits, cooldowns, or still-valid prior decisions. It then
@@ -93,6 +94,11 @@ own all paper-order eligibility.
   percent, cancel-if-not-filled window, position-size cap, source refs, KIS
   market-data refs, confidence/risk notes, portfolio-conflict status, and
   explicit paper-only/no-live-order metadata.
+- Flash must not invent ticker candidates. Its executable action universe is the
+  deterministic `compiled_watch/v0` input created from NAVER/OpenDART events,
+  the six KIS signal inputs, symbol mapping, freshness/session filters, and
+  strategy/risk prefilters. Off-universe symbols become reject/watch records or
+  a `NO_TRADE` safe block; they cannot become paper intents.
 - Flash input must include at least one portfolio-consistency source:
   - previous `flash_trade_document/v0` chain with active/expired trade-action
     status; or
@@ -126,6 +132,7 @@ own all paper-order eligibility.
 | AC-06 | P0 | Secrets and copyrighted bodies are excluded | AI input payload review rejects credentials, account ids, and unapproved full article bodies. |
 | AC-07 | P0 | Missing provider/key is safe | Missing key or provider failure records a safe block and does not unlock new entries. |
 | AC-08 | P0 | Flash is portfolio-aware | Flash input includes previous trade-document and/or portfolio/order-state context, and output marks conflicts instead of proposing duplicate/conflicting entries. |
+| AC-09 | P0 | Flash candidate universe is deterministic | Flash can only score/select symbols from a prebuilt `compiled_watch/v0`; off-universe tickers are rejected and cannot produce paper intents. |
 
 ## 5. Go Notes
 

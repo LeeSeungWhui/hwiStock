@@ -94,6 +94,15 @@ PASS.
 | `국내주식 체결강도 상위[v1_국내주식-101].xlsx` | Execution-strength / volume-power ranking | `to_verify_in_UNIT_013`: target 1-3-minute REST collector; fail closed if unsupported or stale. | Verify live/paper parity before live use. |
 | `프로그램매매 종합현황(시간) [국내주식-114].xlsx` | Program-trading aggregate status by time | `to_verify_in_UNIT_013`: optional market-context input; fail closed if unsupported or stale. | Verify live/paper parity before live use. |
 
+UNIT-013 first signal-input allowlist is intentionally narrower than this
+matrix. For the owner-selected first runtime scope, UNIT-013 may attempt only:
+KRX realtime trade price, KRX realtime orderbook, volume ranking,
+execution-strength/volume-power ranking, fluctuation ranking, and
+program-trading aggregate status where paper-supported. Current-price REST,
+minute bars, intraday executions, top-interest stocks, fill notices, balances,
+buyable cash, and helper APIs are out of UNIT-013 signal scope unless a later
+approved unit changes this list.
+
 ## 7. Calendar / Session APIs
 
 | API reference | KIS mode | paper/mock handling | live follow-up |

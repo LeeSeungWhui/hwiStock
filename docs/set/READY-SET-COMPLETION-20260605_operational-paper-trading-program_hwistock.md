@@ -106,8 +106,8 @@ only under the contract refs and preflight gates recorded here.
 | --- | --- | --- | --- |
 | 1 | HWISTOCK-UNIT-011 | go_started_check_pending | Install/sync user systemd runtime supervisor, start non-order local-only services/timers, and prove restart/status evidence. Evidence: `docs/evidence/RUN-20260605_unit-011-runtime-start-go.md`. |
 | 2 | HWISTOCK-UNIT-016 | set_complete | Runtime data/execution contracts, schema catalog, valid/invalid fixtures, and local validator are defined and validated. Evidence: `docs/evidence/RUN-20260605_unit-016-runtime-contract-hardening-set.md`. |
-| 3 | HWISTOCK-UNIT-012 | ready_for_go_check | Make DeepSeek Pro hourly aggregate/market-regime analysis and DeepSeek Flash 10-minute action-document generation real, current, validated, portfolio-aware, and unable to place orders. |
-| 4 | HWISTOCK-UNIT-013 | ready_for_go_check | Build UNIT-013-scoped KIS paper-read market-data collection plus 1-3-minute REST ranking snapshots where paper-supported, disabled/fallback evidence for unsupported NXT/SOR branches, and source-grounded trade-document action to `paper_order_intent/v0` pipeline with final source/KIS-market/portfolio/order refs plus deterministic schema/freshness/session/risk/reservation/conflict gates. UNIT-013 must not call KIS order/cancel/modify endpoints. |
+| 3 | HWISTOCK-UNIT-012 | ready_for_go_check | Make DeepSeek Pro hourly aggregate/market-regime analysis and DeepSeek Flash 10-minute action-document generation real, current, validated, portfolio-aware, constrained to deterministic `compiled_watch/v0` candidates, and unable to place orders. |
+| 4 | HWISTOCK-UNIT-013 | ready_for_go_check | Build UNIT-013-scoped NAVER/OpenDART source grounding plus exactly six KIS paper-read signal inputs: KRX realtime trade price, KRX realtime orderbook, volume rank, execution-strength/volume-power rank, fluctuation rank, and program-trading aggregate status where paper-supported. Produce disabled/fallback evidence for unsupported NXT/SOR branches, and source-grounded trade-document action to `paper_order_intent/v0` pipeline with final source/KIS-market/portfolio/order refs plus deterministic schema/freshness/session/risk/reservation/conflict gates. UNIT-013 must not call KIS order/cancel/modify endpoints. |
 | 5 | HWISTOCK-UNIT-014 | ready_for_go_check | Consume approved intents, cancel superseded WAIT_BUY orders, execute only KIS KRX paper orders, monitor stop/take-profit/trailing exits in realtime, reconcile state, survive ambiguous submit/restart paths, and prove idempotency/no-fake-broker behavior. |
 | 6 | HWISTOCK-UNIT-015 | ready_for_go_check | Expose read-only operator dashboard/API and observation-window reports for Prove after the order-producing contracts are closed. |
 
@@ -122,8 +122,9 @@ Ready-Set used current official references on 2026-06-05:
   sample categories. KIS samples are reference material, not proof that
   hwiStock is live-safe.
 - OpenDART official API is the primary disclosure source. NAVER Developers
-  Search News API is the primary keyed free-news API candidate. Public RSS is a
-  no-key metadata fallback, not an article-body crawler.
+  Search News API is the selected first-runtime news source. Public RSS is a
+  fallback-only no-key metadata source, not a parallel first-runtime collector
+  and not an article-body crawler.
 
 ## 6. Explicit Non-Readiness
 
