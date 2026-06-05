@@ -3,6 +3,8 @@ hwiStock AI conversation API.
 
 The route is read-only: it answers from stored runtime artifacts and sanitized
 state only. It must not call broker APIs, AI providers, or service controls.
+Operational exposure invariant: loopback backend plus frontend BFF/auth boundary
+only; LAN/public exposure requires a future approved access contract.
 """
 
 from typing import Optional

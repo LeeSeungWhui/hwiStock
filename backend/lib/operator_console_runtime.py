@@ -29,6 +29,7 @@ DEFAULT_RUNNER_SERVICE_PATHS = (
 AI_CONVERSATION_RESPONSE_SCHEMA_VERSION = "ai_conversation_response/v0"
 AI_CONVERSATION_AUDIT_SCHEMA_VERSION = "ai_conversation_audit/v0"
 AI_CONVERSATION_ROUTE = "local_deterministic_dashboard_answer"
+AI_CONVERSATION_ACCESS_INVARIANT = "loopback_or_frontend_bff_only"
 _SECRET_ASSIGNMENT_RE = re.compile(
     r"(?i)\b(api[_-]?key|app[_-]?key|appkey|secret|client[_-]?secret|appsecret|password|passwd|token|authorization)\s*[:=]\s*['\"]?[^\s,'\"]+"
 )
@@ -811,23 +812,31 @@ def buildAiConversationArtifactContext(
     *,
     snapshotAt: datetime,
     dataRoot: Optional[Path] = None,
+    serviceUnitPaths: Optional[list[Path]] = None,
 ) -> Dict[str, Any]:
     runtimeRoot = dataRoot or DEFAULT_DATA_ROOT
     dayKey = snapshotAt.astimezone(KST).date().isoformat()
     runnerStatus = baseRunner.get_runner_status(snapshotAt.strftime("%Y-%m-%dT%H:%M:%S"))
     latestArtifactPaths = latestRuntimePaths(runtimeRoot, dayKey)
     runtimeArtifacts = loadRuntimeArtifacts(latestArtifactPaths)
-    servicePolicy = inspectKisPaperRunnerServicePolicy([])
+    servicePolicy = inspectKisPaperRunnerServicePolicy(serviceUnitPaths)
     readiness = runnerStatus.get("readiness") if isinstance(runnerStatus.get("readiness"), dict) else {}
+    paperNetworkEnabled = bool(servicePolicy["paperNetworkEnabledByService"])
+    paperOrderEnabled = bool(servicePolicy["paperOrderEnabledByService"])
+    operationalTradingReadiness = bool(readiness.get("liveRunnerReady"))
+    servicePolicy = {
+        **servicePolicy,
+        "orderFlagContradictsReadiness": paperOrderEnabled and not operationalTradingReadiness,
+    }
     readinessTruth = buildReadinessTruthPanel(
         runnerStatus=runnerStatus,
         latestArtifactPaths=latestArtifactPaths,
         servicePolicy=servicePolicy,
-        paperNetworkEnabled=False,
-        paperOrderEnabled=False,
+        paperNetworkEnabled=paperNetworkEnabled,
+        paperOrderEnabled=paperOrderEnabled,
         paperOrdersSubmitted=False,
         paperObservationAccepted=bool(readiness.get("paperObservationAccepted")),
-        operationalTradingReadiness=bool(readiness.get("liveRunnerReady")),
+        operationalTradingReadiness=operationalTradingReadiness,
     )
     contextRefs = [
         {
@@ -853,6 +862,7 @@ def buildAiConversationArtifactContext(
         "orderMutationAttempted": False,
         "serviceMutationAttempted": False,
         "credentialValuesPrinted": False,
+        "accessInvariant": AI_CONVERSATION_ACCESS_INVARIANT,
     }
 
 
@@ -982,6 +992,7 @@ def answerAiConversation(
         "contextRefs": contextRefs,
         "modelProvider": "local",
         "modelRoute": AI_CONVERSATION_ROUTE,
+        "accessInvariant": AI_CONVERSATION_ACCESS_INVARIANT,
         "latencyMs": latencyMs,
         "credentialValuesPrinted": False,
         "networkCallMade": False,
@@ -1006,6 +1017,7 @@ def answerAiConversation(
         "contextRefs": contextRefs,
         "modelProvider": "local",
         "modelRoute": AI_CONVERSATION_ROUTE,
+        "accessInvariant": AI_CONVERSATION_ACCESS_INVARIANT,
         "latencyMs": latencyMs,
         "auditCategory": "ai_conversation",
         "auditWritten": audit["written"],

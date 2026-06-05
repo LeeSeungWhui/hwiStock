@@ -231,9 +231,13 @@ runtime rule is:
 KIS broker transport is allowed only when all conditions pass:
 
 - runtime label is `PAPER_ONLY`;
+- every executable order intent has `paper_only = true`;
 - broker adapter is `kis_paper`;
 - base URL alias is `kis_paper_vts`;
 - order route is KRX broker cash order;
+- weekday-only calendar fallback is forbidden for any paper-order approval path;
+- order approval requires an order-grade KIS market data source and a configured
+  calendar file, not only an approval JSON/run id;
 - TR ID alias exists in the adapter allowlist from the capability matrix;
 - account identity is a redacted adapter account alias, not a raw account number;
 - startup self-test proves no unapproved/unknown endpoint is configured.

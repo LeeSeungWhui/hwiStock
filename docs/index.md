@@ -225,6 +225,14 @@ requires an operator approval file plus matching approved order run id before
 the runner can submit any cash order. The order gate remains blocked by missing
 calendar/source configuration.
 
+Follow-up Pro review fail-closed remediation on 2026-06-05 tightened
+paper-order approval/calendar/source requirements, required `paper_only` and the
+`kis_paper` broker adapter for submit-path intents, clarified the FIFO intent
+queue as `next_intent_queue_fifo`, propagated service-policy contradictions into
+AI conversation readiness, and recorded the loopback/frontend-BFF AI access
+invariant. Evidence:
+`docs/evidence/RUN-20260605_pro-review-fail-closed-followup.md`.
+
 Current 2026-06-05 correction authority:
 
 - New Ready-Set target:
@@ -315,6 +323,8 @@ Go-Check evidence are now historical, not current Go authorization.
   - `docs/evidence/RUN-20260605_unit-007-lucid-command-dashboard-go.md`
 - Current UNIT-007 AI conversation backend Go-Check evidence:
   - `docs/evidence/RUN-20260605_unit-007-ai-conversation-backend-go-check.md`
+- Current Pro review fail-closed follow-up evidence:
+  - `docs/evidence/RUN-20260605_pro-review-fail-closed-followup.md`
 - Current UNIT-010 local Go-Check evidence:
   - `docs/evidence/RUN-20260605_unit-010-go-check.md`
 - Current commit-prep scope audit:
@@ -850,6 +860,11 @@ timer installation, while operational readiness remains false.
   `POST /api/v1/hwistock/ai/conversation`, grounded local answer/refusal,
   JSONL audit, secret-preview redaction, and no broker/order/service/AI-provider
   side-effect flags.
+- `docs/evidence/RUN-20260605_pro-review-fail-closed-followup.md`: current
+  follow-up Go-Check evidence for Pro review fail-closed remediation across
+  paper-order calendar/source approval, `paper_only`/broker-adapter intent
+  preflight, FIFO queue reporting, AI readiness service-policy contradictions,
+  and AI conversation access invariant.
 - `docs/evidence/RUN-20260605_unit-007-go-preflight-rebaseline.md`: current
   UNIT-007 rebaseline Go preflight evidence for read-only dashboard operator
   console doc-sync closure.

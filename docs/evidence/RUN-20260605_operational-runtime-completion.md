@@ -87,7 +87,7 @@ Sanitized result summary:
 | KIS market collector | `status=ok`, `candidate_count=5`, token cache hit |
 | Pro hourly | `validation_status=accepted`, `document_kind=MARKET_ANALYSIS`, `provider_status=ok`, `market_mode=RISK_OFF` |
 | Flash 10m | `validation_status=accepted`, `document_kind=TRADE_ACTIONS`, `provider_status=ok`, `accepted_count=5` |
-| Broker-adapter runner at 16:24 KST | intent loaded from latest queue, broker order not called, blocked by `kis_paper_order_requires_krx_regular_session` |
+| Broker-adapter runner at 16:24 KST | intent loaded from the next FIFO queue, broker order not called, blocked by `kis_paper_order_requires_krx_regular_session` |
 
 Runner after-hours block is expected: the service remains 24-hour, but KIS broker adapter
 orders are allowed only during KRX regular session.

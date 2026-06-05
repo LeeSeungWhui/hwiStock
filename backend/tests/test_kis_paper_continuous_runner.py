@@ -135,6 +135,10 @@ def _order_approval(tmp_path: Path, env: dict, *, run_id: str = "approved-order-
     return path
 
 
+def _mark_order_grade_source(env: dict) -> None:
+    env["HWISTOCK_MARKET_DATA_SOURCE"] = "kis_market_six_input"
+
+
 def test_default_systemd_runner_does_not_enable_orders():
     service_path = Path(__file__).resolve().parents[2] / "ops" / "systemd" / "user" / "hwistock-kis-paper-runner.service"
     service_text = service_path.read_text(encoding="utf-8")
@@ -303,7 +307,7 @@ def test_continuous_status_exposes_false_readiness():
     assert status["paperOrderEnabled"] is False
 
 
-def test_order_flag_requires_operator_approval_file(tmp_path):
+def test_order_flag_requires_operator_approval_file(tmp_path, monkeypatch):
     env = {"HWISTOCK_KIS_PAPER_ORDER_ENABLED": "true"}
     status = continuous.evaluateContinuousPaperRunnerStatus(env=env)
     assert status["paperOrderRequested"] is True
@@ -317,6 +321,40 @@ def test_order_flag_requires_operator_approval_file(tmp_path):
     assert status["paperOrderApproval"]["reason"] == "HWISTOCK_ORDER_APPROVAL_FILE_not_found"
 
     _order_approval(tmp_path, env)
+    _mark_order_grade_source(env)
+    env["HWISTOCK_CALENDAR_PATH"] = str(_calendar(tmp_path, monkeypatch))
+    status = continuous.evaluateContinuousPaperRunnerStatus(env=env)
+    assert status["paperOrderEnabled"] is True
+    assert status["paperOrderApproval"]["reason"] == "operator_order_approval_verified"
+
+
+def test_order_approval_rejects_weekday_calendar_fallback(tmp_path, monkeypatch):
+    env = {"HWISTOCK_KIS_PAPER_ORDER_ENABLED": "true"}
+    _order_approval(tmp_path, env)
+    _mark_order_grade_source(env)
+    env["HWISTOCK_CALENDAR_PATH"] = str(_calendar(tmp_path, monkeypatch))
+    env["HWISTOCK_ALLOW_WEEKDAY_CALENDAR_FALLBACK"] = "true"
+
+    status = continuous.evaluateContinuousPaperRunnerStatus(env=env)
+
+    assert status["paperOrderEnabled"] is False
+    assert status["paperOrderApproval"]["reason"] == "weekday_calendar_fallback_forbidden_for_paper_orders"
+
+
+def test_order_approval_requires_order_grade_source_and_calendar(tmp_path, monkeypatch):
+    env = {"HWISTOCK_KIS_PAPER_ORDER_ENABLED": "true"}
+    _order_approval(tmp_path, env)
+
+    status = continuous.evaluateContinuousPaperRunnerStatus(env=env)
+    assert status["paperOrderEnabled"] is False
+    assert status["paperOrderApproval"]["reason"] == "order_approval_market_data_source_not_order_grade"
+
+    _mark_order_grade_source(env)
+    status = continuous.evaluateContinuousPaperRunnerStatus(env=env)
+    assert status["paperOrderEnabled"] is False
+    assert status["paperOrderApproval"]["reason"] == "HWISTOCK_CALENDAR_PATH_missing_for_order_approval"
+
+    env["HWISTOCK_CALENDAR_PATH"] = str(_calendar(tmp_path, monkeypatch))
     status = continuous.evaluateContinuousPaperRunnerStatus(env=env)
     assert status["paperOrderEnabled"] is True
     assert status["paperOrderApproval"]["reason"] == "operator_order_approval_verified"
@@ -348,9 +386,11 @@ def test_tick_blocks_intent_when_paper_order_flag_disabled(tmp_path, monkeypatch
             "side": "buy",
             "quantity": 1,
             "venue_route": "KRX",
+            "broker_adapter": "kis_paper",
             "available_cash_krw": 2_000_000,
             "planned_order_cash_krw": 100_000,
             "current_holdings_count": 0,
+            "paper_only": True,
         },
     )
     rendered = json.dumps(payload, ensure_ascii=False)
@@ -364,6 +404,7 @@ def test_tick_with_fake_transport_processes_safe_krx_paper_intent_when_order_ena
     _calendar(tmp_path, monkeypatch)
     env = _env()
     env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _mark_order_grade_source(env)
     _order_approval(tmp_path, env)
     env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
     env["HWISTOCK_DATA_DIR"] = str(tmp_path / "data")
@@ -380,9 +421,11 @@ def test_tick_with_fake_transport_processes_safe_krx_paper_intent_when_order_ena
             "side": "buy",
             "quantity": 1,
             "venue_route": "KRX",
+            "broker_adapter": "kis_paper",
             "available_cash_krw": 2_000_000,
             "planned_order_cash_krw": 100_000,
             "current_holdings_count": 0,
+            "paper_only": True,
         },
     )
     rendered = json.dumps(payload, ensure_ascii=False)
@@ -410,9 +453,11 @@ def test_tick_blocks_non_krx_or_reserve_breach_before_order(tmp_path, monkeypatc
             "side": "buy",
             "quantity": 1,
             "venue_route": "NXT",
+            "broker_adapter": "kis_paper",
             "available_cash_krw": 2_000_000,
             "planned_order_cash_krw": 1_600_000,
             "current_holdings_count": 0,
+            "paper_only": True,
         },
     )
     cash_order = [step for step in payload["steps"] if step.get("step") == "cash_order"][-1]
@@ -427,6 +472,7 @@ def test_tick_blocks_paper_order_outside_krx_regular_session(tmp_path, monkeypat
     _calendar(tmp_path, monkeypatch)
     env = _env()
     env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _mark_order_grade_source(env)
     _order_approval(tmp_path, env)
     env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
     env["HWISTOCK_DATA_DIR"] = str(tmp_path / "data")
@@ -444,6 +490,7 @@ def test_tick_blocks_paper_order_outside_krx_regular_session(tmp_path, monkeypat
             "quantity": 1,
             "order_price": 70000,
             "venue_route": "KRX",
+            "broker_adapter": "kis_paper",
             "available_cash_krw": 2_000_000,
             "planned_order_cash_krw": 100_000,
             "current_holdings_count": 0,
@@ -456,7 +503,32 @@ def test_tick_blocks_paper_order_outside_krx_regular_session(tmp_path, monkeypat
     assert not any("/order-cash" in call["url"] for call in transport.calls)
 
 
-def test_tick_auto_loads_latest_intent_queue_and_persists_only_passed_order(tmp_path, monkeypatch):
+def test_preflight_requires_paper_only_and_kis_paper_adapter(tmp_path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    monkeypatch.setenv("HWISTOCK_MARKET_DATA_SOURCE", "kis_market_six_input")
+    status = base_runner.get_runner_status("2026-06-05T09:30:00")
+
+    preflight = continuous.evaluateIntentExecutionPreflight(
+        {
+            "intent_id": "intent-preflight-guard-1",
+            "idempotency_key": "intent-preflight-guard-1",
+            "symbol": "005930",
+            "side": "buy",
+            "quantity": 1,
+            "venue_route": "KRX",
+            "available_cash_krw": 2_000_000,
+            "planned_order_cash_krw": 100_000,
+            "current_holdings_count": 0,
+        },
+        status=status,
+    )
+
+    assert preflight["ok"] is False
+    assert "paper_only_guard_failed" in preflight["errors"]
+    assert "broker_adapter_not_allowed_for_paper_order" in preflight["errors"]
+
+
+def test_tick_auto_loads_next_fifo_intent_queue_and_persists_only_passed_order(tmp_path, monkeypatch):
     _calendar(tmp_path, monkeypatch)
     data_root = tmp_path / "data"
     intent_dir = data_root / "intents" / "2026-06-05"
@@ -471,16 +543,31 @@ def test_tick_auto_loads_latest_intent_queue_and_persists_only_passed_order(tmp_
         "quantity": 1,
         "order_price": 70000,
         "venue_route": "KRX",
+        "broker_adapter": "kis_paper",
         "available_cash_krw": 2_000_000,
         "planned_order_cash_krw": 100_000,
         "current_holdings_count": 0,
         "valid_until_kst": "2026-06-05T09:50:00+09:00",
         "paper_only": True,
     }
-    (intent_dir / "paper-order-intents-latest.jsonl").write_text(json.dumps(intent, ensure_ascii=False) + "\n", encoding="utf-8")
+    later_intent = {
+        **intent,
+        "intent_id": "intent-queue-2",
+        "idempotency_key": "intent-queue-2",
+        "flash_trade_document_ref": "flash-queue-2",
+        "symbol": "000660",
+    }
+    (intent_dir / "paper-order-intents-latest.jsonl").write_text(
+        json.dumps(intent, ensure_ascii=False)
+        + "\n"
+        + json.dumps(later_intent, ensure_ascii=False)
+        + "\n",
+        encoding="utf-8",
+    )
 
     env = _env()
     env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _mark_order_grade_source(env)
     _order_approval(tmp_path, env)
     env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
     env["HWISTOCK_DATA_DIR"] = str(data_root)
@@ -491,11 +578,12 @@ def test_tick_auto_loads_latest_intent_queue_and_persists_only_passed_order(tmp_
         adapter=adapter,
         at_kst="2026-06-05T09:30:00",
     )
-    assert payload["intent_source"] == "latest_intent_queue"
+    assert payload["intent_source"] == "next_intent_queue_fifo"
     assert any(step.get("step") == "cash_order" and step.get("status") == "pass" for step in payload["steps"])
     state_path = data_root / "state" / "kis-paper-runner-state.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
     assert "intent-queue-1" in state["consumed_intent_keys"]
+    assert "intent-queue-2" not in state["consumed_intent_keys"]
     assert state["pending_orders"][0]["symbol"] == "005930"
 
 
@@ -504,6 +592,7 @@ def test_tick_does_not_mark_intent_consumed_when_broker_warns(tmp_path, monkeypa
     data_root = tmp_path / "data"
     env = _env()
     env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _mark_order_grade_source(env)
     _order_approval(tmp_path, env)
     env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
     env["HWISTOCK_DATA_DIR"] = str(data_root)
@@ -521,6 +610,7 @@ def test_tick_does_not_mark_intent_consumed_when_broker_warns(tmp_path, monkeypa
             "quantity": 1,
             "order_price": 70000,
             "venue_route": "KRX",
+            "broker_adapter": "kis_paper",
             "available_cash_krw": 2_000_000,
             "planned_order_cash_krw": 100_000,
             "current_holdings_count": 0,
@@ -551,6 +641,7 @@ def test_tick_does_not_mark_intent_consumed_when_broker_warns(tmp_path, monkeypa
             "quantity": 1,
             "order_price": 70000,
             "venue_route": "KRX",
+            "broker_adapter": "kis_paper",
             "available_cash_krw": 2_000_000,
             "planned_order_cash_krw": 100_000,
             "current_holdings_count": 0,

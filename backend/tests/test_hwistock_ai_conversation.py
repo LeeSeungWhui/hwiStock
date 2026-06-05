@@ -115,6 +115,7 @@ def test_ai_conversation_answers_from_stored_artifacts(tmp_path):
     assert result["brokerCallMade"] is False
     assert result["networkCallMade"] is False
     assert result["orderMutationAttempted"] is False
+    assert result["accessInvariant"] == "loopback_or_frontend_bff_only"
     assert result["auditWritten"] is True
     assert any(ref["key"] == "ai" and ref["status"] == "present" for ref in result["contextRefs"])
 
@@ -202,3 +203,31 @@ def test_ai_conversation_router_returns_standard_response(monkeypatch, tmp_path)
     assert body["status"] is True
     assert body["result"]["refused"] is False
     assert body["result"]["requestId"].startswith("aiq-")
+
+
+def test_ai_conversation_readiness_reflects_service_order_policy(tmp_path):
+    dataRoot = tmp_path / "data"
+    writeRuntimeArtifacts(dataRoot)
+    serviceUnit = tmp_path / "hwistock-kis-paper-runner.service"
+    serviceUnit.write_text(
+        "\n".join(
+            [
+                "[Service]",
+                "Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=true",
+                "ExecStart=/usr/bin/env python backend/service/kis_paper_continuous_runner.py --once --allow-paper-network --allow-paper-orders",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    context = consoleRuntime.buildAiConversationArtifactContext(
+        snapshotAt=consoleRuntime.parseKstTime(AT_KST),
+        dataRoot=dataRoot,
+        serviceUnitPaths=[serviceUnit],
+    )
+    readiness = context["readinessTruth"]
+
+    assert readiness["paperOrderEnabled"] is True
+    assert readiness["servicePolicy"]["paperOrderEnabledByService"] is True
+    assert readiness["servicePolicy"]["orderFlagContradictsReadiness"] is True
+    assert "systemd_order_enabled_contradicts_readiness" in readiness["blockers"]

@@ -49,6 +49,8 @@ KST = timezone(timedelta(hours=9))
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_ROOT = Path(os.getenv("HWISTOCK_DATA_DIR", str(REPO_ROOT / "data")))
 _CONSUMED_INTENT_KEYS: set[str] = set()
+PAPER_ORDER_BROKER_ADAPTERS = frozenset({"kis_paper"})
+ORDER_GRADE_MARKET_DATA_SOURCES = frozenset({"kis_paper_read", "kis_market_six_input"})
 
 
 def _now_kst() -> datetime:
@@ -107,12 +109,19 @@ def loadPaperOrderApproval(
     request_flag = _bool_env(source, "HWISTOCK_KIS_PAPER_ORDER_ENABLED", False) if requested is None else bool(requested)
     run_id = str(source.get("HWISTOCK_OPERATOR_APPROVED_ORDER_RUN_ID") or "").strip()
     approval_file = str(source.get("HWISTOCK_ORDER_APPROVAL_FILE") or "").strip()
+    calendar_path = str(source.get("HWISTOCK_CALENDAR_PATH") or "").strip()
+    market_data_source = str(source.get("HWISTOCK_MARKET_DATA_SOURCE") or "").strip()
+    weekday_calendar_fallback = _bool_env(source, "HWISTOCK_ALLOW_WEEKDAY_CALENDAR_FALLBACK", False)
     result = {
         "requested": request_flag,
         "approved": False,
         "runIdPresent": bool(run_id),
         "approvalFilePresent": False,
         "approvalFilePathConfigured": bool(approval_file),
+        "calendarPathConfigured": bool(calendar_path),
+        "calendarFilePresent": bool(calendar_path and Path(calendar_path).is_file()),
+        "marketDataSource": market_data_source or None,
+        "weekdayCalendarFallbackAllowed": weekday_calendar_fallback,
         "reason": "paper_order_not_requested" if not request_flag else "order_approval_missing",
     }
     if not request_flag:
@@ -144,6 +153,18 @@ def loadPaperOrderApproval(
     valid_until = _parse_optional_kst_timestamp(payload.get("valid_until_kst") or payload.get("valid_until"))
     if valid_until and valid_until <= (now or _now_kst()):
         result["reason"] = "order_approval_expired"
+        return result
+    if weekday_calendar_fallback:
+        result["reason"] = "weekday_calendar_fallback_forbidden_for_paper_orders"
+        return result
+    if market_data_source not in ORDER_GRADE_MARKET_DATA_SOURCES:
+        result["reason"] = "order_approval_market_data_source_not_order_grade"
+        return result
+    if not calendar_path:
+        result["reason"] = "HWISTOCK_CALENDAR_PATH_missing_for_order_approval"
+        return result
+    if not Path(calendar_path).is_file():
+        result["reason"] = "HWISTOCK_CALENDAR_PATH_not_found_for_order_approval"
         return result
     result["approved"] = True
     result["reason"] = "operator_order_approval_verified"
@@ -216,8 +237,11 @@ def evaluateIntentExecutionPreflight(
     errors: list[str] = []
     if payload.get("schema_version") not in (None, "paper_order_intent/v0"):
         errors.append("intent_schema_invalid")
-    if payload.get("paper_only") is not True and payload.get("broker_adapter") == "kis_live":
+    if payload.get("paper_only") is not True:
         errors.append("paper_only_guard_failed")
+    broker_adapter = str(payload.get("broker_adapter") or "").strip()
+    if broker_adapter not in PAPER_ORDER_BROKER_ADAPTERS:
+        errors.append("broker_adapter_not_allowed_for_paper_order")
     if str(payload.get("venue_route") or payload.get("venue") or "").upper() != "KRX":
         errors.append("kis_paper_order_route_must_be_krx")
     symbol = str(payload.get("symbol") or payload.get("ticker") or "").strip()
@@ -364,7 +388,7 @@ def runContinuousPaperTick(
     local_state = _load_runner_state(config, data_root=data_root)
     intent_source = "explicit_argument" if intent else "none"
     if intent is None:
-        loaded = _load_latest_intent_from_queue(data_root=data_root, at=reference_now, state=local_state)
+        loaded = _load_next_intent_from_queue(data_root=data_root, at=reference_now, state=local_state)
         intent = loaded.get("intent")
         intent_source = str(loaded.get("source") or "none")
     result: Dict[str, Any] = {
@@ -572,7 +596,7 @@ def _load_intent_file(path: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _load_latest_intent_from_queue(
+def _load_next_intent_from_queue(
     *,
     data_root: Path,
     at: datetime,
@@ -580,7 +604,7 @@ def _load_latest_intent_from_queue(
 ) -> Dict[str, Any]:
     path = data_root / "intents" / at.date().isoformat() / "paper-order-intents-latest.jsonl"
     if not path.is_file():
-        return {"intent": None, "source": "latest_intent_queue_missing", "path": str(path)}
+        return {"intent": None, "source": "next_intent_queue_missing", "path": str(path)}
     consumed = {
         str(item or "").strip()
         for item in (state.get("consumed_intent_keys") or [])
@@ -614,8 +638,8 @@ def _load_latest_intent_from_queue(
         expiry = _parse_optional_kst_timestamp(row.get("valid_until_kst") or row.get("valid_until"))
         if expiry and expiry <= at:
             continue
-        return {"intent": row, "source": "latest_intent_queue", "path": str(path)}
-    return {"intent": None, "source": "latest_intent_queue_empty_or_expired", "path": str(path)}
+        return {"intent": row, "source": "next_intent_queue_fifo", "path": str(path)}
+    return {"intent": None, "source": "next_intent_queue_empty_or_expired", "path": str(path)}
 
 
 def _runner_state_path(config: Mapping[str, Any], *, data_root: Path) -> Path:
@@ -949,7 +973,8 @@ def _status_with_env_overrides(
             "reason": "runner env market-data source override",
         }
 
-    if _bool_env(env, "HWISTOCK_ALLOW_WEEKDAY_CALENDAR_FALLBACK", False):
+    paper_order_requested = _bool_env(env, "HWISTOCK_KIS_PAPER_ORDER_ENABLED", False)
+    if _bool_env(env, "HWISTOCK_ALLOW_WEEKDAY_CALENDAR_FALLBACK", False) and not paper_order_requested:
         calendar = payload.get("calendar") if isinstance(payload.get("calendar"), Mapping) else {}
         if calendar.get("tradingAllowed") is not True:
             ref = _parse_optional_kst_timestamp(at_kst) or _now_kst()
@@ -958,6 +983,17 @@ def _status_with_env_overrides(
                 "state": "calendar_weekday_fallback",
                 "tradingAllowed": ref.weekday() < 5,
                 "fallbackPolicy": "weekday_only_operator_enabled",
+                "dateKst": ref.date().isoformat(),
+            }
+    elif _bool_env(env, "HWISTOCK_ALLOW_WEEKDAY_CALENDAR_FALLBACK", False) and paper_order_requested:
+        calendar = payload.get("calendar") if isinstance(payload.get("calendar"), Mapping) else {}
+        if calendar.get("tradingAllowed") is not True:
+            ref = _parse_optional_kst_timestamp(at_kst) or _now_kst()
+            payload["calendar"] = {
+                **dict(calendar),
+                "state": "calendar_weekday_fallback_forbidden_for_orders",
+                "tradingAllowed": False,
+                "fallbackPolicy": "weekday_fallback_disabled_for_order_path",
                 "dateKst": ref.date().isoformat(),
             }
 
