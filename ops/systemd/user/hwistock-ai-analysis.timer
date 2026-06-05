@@ -4,8 +4,7 @@
 Description=hwiStock DeepSeek analysis every hour
 
 [Timer]
-OnBootSec=2min
-OnUnitActiveSec=1h
+OnCalendar=*-*-* *:00:00
 AccuracySec=1min
 Persistent=true
 Unit=hwistock-ai-analysis.service
