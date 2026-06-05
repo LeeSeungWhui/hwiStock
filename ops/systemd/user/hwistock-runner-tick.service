@@ -1,0 +1,13 @@
+# hwiStock runner evidence tick.
+# No broker, no KIS, no orders. Writes runner health evidence.
+
+[Unit]
+Description=hwiStock runner evidence tick (no-order)
+
+[Service]
+Type=oneshot
+WorkingDirectory=/data/workspace/My/hwiStock
+EnvironmentFile=-/home/hwi/.config/hwistock/hwistock.env
+Environment=HWISTOCK_BIND_HOST=127.0.0.1
+ExecStart=/usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/HwiStockRunnerService.py --once --write-evidence'
+NoNewPrivileges=true

@@ -1,0 +1,15 @@
+# hwiStock continuous KIS paper/mock runner timer.
+# Runs recurring paper/mock evidence ticks without a Codex session.
+
+[Unit]
+Description=hwiStock continuous KIS paper/mock runner every 5 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=20s
+Persistent=true
+Unit=hwistock-kis-paper-runner.service
+
+[Install]
+WantedBy=timers.target

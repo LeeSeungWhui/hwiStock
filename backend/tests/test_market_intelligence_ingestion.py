@@ -9,6 +9,7 @@ import importlib
 import importlib.util
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 import unittest
@@ -21,10 +22,6 @@ from lib import market_intelligence as mi  # noqa: E402
 from service import market_intelligence_ingestion as ingestion  # noqa: E402
 
 FORBIDDEN_IMPORT_PREFIXES = (
-    "requests",
-    "httpx",
-    "aiohttp",
-    "urllib",
     "socket",
     "websocket",
     "kis",
@@ -83,7 +80,7 @@ class MarketIntelligenceIngestionTests(unittest.TestCase):
         reg = mi.loadSourceRegistryConfig()
         self.assertEqual(
             reg["approved_first_go_source_ids"],
-            ["dart_openapi_disclosures", "krx_nxt_market_calendar_cache"],
+            ["dart_openapi_disclosures", "krx_nxt_market_calendar_cache", "public_news_rss_search"],
         )
         required_keys = {
             "source_status",
@@ -259,6 +256,103 @@ class MarketIntelligenceIngestionTests(unittest.TestCase):
         self.assertGreater(result["summary"]["unique_events"], 0)
         for event in result["events"]:
             self.assertEqual(event["ingestion_mode"], "foundation_fixture")
+
+    def testLiveCollectorWritesFailClosedHealthWhenKeysAreMissing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = {
+                key: os.environ.pop(key, None)
+                for key in ("DART_API_KEY", "NAVER_CLIENT_ID", "NAVER_CLIENT_SECRET")
+            }
+            try:
+                result = ingestion.runCollectorOnce(
+                    output_root=Path(tmp),
+                    enable_network=True,
+                    include_public_rss=False,
+                    now=ingestion.datetime(2026, 6, 5, 4, 30, tzinfo=ingestion.KST),
+                )
+            finally:
+                for key, value in previous.items():
+                    if value is not None:
+                        os.environ[key] = value
+
+            health = result["health"]
+            self.assertEqual(health["status"], "blocked_no_source_rows")
+            self.assertFalse(health["orders_enabled"])
+            self.assertFalse(health["broker_calls_enabled"])
+            self.assertEqual(health["normalized_event_count"], 0)
+            statuses = {row["source_id"]: row["status"] for row in health["source_results"]}
+            self.assertEqual(statuses["dart_openapi_disclosures"], "skipped_missing_key")
+            self.assertEqual(statuses["naver_search_news_api"], "skipped_missing_key")
+            self.assertTrue((Path(tmp) / "evidence" / "2026-06-05" / "market-intel-collector-health.json").is_file())
+
+    def testLiveCollectorNoNetworkModeDoesNotCallSourcesButWritesHealth(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = ingestion.runCollectorOnce(
+                output_root=Path(tmp),
+                enable_network=False,
+                now=ingestion.datetime(2026, 6, 5, 4, 35, tzinfo=ingestion.KST),
+            )
+
+            health = result["health"]
+            self.assertEqual(health["source_results"][0]["status"], "skipped_network_disabled")
+            self.assertEqual(health["source_results"][1]["status"], "skipped_network_disabled")
+            self.assertEqual(health["source_results"][2]["status"], "skipped_network_disabled")
+            self.assertTrue((Path(tmp) / "evidence" / "2026-06-05" / "market-intel-collector-health.json").is_file())
+
+    def testPublicRssRowsCanNormalizeWithoutApiKeys(self):
+        rss = """<?xml version="1.0" encoding="UTF-8"?>
+        <rss><channel>
+          <item>
+            <title>삼성전자 주가 상승</title>
+            <link>https://news.example.test/article/1</link>
+            <guid>rss-1</guid>
+            <pubDate>Thu, 04 Jun 2026 23:00:00 GMT</pubDate>
+            <description>시장 요약</description>
+            <source>Example News</source>
+          </item>
+        </channel></rss>
+        """
+        sanitized = ingestion._sanitize_rss_payload({"_http_status": 200, "text": rss}, query="삼성전자")
+        rows = ingestion._public_rss_rows(
+            sanitized["items"],
+            query="삼성전자",
+            collected_at_kst="2026-06-05T08:01:00+09:00",
+        )
+        result = ingestion.ingestFixtureRows(
+            rows,
+            registry=ingestion._runtime_registry_for_sources(["public_news_rss_search"]),
+            run_collected_at_kst="2026-06-05T08:01:00+09:00",
+        )
+
+        self.assertEqual(result["summary"]["unique_events"], 1)
+        self.assertEqual(result["events"][0]["source_id"], "public_news_rss_search")
+        self.assertEqual(result["events"][0]["event_type"], "news_event")
+        self.assertEqual(result["events"][0]["body_storage_policy"], "excerpt_allowed")
+
+    def testCollectorJsonlAppendSkipsExistingEventIds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "normalized" / "2026-06-05" / "events.jsonl"
+            first = {"event_id": "public-news-rss-search:1", "title": "first"}
+            duplicate = {"event_id": "public-news-rss-search:1", "title": "duplicate"}
+            second = {"event_id": "public-news-rss-search:2", "title": "second"}
+
+            self.assertEqual(ingestion._append_jsonl_unique(path, [first]), 1)
+            self.assertEqual(ingestion._append_jsonl_unique(path, [duplicate, second]), 1)
+
+            lines = path.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(lines), 2)
+            self.assertIn('"title": "first"', lines[0])
+            self.assertIn('"title": "second"', lines[1])
+
+    def testSystemdCollectorTimerTemplatesExist(self):
+        ops = Path(__file__).resolve().parents[2] / "ops" / "systemd"
+        service = (ops / "hwistock-intel-collector.service").read_text(encoding="utf-8")
+        timer = (ops / "hwistock-intel-collector.timer").read_text(encoding="utf-8")
+
+        self.assertIn("market_intelligence_ingestion.py --once", service)
+        self.assertIn("EnvironmentFile=-/home/hwi/.config/hwistock/hwistock.env", service)
+        self.assertIn("OnUnitActiveSec=10min", timer)
+        self.assertIn("Persistent=true", timer)
 
 
 if __name__ == "__main__":

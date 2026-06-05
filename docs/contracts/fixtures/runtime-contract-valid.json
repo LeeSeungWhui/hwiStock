@@ -1,0 +1,490 @@
+{
+  "fixture_version": "hwistock.runtime_contract_fixtures/v0",
+  "valid_artifacts": [
+    {
+      "schema_version": "news_event/v0",
+      "artifact_id": "art_news_20260605_0001",
+      "artifact_type": "news_event",
+      "run_id": "run_20260605_contract",
+      "trading_date": "2026-06-05",
+      "environment": "paper",
+      "created_at_kst": "2026-06-05T09:01:00+09:00",
+      "collected_at_kst": "2026-06-05T09:01:00+09:00",
+      "valid_until": "2026-06-05T20:00:00+09:00",
+      "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "redaction_status": "partial",
+      "producer": "news_disclosure_collector",
+      "input_refs": [],
+      "validation": {
+        "ok": true,
+        "validator": "runtime-contract/v0",
+        "validated_at_kst": "2026-06-05T09:01:01+09:00",
+        "errors": []
+      },
+      "event_id": "news:naver:20260605:0001",
+      "source_id": "naver_search_news",
+      "source_name": "NAVER Search News API",
+      "source_url": "https://developers.naver.com/products/service-api/search/search.md",
+      "title": "sample public market news title",
+      "url": "https://news.example.invalid/0001",
+      "body_storage_policy": "metadata_only",
+      "untrusted_text_ref": "data/raw/2026-06-05/news/0001.json",
+      "symbols": [
+        "005930"
+      ]
+    },
+    {
+      "schema_version": "disclosure_event/v0",
+      "artifact_id": "art_disclosure_20260605_0001",
+      "artifact_type": "disclosure_event",
+      "run_id": "run_20260605_contract",
+      "trading_date": "2026-06-05",
+      "environment": "paper",
+      "created_at_kst": "2026-06-05T09:02:00+09:00",
+      "collected_at_kst": "2026-06-05T09:02:00+09:00",
+      "valid_until": "2026-06-05T20:00:00+09:00",
+      "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "redaction_status": "none",
+      "producer": "news_disclosure_collector",
+      "input_refs": [],
+      "validation": {
+        "ok": true,
+        "validator": "runtime-contract/v0",
+        "validated_at_kst": "2026-06-05T09:02:01+09:00",
+        "errors": []
+      },
+      "event_id": "dart:20260605:0001",
+      "source_id": "opendart",
+      "corp_code": "00126380",
+      "stock_code": "005930",
+      "report_name": "sample disclosure",
+      "disclosure_id": "20260605000001",
+      "source_url": "https://opendart.fss.or.kr/guide/main.do",
+      "body_storage_policy": "metadata_only",
+      "untrusted_text_ref": "data/raw/2026-06-05/disclosures/0001.json",
+      "symbols": [
+        "005930"
+      ]
+    },
+    {
+      "schema_version": "kis_market_snapshot/v0",
+      "artifact_id": "art_kis_snapshot_20260605_090300",
+      "artifact_type": "kis_market_snapshot",
+      "run_id": "run_20260605_contract",
+      "trading_date": "2026-06-05",
+      "environment": "paper",
+      "created_at_kst": "2026-06-05T09:03:00+09:00",
+      "collected_at_kst": "2026-06-05T09:03:00+09:00",
+      "valid_until": "2026-06-05T09:03:05+09:00",
+      "content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "redaction_status": "full",
+      "producer": "kis_intraday_market_collector",
+      "input_refs": [],
+      "validation": {
+        "ok": true,
+        "validator": "runtime-contract/v0",
+        "validated_at_kst": "2026-06-05T09:03:01+09:00",
+        "errors": []
+      },
+      "snapshot_id": "kis:price:005930:20260605T090300",
+      "snapshot_kind": "current_price",
+      "endpoint_family": "inquire-price",
+      "paper_support_status": "paper_proven_bounded_20260604",
+      "symbols": [
+        "005930"
+      ],
+      "market_session": "KRX_REGULAR",
+      "freshness": {
+        "ttl_seconds": 5,
+        "is_fresh": true
+      }
+    },
+    {
+      "schema_version": "pro_hourly_market_analysis/v0",
+      "artifact_id": "art_pro_hourly_20260605_0900",
+      "artifact_type": "pro_hourly_market_analysis",
+      "run_id": "run_20260605_contract",
+      "trading_date": "2026-06-05",
+      "environment": "paper",
+      "created_at_kst": "2026-06-05T09:04:00+09:00",
+      "collected_at_kst": "2026-06-05T09:04:00+09:00",
+      "valid_until": "2026-06-05T10:10:00+09:00",
+      "content_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "redaction_status": "full",
+      "producer": "deepseek_pro_hourly",
+      "input_refs": [
+        "art_news_20260605_0001",
+        "art_disclosure_20260605_0001",
+        "art_kis_snapshot_20260605_090300"
+      ],
+      "validation": {
+        "ok": true,
+        "validator": "runtime-contract/v0",
+        "validated_at_kst": "2026-06-05T09:04:01+09:00",
+        "errors": []
+      },
+      "job_id": "deepseek_pro_hourly",
+      "hour_bucket_kst": "2026-06-05T09:00:00+09:00",
+      "model_role": "deepseek_pro",
+      "model_name": "deepseek-v4-pro",
+      "input_manifest_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "market_regime": {
+        "session": "KRX_REGULAR",
+        "regime_label": "sample_neutral"
+      },
+      "sections": [
+        "news_disclosure_summary",
+        "market_regime",
+        "risk_notes"
+      ],
+      "no_broker_interface": true
+    },
+    {
+      "schema_version": "portfolio_snapshot/v0",
+      "artifact_id": "art_portfolio_20260605_090455",
+      "artifact_type": "portfolio_snapshot",
+      "run_id": "run_20260605_contract",
+      "trading_date": "2026-06-05",
+      "environment": "paper",
+      "created_at_kst": "2026-06-05T09:04:55+09:00",
+      "collected_at_kst": "2026-06-05T09:04:55+09:00",
+      "valid_until": "2026-06-05T09:05:00+09:00",
+      "content_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "redaction_status": "full",
+      "producer": "portfolio_reconciler",
+      "input_refs": [],
+      "validation": {
+        "ok": true,
+        "validator": "runtime-contract/v0",
+        "validated_at_kst": "2026-06-05T09:04:56+09:00",
+        "errors": []
+      },
+      "snapshot_id": "portfolio:paper:20260605T090455",
+      "account_alias": "paper_account_alias:primary",
+      "holdings": [],
+      "pending_orders": [],
+      "active_exits": [],
+      "cash": {
+        "available_cash": 2000000,
+        "settled_cash": 2000000,
+        "minimum_reserve_ratio": 0.25
+      },
+      "reserved_cash": 0,
+      "open_holding_slots": 5,
+      "reserved_holding_slots": 0,
+      "authoritative_for_executor": true
+    },
+    {
+      "schema_version": "order_state_snapshot/v0",
+      "artifact_id": "art_order_state_20260605_090455",
+      "artifact_type": "order_state_snapshot",
+      "run_id": "run_20260605_contract",
+      "trading_date": "2026-06-05",
+      "environment": "paper",
+      "created_at_kst": "2026-06-05T09:04:55+09:00",
+      "collected_at_kst": "2026-06-05T09:04:55+09:00",
+      "valid_until": "2026-06-05T09:05:00+09:00",
+      "content_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "redaction_status": "full",
+      "producer": "order_state_reconciler",
+      "input_refs": [],
+      "validation": {
+        "ok": true,
+        "validator": "runtime-contract/v0",
+        "validated_at_kst": "2026-06-05T09:04:56+09:00",
+        "errors": []
+      },
+      "snapshot_id": "order_state:paper:20260605T090455",
+      "open_orders": [],
+      "consumed_trade_doc_ids": [],
+      "cooldowns": [],
+      "position_locks": [],
+      "authoritative_for_executor": true
+    },
+    {
+      "schema_version": "flash_trade_document/v0",
+      "artifact_id": "art_flash_tdoc_20260605_0940",
+      "artifact_type": "flash_trade_document",
+      "run_id": "run_20260605_contract",
+      "trading_date": "2026-06-05",
+      "environment": "paper",
+      "created_at_kst": "2026-06-05T09:40:00+09:00",
+      "collected_at_kst": "2026-06-05T09:40:00+09:00",
+      "valid_until": "2026-06-05T09:50:00+09:00",
+      "content_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "redaction_status": "full",
+      "producer": "deepseek_flash_decision_10m",
+      "input_refs": [
+        "art_pro_hourly_20260605_0900",
+        "art_kis_snapshot_20260605_090300",
+        "art_portfolio_20260605_090455",
+        "art_order_state_20260605_090455"
+      ],
+      "validation": {
+        "ok": true,
+        "validator": "runtime-contract/v0",
+        "validated_at_kst": "2026-06-05T09:05:01+09:00",
+        "errors": []
+      },
+      "trade_doc_id": "tdoc_abc123",
+      "document_kind": "TRADE_ACTIONS",
+      "input_manifest_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+      "previous_trade_doc_refs": [
+        "art_flash_tdoc_20260605_0930"
+      ],
+      "portfolio_snapshot_ref": "art_portfolio_20260605_090455",
+      "order_state_snapshot_ref": "art_order_state_20260605_090455",
+      "executable_intents_allowed": false,
+      "decision_bucket_kst": "2026-06-05T09:40:00+09:00",
+      "decision_interval_minutes": 10,
+      "market_mode": "RISK_ON",
+      "max_new_positions": 3,
+      "max_total_positions": 5,
+      "actions": [
+        {
+          "action_id": "act_005930_0940_01",
+          "ticker": "005930",
+          "name": "삼성전자",
+          "action": "WAIT_BUY",
+          "entry_zone": [
+            70000,
+            70500
+          ],
+          "take_profit": 72000,
+          "stop_loss": 69000,
+          "trailing_stop_pct": 1.2,
+          "cancel_if_not_filled_until": "2026-06-05T09:50:00+09:00",
+          "position_size_pct": 20,
+          "reason": "fixture volume rank plus positive source context",
+          "valid_until": "2026-06-05T09:50:00+09:00",
+          "source_refs": [
+            "art_news_20260605_0001",
+            "art_disclosure_20260605_0001"
+          ],
+          "market_data_refs": [
+            "art_kis_snapshot_20260605_090300"
+          ],
+          "portfolio_state_refs": [
+            "art_portfolio_20260605_090455",
+            "art_order_state_20260605_090455"
+          ],
+          "portfolio_conflict": {
+            "already_holding": false,
+            "pending_order_exists": false,
+            "active_exit_exists": false,
+            "cooldown_active": false,
+            "position_locked": false
+          },
+          "executable_intent_allowed": false
+        }
+      ]
+    },
+    {
+      "schema_version": "paper_order_intent/v0",
+      "artifact_id": "art_intent_20260605_090501",
+      "artifact_type": "paper_order_intent",
+      "run_id": "run_20260605_contract",
+      "trading_date": "2026-06-05",
+      "environment": "paper",
+      "created_at_kst": "2026-06-05T09:05:01+09:00",
+      "collected_at_kst": "2026-06-05T09:05:01+09:00",
+      "valid_until": "2026-06-05T09:06:00+09:00",
+      "content_hash": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      "redaction_status": "full",
+      "producer": "trade_document_intent_pipeline",
+      "input_refs": [
+        "art_flash_tdoc_20260605_0940",
+        "art_portfolio_20260605_090455",
+        "art_order_state_20260605_090455"
+      ],
+      "validation": {
+        "ok": true,
+        "validator": "runtime-contract/v0",
+        "validated_at_kst": "2026-06-05T09:05:02+09:00",
+        "errors": []
+      },
+      "intent_id": "intent_def456",
+      "trade_doc_id": "tdoc_abc123",
+      "side": "buy",
+      "order_rule": {
+        "order_type": "limit",
+        "price_ref": "art_kis_snapshot_20260605_090300"
+      },
+      "quantity_rule": {
+        "sizing": "cash_cap",
+        "max_cash_krw": 300000
+      },
+      "max_cash_krw": 300000,
+      "gate_results": [
+        "schema_pass",
+        "freshness_pass",
+        "portfolio_conflict_pass",
+        "reservation_pass"
+      ],
+      "reservation_status": {
+        "reserved_cash": 300000,
+        "reserved_holding_slots": 1,
+        "worst_case_fill_checked": true
+      },
+      "executable_intent_allowed": true,
+      "trade_action_id": "act_005930_0940_01",
+      "ticker": "005930"
+    },
+    {
+      "schema_version": "executor_decision/v0",
+      "artifact_id": "art_exec_decision_20260605_090502",
+      "artifact_type": "executor_decision",
+      "run_id": "run_20260605_contract",
+      "trading_date": "2026-06-05",
+      "environment": "paper",
+      "created_at_kst": "2026-06-05T09:05:02+09:00",
+      "collected_at_kst": "2026-06-05T09:05:02+09:00",
+      "valid_until": "2026-06-05T09:05:07+09:00",
+      "content_hash": "234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1",
+      "redaction_status": "full",
+      "producer": "trade_document_executor",
+      "input_refs": [
+        "art_intent_20260605_090501",
+        "art_portfolio_20260605_090455",
+        "art_order_state_20260605_090455"
+      ],
+      "validation": {
+        "ok": true,
+        "validator": "runtime-contract/v0",
+        "validated_at_kst": "2026-06-05T09:05:03+09:00",
+        "errors": []
+      },
+      "decision_id": "exec_decision_090502",
+      "intent_id": "intent_def456",
+      "from_state": "INTENT_CREATED",
+      "to_state": "RESERVED",
+      "gate_result": "pass",
+      "rejection_codes": [],
+      "authoritative_snapshot_refs": [
+        "art_portfolio_20260605_090455",
+        "art_order_state_20260605_090455"
+      ],
+      "lock_refs": [
+        "lock:account:paper:primary",
+        "lock:symbol:005930"
+      ],
+      "ledger_ref": "ledger:paper:20260605",
+      "no_broker_call_if_rejected": true
+    },
+    {
+      "schema_version": "broker_order_request/v0",
+      "artifact_id": "art_broker_req_20260605_090503",
+      "artifact_type": "broker_order_request",
+      "run_id": "run_20260605_contract",
+      "trading_date": "2026-06-05",
+      "environment": "paper",
+      "created_at_kst": "2026-06-05T09:05:03+09:00",
+      "collected_at_kst": "2026-06-05T09:05:03+09:00",
+      "valid_until": "2026-06-05T09:05:08+09:00",
+      "content_hash": "34567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12",
+      "redaction_status": "full",
+      "producer": "kis_paper_executor",
+      "input_refs": [
+        "art_exec_decision_20260605_090502"
+      ],
+      "validation": {
+        "ok": true,
+        "validator": "runtime-contract/v0",
+        "validated_at_kst": "2026-06-05T09:05:04+09:00",
+        "errors": []
+      },
+      "request_id": "broker_req_090503",
+      "intent_id": "intent_def456",
+      "client_order_key": "cok_789abc",
+      "broker_adapter": "kis_paper",
+      "base_url_alias": "kis_paper_vts",
+      "paper_only_guard": {
+        "environment_label": "PAPER_ONLY",
+        "paper_account_alias": "paper_account_alias:primary",
+        "krx_only": true,
+        "tr_id_allowed": true,
+        "startup_self_test_passed": true
+      },
+      "side": "buy",
+      "symbol": "005930",
+      "quantity": 1,
+      "price_rule": {
+        "order_type": "limit",
+        "price_ref": "art_kis_snapshot_20260605_090300"
+      },
+      "tr_id_alias": "kis_domestic_cash_order_paper_krx",
+      "route": "KRX",
+      "submitted_after_write_ahead_log": true
+    },
+    {
+      "schema_version": "broker_order_result/v0",
+      "artifact_id": "art_broker_result_20260605_090504",
+      "artifact_type": "broker_order_result",
+      "run_id": "run_20260605_contract",
+      "trading_date": "2026-06-05",
+      "environment": "paper",
+      "created_at_kst": "2026-06-05T09:05:04+09:00",
+      "collected_at_kst": "2026-06-05T09:05:04+09:00",
+      "valid_until": "2026-06-05T20:00:00+09:00",
+      "content_hash": "4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef123",
+      "redaction_status": "full",
+      "producer": "kis_paper_adapter",
+      "input_refs": [
+        "art_broker_req_20260605_090503"
+      ],
+      "validation": {
+        "ok": true,
+        "validator": "runtime-contract/v0",
+        "validated_at_kst": "2026-06-05T09:05:05+09:00",
+        "errors": []
+      },
+      "result_id": "broker_result_090504",
+      "request_id": "broker_req_090503",
+      "client_order_key": "cok_789abc",
+      "broker_status": "unknown",
+      "order_state": "SUBMIT_UNKNOWN",
+      "broker_order_id_alias": "paper_order_alias:pending_reconcile",
+      "error_class": "timeout_or_ambiguous",
+      "reconciliation_required": true,
+      "raw_secret_redacted": true
+    },
+    {
+      "schema_version": "reconciliation_event/v0",
+      "artifact_id": "art_reconcile_20260605_090600",
+      "artifact_type": "reconciliation_event",
+      "run_id": "run_20260605_contract",
+      "trading_date": "2026-06-05",
+      "environment": "paper",
+      "created_at_kst": "2026-06-05T09:06:00+09:00",
+      "collected_at_kst": "2026-06-05T09:06:00+09:00",
+      "valid_until": "2026-06-05T20:00:00+09:00",
+      "content_hash": "567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234",
+      "redaction_status": "full",
+      "producer": "kis_paper_reconciler",
+      "input_refs": [
+        "art_broker_result_20260605_090504"
+      ],
+      "validation": {
+        "ok": true,
+        "validator": "runtime-contract/v0",
+        "validated_at_kst": "2026-06-05T09:06:01+09:00",
+        "errors": []
+      },
+      "reconciliation_id": "reconcile_090600",
+      "broker_adapter": "kis_paper",
+      "source_query_alias": "kis_daily_order_fill_lookup_paper_krx",
+      "matched_client_order_key": "cok_789abc",
+      "order_state": "RECONCILED",
+      "fills": [],
+      "positions": [],
+      "cash_snapshot": {
+        "account_alias": "paper_account_alias:primary",
+        "raw_values_redacted": true
+      },
+      "ledger_updates": [
+        "submit_unknown_reconciled_no_match"
+      ],
+      "calculation_source": "system"
+    }
+  ]
+}

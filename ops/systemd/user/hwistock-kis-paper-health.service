@@ -1,0 +1,14 @@
+# KIS paper/mock read-health tick.
+# Paper/mock only. No order endpoint.
+
+[Unit]
+Description=hwiStock KIS paper/mock read-health tick
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/data/workspace/My/hwiStock
+EnvironmentFile=-/home/hwi/.config/hwistock/kis-paper.env
+ExecStart=/usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/kis_paper_health.py --once'
+NoNewPrivileges=true

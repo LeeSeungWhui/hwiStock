@@ -59,14 +59,14 @@ Out of scope:
 | QA-003 | P0 | docs | Inspect module doc | Safety module states no live orders by default | file path |
 | QA-004 | P1 | docs | Inspect QA scenario | Scenario references bootstrap unit/module/profile | file path |
 | QA-005 | P1 | docs | Inspect index/profile/unit | Selected broker, stack, strategy/risk, paper-boundary, source registry, closed Ready-Set state, and remaining Go/operational restrictions are visible | file path |
-| QA-006 | P0 | docs | Inspect profile/module/unit | Live operation requires at least one full week of paper/sandbox testing evidence before go/no-go approval | file path |
+| QA-006 | P0 | docs | Inspect profile/module/unit | Live operation requires operator-selected paper/sandbox observation evidence before go/no-go approval | file path |
 | QA-007 | P0 | docs | Inspect profile/module/unit | Capital policy is cash-only and leveraged capital is forbidden by default | file path |
 
 ## 4. PASS / FAIL / BLOCKED Rules
 
 - PASS: all required docs exist, live-trading side effects remain explicitly
-  forbidden, the one-week paper/sandbox test gate is documented, and capital is
-  cash-only by default.
+  forbidden, the operator-selected paper/sandbox observation gate is documented,
+  and capital is cash-only by default.
 - FAIL: docs imply real-money trading or broker side effects may happen without
   approval.
 - BLOCKED: required docs cannot be read.

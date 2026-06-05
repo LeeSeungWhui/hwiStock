@@ -39,6 +39,7 @@ broker.
 | `live_verify` | Needs later explicit real-account/support-confirmation evidence before live use. |
 | `local_fallback` | Use internal state, fixtures, scheduler, or system-calculated values during simulation. |
 | `paper_proven_bounded_20260604` | KRX paper/mock path proven only by sanitized bounded smoke `docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md`; does not authorize new broker calls. |
+| `to_verify_in_UNIT_013` | Target endpoint for the operational market-data collector; not accepted for recurring paper-run use until UNIT-013 proves paper-read support, rate limits, freshness, and sanitized storage. |
 
 ## 3. Auth / Token APIs
 
@@ -76,13 +77,30 @@ broker.
 | `국내주식 장운영정보 (NXT).xlsx` | NXT market operation status | `paper_unsupported` / `local_fallback`: use configured NXT session scheduler during simulation. | Verify live feed before enabling live NXT scheduler overrides. |
 | `국내주식 장운영정보 (통합).xlsx` | Integrated market operation status | `paper_unsupported` / `local_fallback`: use configured market calendar/session scheduler during simulation. | Verify live feed before integrated operation-status use. |
 
-## 6. Calendar / Session APIs
+## 6. Intraday REST Quote / Ranking / Analysis APIs
+
+These are the operational Ready-Set targets for the 1-3-minute market-hours REST
+collector. They are not order endpoints, but they still require explicit
+paper-read approval, rate-limit handling, and sanitized storage before Go-Check
+PASS.
+
+| API reference | KIS mode | paper/mock handling | live follow-up |
+| --- | --- | --- | --- |
+| `주식현재가 시세[v1_국내주식-008].xlsx` | Current price/quote context | `paper_proven_bounded_20260604` only for the bounded KRX paper quote smoke; UNIT-013 must prove recurring sanitized collector behavior before use in trade documents. | Verify live response fields and quote staleness handling. |
+| `주식당일분봉조회[v1_국내주식-022].xlsx` | Intraday minute-bar context | `paper_constrained` / `to_verify_in_UNIT_013`: use only after an approved paper-read collector proves fields and rate limits. | Verify live continuity and session gaps. |
+| `주식현재가 당일시간대별체결[v1_국내주식-023].xlsx` | Intraday execution context | `paper_constrained` / `to_verify_in_UNIT_013`: use only after an approved paper-read collector proves fields and rate limits. | Verify live pagination and timestamp semantics. |
+| `거래량순위[v1_국내주식-047].xlsx` | Volume ranking | `to_verify_in_UNIT_013`: target 1-3-minute REST collector; fail closed if unsupported or stale. | Verify live/paper parity before live use. |
+| `국내주식 등락률 순위[v1_국내주식-088].xlsx` | Fluctuation ranking | `to_verify_in_UNIT_013`: target 1-3-minute REST collector; fail closed if unsupported or stale. | Verify live/paper parity before live use. |
+| `국내주식 체결강도 상위[v1_국내주식-101].xlsx` | Execution-strength / volume-power ranking | `to_verify_in_UNIT_013`: target 1-3-minute REST collector; fail closed if unsupported or stale. | Verify live/paper parity before live use. |
+| `프로그램매매 종합현황(시간) [국내주식-114].xlsx` | Program-trading aggregate status by time | `to_verify_in_UNIT_013`: optional market-context input; fail closed if unsupported or stale. | Verify live/paper parity before live use. |
+
+## 7. Calendar / Session APIs
 
 | API reference | KIS mode | paper/mock handling | live follow-up |
 | --- | --- | --- | --- |
 | `국내휴장일조회[국내주식-040].xlsx` | Holiday/open-day lookup | `paper_unsupported` / `local_fallback`: use an approved calendar source or local cached calendar in simulation. If called later, cache at most once per day and use `opnd_yn` as an input, not the only gate. | Verify live response before relying on it for order-day gating. |
 
-## 7. Implementation Contract
+## 8. Implementation Contract
 
 - Adapter capabilities must be explicit, for example:
   `supportsPaperKrxOrder=true`, `supportsPaperNxtOrder=false`,
@@ -93,9 +111,9 @@ broker.
   intended venue/session parameters in no-order dry-run records, but must not be
   presented as broker fill evidence.
 - Live verification of NXT/SOR must be a separate approved gate. Passing a KRX
-  KIS paper week does not prove NXT/SOR live brokerage behavior.
+  KIS paper observation window does not prove NXT/SOR live brokerage behavior.
 
-## 8. Bounded Paper/Mock Smoke Cross-Reference (2026-06-04)
+## 9. Bounded Paper/Mock Smoke Cross-Reference (2026-06-04)
 
 Sanitized evidence: `docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md`.
 Current-authority UNIT-009 rebaseline closure reference:

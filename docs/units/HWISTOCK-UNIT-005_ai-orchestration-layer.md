@@ -86,6 +86,10 @@ evidence_refs:
   - docs/evidence/RUN-20260605_unit-005-go-check-rebaseline.md
 links:
   - HWISTOCK-MOD-004
+operational_runtime_authority:
+  superseded_by_module_ref: docs/modules/HWISTOCK-MOD-009_operational-paper-trading-program.md
+  superseded_by_unit_ref: docs/units/HWISTOCK-UNIT-012_ai-analysis-runtime.md
+  note: UNIT-005 remains the AI safety foundation; operational Pro/Flash runtime and Flash trade-document contract are governed by UNIT-012.
 ---
 
 # AI Orchestration Layer
@@ -113,8 +117,10 @@ docs-only until a future Go unit creates code.
 - No-direct-order boundary.
 - Deterministic risk/policy gate after AI output.
 - Failure/fallback behavior.
-- 24h hourly news/disclosure analysis schedule.
-- 08:00-19:00 market-regime analysis add-on.
+- 24h hourly aggregate source/market analysis schedule.
+- Market-regime/session analysis as a market-hours section of the hourly Pro
+  artifact for the operational runtime.
+- Flash minute trade-document generation as the operational intraday artifact.
 - 06:50 GPT prompt generation from overnight analysis artifacts.
 - 07:00 GPT Pro morning review with fallback cutoff.
 - 20:00 daily close report using system-calculated PnL.
@@ -144,7 +150,7 @@ docs-only until a future Go unit creates code.
 | AC-07 | P1 | AI calls are auditable | Model, prompt/schema version, input bundle ids, latency, and output are logged | audit log | QA-007 |
 | AC-08 | P0 | AI draft order intents are non-executable | Draft `order_intent` cannot bypass schema or deterministic policy gates | schema/policy test | QA-009 |
 | AC-09 | P0 | Approved intents respect broker boundary | Before KIS paper approval, policy-approved intent becomes no-order dry-run only; after approval it may target only the approved KIS KRX paper path | adapter test | QA-010 |
-| AC-10 | P0 | Scheduled AI jobs are separated by role | Pro hourly, Pro market-regime, Flash intraday, GPT Pro morning, and daily close jobs have separate schemas/logs | schedule/schema review | QA-011 |
+| AC-10 | P0 | Scheduled AI jobs are role-bounded | Pro hourly aggregate analysis, Flash minute trade documents, GPT Pro morning, and daily close jobs have separate schemas/logs; market-regime/session analysis is inside the Pro hourly artifact for operational runtime | schedule/schema review | QA-011 |
 | AC-11 | P0 | AI tool use is disabled first-pass | AI receives normalized bundles only and cannot browse, retrieve, or call tools directly | boundary/config review | QA-015 |
 | AC-12 | P0 | AI network is disabled by default | Config defaults keep AI calls off and cost cap at 0 until explicit approval | config review | QA-016 |
 
@@ -171,9 +177,8 @@ docs-only until a future Go unit creates code.
 
 | job_id | schedule | model role | input schema | output schema | latency/cutoff |
 | --- | --- | --- | --- | --- | --- |
-| `deepseek_pro_news_hourly` | hourly, 24h | DeepSeek Pro | `intel_delta_bundle/v0` | `hourly_intel_analysis/v0` | soft 10m, hard 20m |
-| `deepseek_pro_market_regime` | hourly, 08:00-19:00 KST | DeepSeek Pro | `market_regime_bundle/v0` | `market_regime_report/v0` | soft 10m, hard 20m |
-| `deepseek_flash_intraday_label` | event-triggered during 08:00-20:00 KST | DeepSeek Flash | `candidate_context_bundle/v0` | `intraday_candidate_label/v0` | soft 15s, hard 30s |
+| `deepseek_pro_hourly_market_analysis` | top of every hour, 24h | DeepSeek Pro | `pro_hourly_input_bundle/v0` | `pro_hourly_market_analysis/v0` | soft 10m, hard 20m |
+| `deepseek_flash_minute_trade_document` | every minute during market hours | DeepSeek Flash | `flash_minute_input_bundle/v0` | `flash_trade_document/v0` | soft 15s, hard 30s |
 | `gpt_prompt_0650` | 06:50 KST | local orchestrator / DeepSeek Pro summary artifacts | `overnight_analysis_bundle/v0` | `gpt_morning_prompt/v0` | hard 07:00 |
 | `chatgpt_pro_morning_review` | 07:00 KST | ChatGPT Pro external reviewer | `gpt_morning_prompt/v0` | `morning_review_report/v0` | hard 07:20 |
 | `daily_close_2000` | 20:00 KST | DeepSeek Pro | `daily_close_bundle/v0` | `daily_close_report/v0` | soft 20m, hard 21:00 |
@@ -186,9 +191,8 @@ commentary/fallback evidence.
 First-pass output schemas:
 
 - `ai_recommendation/v0`
-- `hourly_intel_analysis/v0`
-- `market_regime_report/v0`
-- `intraday_candidate_label/v0`
+- `pro_hourly_market_analysis/v0`
+- `flash_trade_document/v0`
 - `gpt_morning_prompt/v0`
 - `morning_review_report/v0`
 - `daily_close_report/v0`

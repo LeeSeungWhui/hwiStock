@@ -1,0 +1,14 @@
+# KIS paper/mock read-health timer.
+
+[Unit]
+Description=hwiStock KIS paper/mock read-health every 30 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=30min
+AccuracySec=1min
+Persistent=true
+Unit=hwistock-kis-paper-health.service
+
+[Install]
+WantedBy=timers.target

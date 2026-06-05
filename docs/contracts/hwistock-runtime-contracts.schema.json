@@ -1,0 +1,932 @@
+{
+  "schema_catalog_version": "hwistock.runtime_contracts/v0",
+  "updated_at": "2026-06-05",
+  "owner_unit": "HWISTOCK-UNIT-016",
+  "common_required_fields": [
+    "schema_version",
+    "artifact_id",
+    "artifact_type",
+    "run_id",
+    "trading_date",
+    "environment",
+    "created_at_kst",
+    "collected_at_kst",
+    "valid_until",
+    "content_hash",
+    "redaction_status",
+    "producer",
+    "input_refs",
+    "validation"
+  ],
+  "common_field_specs": {
+    "schema_version": {
+      "type": "string"
+    },
+    "artifact_id": {
+      "type": "string",
+      "pattern": "^art_[a-z0-9_:-]+$"
+    },
+    "artifact_type": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^run_[a-z0-9_:-]+$"
+    },
+    "trading_date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "environment": {
+      "type": "string",
+      "enum": [
+        "paper",
+        "sandbox",
+        "docs_only"
+      ]
+    },
+    "created_at_kst": {
+      "type": "string",
+      "format": "kst_datetime"
+    },
+    "collected_at_kst": {
+      "type": "string",
+      "format": "kst_datetime"
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "kst_datetime"
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "redaction_status": {
+      "type": "string",
+      "enum": [
+        "none",
+        "partial",
+        "full"
+      ]
+    },
+    "producer": {
+      "type": "string"
+    },
+    "input_refs": {
+      "type": "array"
+    },
+    "validation": {
+      "type": "object",
+      "required_fields": [
+        "ok",
+        "validator",
+        "validated_at_kst"
+      ],
+      "fields": {
+        "ok": {
+          "type": "boolean"
+        },
+        "validator": {
+          "type": "string"
+        },
+        "validated_at_kst": {
+          "type": "string",
+          "format": "kst_datetime"
+        },
+        "errors": {
+          "type": "array"
+        }
+      }
+    }
+  },
+  "id_formulas": {
+    "trade_doc_id": "sha256(run_id + trading_date + decision_bucket_kst + input_manifest_hash)",
+    "intent_id": "sha256(trade_doc_id + trade_action_id + ticker + side + normalized_order_rule_hash)",
+    "client_order_key": "sha256(intent_id + execution_attempt_no)"
+  },
+  "freshness_ttl_seconds": {
+    "portfolio_order_state_before_submit": 5,
+    "current_price_quote": 5,
+    "realtime_orderbook": 3,
+    "realtime_heartbeat_gap": 10,
+    "ranking_analysis_snapshot": 60,
+    "pro_hourly_tolerance": 600,
+    "flash_trade_document": 600,
+    "calendar_session_before_submit": 60,
+    "kis_rest_ranking_snapshot": 180,
+    "flash_decision_interval": 600
+  },
+  "order_state_machine": {
+    "INTENT_CREATED": [
+      "GATE_REJECTED",
+      "RESERVED",
+      "EXPIRED"
+    ],
+    "GATE_REJECTED": [
+      "RECONCILED"
+    ],
+    "RESERVED": [
+      "SUBMITTING",
+      "EXPIRED",
+      "ERROR_LOCKED"
+    ],
+    "SUBMITTING": [
+      "SUBMITTED_ACKED",
+      "SUBMIT_UNKNOWN",
+      "BROKER_REJECTED",
+      "ERROR_LOCKED"
+    ],
+    "SUBMITTED_ACKED": [
+      "PARTIALLY_FILLED",
+      "FILLED",
+      "CANCEL_REQUESTED",
+      "BROKER_REJECTED",
+      "RECONCILED"
+    ],
+    "SUBMIT_UNKNOWN": [
+      "SUBMITTED_ACKED",
+      "BROKER_REJECTED",
+      "RECONCILED",
+      "ERROR_LOCKED"
+    ],
+    "BROKER_REJECTED": [
+      "RECONCILED"
+    ],
+    "PARTIALLY_FILLED": [
+      "FILLED",
+      "CANCEL_REQUESTED",
+      "RECONCILED",
+      "ERROR_LOCKED"
+    ],
+    "FILLED": [
+      "RECONCILED"
+    ],
+    "CANCEL_REQUESTED": [
+      "CANCELED",
+      "PARTIALLY_FILLED",
+      "FILLED",
+      "ERROR_LOCKED"
+    ],
+    "CANCELED": [
+      "RECONCILED"
+    ],
+    "EXPIRED": [
+      "RECONCILED"
+    ],
+    "RECONCILED": [],
+    "ERROR_LOCKED": []
+  },
+  "reject_codes": [
+    "schema_invalid",
+    "artifact_not_finalized",
+    "manifest_hash_mismatch",
+    "stale_market_data",
+    "stale_portfolio_state",
+    "stale_order_state",
+    "session_invalid",
+    "already_holding_symbol",
+    "pending_order_exists",
+    "active_exit_order_exists",
+    "prior_trade_document_still_valid",
+    "cooldown_active",
+    "position_locked",
+    "scale_in_not_authorized",
+    "cash_reserve_breach",
+    "holding_slot_breach",
+    "paper_only_guard_failed",
+    "unsupported_broker_capability",
+    "duplicate_trade_doc",
+    "duplicate_intent",
+    "submit_unknown_requires_reconciliation"
+  ],
+  "schemas": {
+    "news_event/v0": {
+      "artifact_type": "news_event",
+      "owner_unit": "HWISTOCK-UNIT-013",
+      "required_fields": [
+        "event_id",
+        "source_id",
+        "source_name",
+        "source_url",
+        "title",
+        "url",
+        "body_storage_policy",
+        "untrusted_text_ref",
+        "symbols"
+      ],
+      "fields": {
+        "schema_version": {
+          "const": "news_event/v0"
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "source_name": {
+          "type": "string"
+        },
+        "source_url": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "body_storage_policy": {
+          "type": "string",
+          "enum": [
+            "metadata_only",
+            "summary_only",
+            "excerpt_allowed"
+          ]
+        },
+        "untrusted_text_ref": {
+          "type": "string"
+        },
+        "symbols": {
+          "type": "array"
+        }
+      }
+    },
+    "disclosure_event/v0": {
+      "artifact_type": "disclosure_event",
+      "owner_unit": "HWISTOCK-UNIT-013",
+      "required_fields": [
+        "event_id",
+        "source_id",
+        "corp_code",
+        "stock_code",
+        "report_name",
+        "disclosure_id",
+        "source_url",
+        "body_storage_policy",
+        "untrusted_text_ref",
+        "symbols"
+      ],
+      "fields": {
+        "schema_version": {
+          "const": "disclosure_event/v0"
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "corp_code": {
+          "type": "string"
+        },
+        "stock_code": {
+          "type": "string"
+        },
+        "report_name": {
+          "type": "string"
+        },
+        "disclosure_id": {
+          "type": "string"
+        },
+        "source_url": {
+          "type": "string"
+        },
+        "body_storage_policy": {
+          "type": "string",
+          "enum": [
+            "metadata_only",
+            "summary_only",
+            "excerpt_allowed"
+          ]
+        },
+        "untrusted_text_ref": {
+          "type": "string"
+        },
+        "symbols": {
+          "type": "array",
+          "min_items": 1
+        }
+      }
+    },
+    "kis_market_snapshot/v0": {
+      "artifact_type": "kis_market_snapshot",
+      "owner_unit": "HWISTOCK-UNIT-013",
+      "required_fields": [
+        "snapshot_id",
+        "snapshot_kind",
+        "endpoint_family",
+        "paper_support_status",
+        "symbols",
+        "market_session",
+        "freshness"
+      ],
+      "fields": {
+        "schema_version": {
+          "const": "kis_market_snapshot/v0"
+        },
+        "snapshot_id": {
+          "type": "string"
+        },
+        "snapshot_kind": {
+          "type": "string",
+          "enum": [
+            "current_price",
+            "intraday_bar",
+            "intraday_execution",
+            "ranking",
+            "realtime_trade",
+            "realtime_orderbook"
+          ]
+        },
+        "endpoint_family": {
+          "type": "string"
+        },
+        "paper_support_status": {
+          "type": "string",
+          "enum": [
+            "paper_ok",
+            "paper_constrained",
+            "paper_proven_bounded_20260604",
+            "local_fallback"
+          ]
+        },
+        "symbols": {
+          "type": "array",
+          "min_items": 1
+        },
+        "market_session": {
+          "type": "string"
+        },
+        "freshness": {
+          "type": "object",
+          "required_fields": [
+            "ttl_seconds",
+            "is_fresh"
+          ]
+        }
+      }
+    },
+    "pro_hourly_market_analysis/v0": {
+      "artifact_type": "pro_hourly_market_analysis",
+      "owner_unit": "HWISTOCK-UNIT-012",
+      "required_fields": [
+        "job_id",
+        "hour_bucket_kst",
+        "model_role",
+        "model_name",
+        "input_manifest_hash",
+        "market_regime",
+        "sections",
+        "no_broker_interface"
+      ],
+      "fields": {
+        "schema_version": {
+          "const": "pro_hourly_market_analysis/v0"
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "hour_bucket_kst": {
+          "type": "string"
+        },
+        "model_role": {
+          "type": "string",
+          "const": "deepseek_pro"
+        },
+        "model_name": {
+          "type": "string"
+        },
+        "input_manifest_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "market_regime": {
+          "type": "object"
+        },
+        "sections": {
+          "type": "array",
+          "min_items": 1
+        },
+        "no_broker_interface": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "flash_trade_document/v0": {
+      "artifact_type": "flash_trade_document",
+      "owner_unit": "HWISTOCK-UNIT-012",
+      "required_fields": [
+        "trade_doc_id",
+        "decision_bucket_kst",
+        "decision_interval_minutes",
+        "document_kind",
+        "market_mode",
+        "max_new_positions",
+        "max_total_positions",
+        "input_manifest_hash",
+        "previous_trade_doc_refs",
+        "portfolio_snapshot_ref",
+        "order_state_snapshot_ref",
+        "actions",
+        "executable_intents_allowed"
+      ],
+      "fields": {
+        "schema_version": {
+          "const": "flash_trade_document/v0"
+        },
+        "trade_doc_id": {
+          "type": "string",
+          "pattern": "^tdoc_[a-z0-9]+$"
+        },
+        "decision_bucket_kst": {
+          "type": "string"
+        },
+        "decision_interval_minutes": {
+          "type": "integer",
+          "const": 10
+        },
+        "document_kind": {
+          "type": "string",
+          "enum": [
+            "TRADE_ACTIONS",
+            "NO_TRADE"
+          ]
+        },
+        "no_trade_reason": {
+          "type": "string"
+        },
+        "market_mode": {
+          "type": "string",
+          "enum": [
+            "RISK_ON",
+            "RISK_NEUTRAL",
+            "RISK_OFF",
+            "HALT"
+          ]
+        },
+        "max_new_positions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_total_positions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "input_manifest_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "previous_trade_doc_refs": {
+          "type": "array"
+        },
+        "portfolio_snapshot_ref": {
+          "type": "string"
+        },
+        "order_state_snapshot_ref": {
+          "type": "string"
+        },
+        "actions": {
+          "type": "array",
+          "max_items": 5,
+          "item_required_fields": [
+            "action_id",
+            "ticker",
+            "name",
+            "action",
+            "entry_zone",
+            "take_profit",
+            "stop_loss",
+            "trailing_stop_pct",
+            "cancel_if_not_filled_until",
+            "position_size_pct",
+            "reason",
+            "valid_until",
+            "source_refs",
+            "market_data_refs",
+            "portfolio_state_refs",
+            "portfolio_conflict",
+            "executable_intent_allowed"
+          ]
+        },
+        "executable_intents_allowed": {
+          "type": "boolean",
+          "const": false
+        }
+      }
+    },
+    "portfolio_snapshot/v0": {
+      "artifact_type": "portfolio_snapshot",
+      "owner_unit": "HWISTOCK-UNIT-014",
+      "required_fields": [
+        "snapshot_id",
+        "account_alias",
+        "holdings",
+        "pending_orders",
+        "active_exits",
+        "cash",
+        "reserved_cash",
+        "open_holding_slots",
+        "reserved_holding_slots",
+        "authoritative_for_executor"
+      ],
+      "fields": {
+        "schema_version": {
+          "const": "portfolio_snapshot/v0"
+        },
+        "snapshot_id": {
+          "type": "string"
+        },
+        "account_alias": {
+          "type": "string",
+          "pattern": "^paper_account_alias:"
+        },
+        "holdings": {
+          "type": "array"
+        },
+        "pending_orders": {
+          "type": "array"
+        },
+        "active_exits": {
+          "type": "array"
+        },
+        "cash": {
+          "type": "object",
+          "required_fields": [
+            "available_cash",
+            "settled_cash",
+            "minimum_reserve_ratio"
+          ]
+        },
+        "reserved_cash": {
+          "type": "number",
+          "minimum": 0
+        },
+        "open_holding_slots": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reserved_holding_slots": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "authoritative_for_executor": {
+          "type": "boolean"
+        }
+      }
+    },
+    "order_state_snapshot/v0": {
+      "artifact_type": "order_state_snapshot",
+      "owner_unit": "HWISTOCK-UNIT-014",
+      "required_fields": [
+        "snapshot_id",
+        "open_orders",
+        "consumed_trade_doc_ids",
+        "cooldowns",
+        "position_locks",
+        "authoritative_for_executor"
+      ],
+      "fields": {
+        "schema_version": {
+          "const": "order_state_snapshot/v0"
+        },
+        "snapshot_id": {
+          "type": "string"
+        },
+        "open_orders": {
+          "type": "array"
+        },
+        "consumed_trade_doc_ids": {
+          "type": "array"
+        },
+        "cooldowns": {
+          "type": "array"
+        },
+        "position_locks": {
+          "type": "array"
+        },
+        "authoritative_for_executor": {
+          "type": "boolean"
+        }
+      }
+    },
+    "paper_order_intent/v0": {
+      "artifact_type": "paper_order_intent",
+      "owner_unit": "HWISTOCK-UNIT-013",
+      "required_fields": [
+        "intent_id",
+        "trade_doc_id",
+        "trade_action_id",
+        "ticker",
+        "side",
+        "order_rule",
+        "quantity_rule",
+        "max_cash_krw",
+        "gate_results",
+        "reservation_status",
+        "executable_intent_allowed"
+      ],
+      "fields": {
+        "schema_version": {
+          "const": "paper_order_intent/v0"
+        },
+        "intent_id": {
+          "type": "string",
+          "pattern": "^intent_[a-z0-9]+$"
+        },
+        "trade_doc_id": {
+          "type": "string"
+        },
+        "side": {
+          "type": "string",
+          "enum": [
+            "buy",
+            "sell"
+          ]
+        },
+        "order_rule": {
+          "type": "object"
+        },
+        "quantity_rule": {
+          "type": "object"
+        },
+        "max_cash_krw": {
+          "type": "number",
+          "minimum": 0
+        },
+        "gate_results": {
+          "type": "array",
+          "min_items": 1
+        },
+        "reservation_status": {
+          "type": "object",
+          "required_fields": [
+            "reserved_cash",
+            "reserved_holding_slots",
+            "worst_case_fill_checked"
+          ]
+        },
+        "executable_intent_allowed": {
+          "type": "boolean",
+          "const": true
+        },
+        "trade_action_id": {
+          "type": "string"
+        },
+        "ticker": {
+          "type": "string",
+          "pattern": "^\\d{6}$"
+        }
+      }
+    },
+    "executor_decision/v0": {
+      "artifact_type": "executor_decision",
+      "owner_unit": "HWISTOCK-UNIT-014",
+      "required_fields": [
+        "decision_id",
+        "intent_id",
+        "from_state",
+        "to_state",
+        "gate_result",
+        "rejection_codes",
+        "authoritative_snapshot_refs",
+        "lock_refs",
+        "ledger_ref",
+        "no_broker_call_if_rejected"
+      ],
+      "fields": {
+        "schema_version": {
+          "const": "executor_decision/v0"
+        },
+        "decision_id": {
+          "type": "string"
+        },
+        "intent_id": {
+          "type": "string"
+        },
+        "from_state": {
+          "type": "string"
+        },
+        "to_state": {
+          "type": "string"
+        },
+        "gate_result": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "reject",
+            "unknown"
+          ]
+        },
+        "rejection_codes": {
+          "type": "array"
+        },
+        "authoritative_snapshot_refs": {
+          "type": "array",
+          "min_items": 1
+        },
+        "lock_refs": {
+          "type": "array",
+          "min_items": 1
+        },
+        "ledger_ref": {
+          "type": "string"
+        },
+        "no_broker_call_if_rejected": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "broker_order_request/v0": {
+      "artifact_type": "broker_order_request",
+      "owner_unit": "HWISTOCK-UNIT-014",
+      "required_fields": [
+        "request_id",
+        "intent_id",
+        "client_order_key",
+        "broker_adapter",
+        "base_url_alias",
+        "paper_only_guard",
+        "side",
+        "symbol",
+        "quantity",
+        "price_rule",
+        "tr_id_alias",
+        "route",
+        "submitted_after_write_ahead_log"
+      ],
+      "fields": {
+        "schema_version": {
+          "const": "broker_order_request/v0"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "intent_id": {
+          "type": "string"
+        },
+        "client_order_key": {
+          "type": "string",
+          "pattern": "^cok_[a-z0-9]+$"
+        },
+        "broker_adapter": {
+          "type": "string",
+          "const": "kis_paper"
+        },
+        "base_url_alias": {
+          "type": "string",
+          "const": "kis_paper_vts"
+        },
+        "paper_only_guard": {
+          "type": "object",
+          "required_fields": [
+            "environment_label",
+            "paper_account_alias",
+            "krx_only",
+            "tr_id_allowed",
+            "startup_self_test_passed"
+          ]
+        },
+        "side": {
+          "type": "string",
+          "enum": [
+            "buy",
+            "sell",
+            "cancel"
+          ]
+        },
+        "symbol": {
+          "type": "string",
+          "pattern": "^\\d{6}$"
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "price_rule": {
+          "type": "object"
+        },
+        "tr_id_alias": {
+          "type": "string"
+        },
+        "route": {
+          "type": "string",
+          "const": "KRX"
+        },
+        "submitted_after_write_ahead_log": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "broker_order_result/v0": {
+      "artifact_type": "broker_order_result",
+      "owner_unit": "HWISTOCK-UNIT-014",
+      "required_fields": [
+        "result_id",
+        "request_id",
+        "client_order_key",
+        "broker_status",
+        "order_state",
+        "broker_order_id_alias",
+        "error_class",
+        "reconciliation_required",
+        "raw_secret_redacted"
+      ],
+      "fields": {
+        "schema_version": {
+          "const": "broker_order_result/v0"
+        },
+        "result_id": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "client_order_key": {
+          "type": "string"
+        },
+        "broker_status": {
+          "type": "string",
+          "enum": [
+            "acked",
+            "rejected",
+            "timeout",
+            "unknown"
+          ]
+        },
+        "order_state": {
+          "type": "string"
+        },
+        "broker_order_id_alias": {
+          "type": "string"
+        },
+        "error_class": {
+          "type": "string"
+        },
+        "reconciliation_required": {
+          "type": "boolean"
+        },
+        "raw_secret_redacted": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "reconciliation_event/v0": {
+      "artifact_type": "reconciliation_event",
+      "owner_unit": "HWISTOCK-UNIT-014",
+      "required_fields": [
+        "reconciliation_id",
+        "broker_adapter",
+        "source_query_alias",
+        "matched_client_order_key",
+        "order_state",
+        "fills",
+        "positions",
+        "cash_snapshot",
+        "ledger_updates",
+        "calculation_source"
+      ],
+      "fields": {
+        "schema_version": {
+          "const": "reconciliation_event/v0"
+        },
+        "reconciliation_id": {
+          "type": "string"
+        },
+        "broker_adapter": {
+          "type": "string",
+          "const": "kis_paper"
+        },
+        "source_query_alias": {
+          "type": "string"
+        },
+        "matched_client_order_key": {
+          "type": "string"
+        },
+        "order_state": {
+          "type": "string"
+        },
+        "fills": {
+          "type": "array"
+        },
+        "positions": {
+          "type": "array"
+        },
+        "cash_snapshot": {
+          "type": "object"
+        },
+        "ledger_updates": {
+          "type": "array"
+        },
+        "calculation_source": {
+          "type": "string",
+          "const": "system"
+        }
+      }
+    }
+  }
+}

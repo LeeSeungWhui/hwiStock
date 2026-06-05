@@ -20,8 +20,8 @@ completeness:
   status: set
   audit_ref: docs/qa/QA-HWISTOCK-UNIT-003_market-intelligence-ingestion.md
 owner: hwi
-updated_at: 2026-06-04
-last_verified_at: 2026-06-04
+updated_at: 2026-06-05
+last_verified_at: 2026-06-05
 source_snapshot:
   input_digest: "24시간 뉴스 기사/공시 수집 브랜치와 차트/시장데이터 컨텍스트"
   legacy_doc: none
@@ -50,11 +50,14 @@ code_paths:
     - "**/*.env"
 entrypoints:
   - backend.service.market_intelligence_ingestion.ingestFixtureRows
+  - backend.service.market_intelligence_ingestion.runCollectorOnce
+  - backend/service/market_intelligence_ingestion.py --once
 interfaces:
   - backend.lib.market_intelligence.loadSourceRegistryConfig
   - backend.lib.market_intelligence.normalizeFixtureRow
   - backend.lib.market_intelligence.validateNormalizedEvent
   - backend.service.market_intelligence_ingestion.ingestFixtureRows
+  - backend.service.market_intelligence_ingestion.collectPublicNewsRssOnce
 verification:
   stage_skill_routes:
     ready:
@@ -89,6 +92,7 @@ evidence_refs:
   - docs/evidence/RUN-20260604_unit-003-go-check.md
   - docs/evidence/RUN-20260604_unit-003-go-preflight-rebaseline.md
   - docs/evidence/RUN-20260604_unit-003-go-check-rebaseline.md
+  - docs/evidence/RUN-20260605_unit-003-live-collector-hotfix.md
 links:
   - HWISTOCK-MOD-002
   - docs/sources/HWISTOCK-SOURCE-REGISTRY.md
@@ -118,6 +122,7 @@ Initial creation of `HWISTOCK-MOD-002`.
 - Event metadata schema draft.
 - Source registry status model.
 - DART OpenAPI first source.
+- Public RSS metadata news source.
 - Conditional NAVER Search API news source.
 - Deferred KIND/KRX/KIS source handling.
 - Chart/market-data metadata schema draft: OHLCV, interval, venue, latency, and
@@ -168,6 +173,10 @@ Future live-source mode, after explicit source API config approval:
 
 - `dart_openapi_disclosures`: first live-source candidate. Use `DART_API_KEY`
   only after explicit source API config approval.
+- `public_news_rss_search`: approved no-key live news metadata source. Store
+  title/link/source/published timestamp/query metadata/RSS summary only. Do not
+  crawl full article bodies, login pages, paywalled pages, or general HTML
+  pages.
 - `naver_search_news_api`: conditional after `NAVER_CLIENT_ID`,
   `NAVER_CLIENT_SECRET`, query list, rate cap, and storage policy approval.
 - `kind_krx_disclosure_portal`: official source candidate, but automated
@@ -208,10 +217,34 @@ Current rebaseline Go-Check implementation status:
   QA-011 foundation smoke coverage. This is Go implementation/check evidence,
   not Prove evidence.
 
+2026-06-05 live collector hotfix status:
+
+- `backend/service/market_intelligence_ingestion.py --once` now provides a
+  bounded live collector entrypoint for approved public information sources.
+- `public_news_rss_search` now collects no-key public RSS news metadata and
+  normalized `news_event` rows.
+- OpenDART disclosure collection runs when `DART_API_KEY` is present in the
+  local secret store.
+- Naver news collection runs when `NAVER_CLIENT_ID` and `NAVER_CLIENT_SECRET`
+  are present in the local secret store.
+- Missing OpenDART/Naver source API keys no longer mean the process is absent;
+  those sources skip safely while public RSS can still collect metadata rows.
+  The collector emits health evidence under `data/evidence/YYYY-MM-DD/`.
+- Repeat runs append only unseen `event_id` values to
+  `data/normalized/YYYY-MM-DD/events.jsonl`.
+- `ops/systemd/hwistock-intel-collector.service` and
+  `ops/systemd/hwistock-intel-collector.timer` define the 24-hour timer path.
+- hwiServer user systemd timer was enabled on 2026-06-05 and recorded in
+  `docs/evidence/RUN-20260605_unit-003-live-collector-hotfix.md`.
+- Runtime proof on 2026-06-05: public RSS source `pass`, 150 normalized news
+  events, 150 unique event ids, 0 duplicate JSONL rows, and service exit
+  `0/SUCCESS`.
+
 Current evidence:
 
 - `docs/evidence/RUN-20260604_unit-003-go-preflight-rebaseline.md`
 - `docs/evidence/RUN-20260604_unit-003-go-check-rebaseline.md`
+- `docs/evidence/RUN-20260605_unit-003-live-collector-hotfix.md`
 
 The earlier `RUN-20260604_unit-003-go-preflight.md` and
 `RUN-20260604_unit-003-go-check.md` files remain historical after the

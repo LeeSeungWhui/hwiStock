@@ -102,6 +102,33 @@ def emit_runner_once_stdout() -> Dict[str, Any]:
     }
 
 
+def _runtime_date_dir(output_root: Path, at: datetime) -> Path:
+    return output_root / "evidence" / at.astimezone(KST).date().isoformat()
+
+
+def write_runner_evidence(
+    payload: Dict[str, Any],
+    *,
+    output_root: Optional[Path] = None,
+    at: Optional[datetime] = None,
+) -> Dict[str, str]:
+    """Write latest and timestamped runner evidence without broker/order calls."""
+    now = at or datetime.now(KST)
+    root = output_root or Path(os.getenv("HWISTOCK_DATA_DIR", str(_REPO_ROOT / "data")))
+    evidence_dir = _runtime_date_dir(root, now)
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    stamp = now.strftime("%H%M%S")
+    latest_path = evidence_dir / "runner-latest.json"
+    stamped_path = evidence_dir / f"runner-{stamp}.json"
+    text = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    latest_path.write_text(text, encoding="utf-8")
+    stamped_path.write_text(text, encoding="utf-8")
+    return {
+        "latest_path": str(latest_path),
+        "stamped_path": str(stamped_path),
+    }
+
+
 def run_once_entrypoint() -> int:
     payload = emit_runner_once_stdout()
     print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -115,9 +142,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         action="store_true",
         help="Emit local runner status/audit metadata to stdout and exit",
     )
+    parser.add_argument(
+        "--write-evidence",
+        action="store_true",
+        help="Also write latest/timestamped runner evidence under HWISTOCK_DATA_DIR.",
+    )
+    parser.add_argument(
+        "--output-root",
+        default=os.getenv("HWISTOCK_DATA_DIR", str(_REPO_ROOT / "data")),
+        help="Runtime data root for --write-evidence.",
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
     if args.once:
-        return run_once_entrypoint()
+        payload = emit_runner_once_stdout()
+        if args.write_evidence:
+            payload["evidencePaths"] = write_runner_evidence(
+                payload,
+                output_root=Path(args.output_root),
+            )
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
     parser.print_help(sys.stderr)
     return 2
 
@@ -288,11 +332,14 @@ def alert_channels_metadata() -> Dict[str, Any]:
     }
 
 
-def one_week_gate_template() -> Dict[str, Any]:
+def paper_observation_template() -> Dict[str, Any]:
     return {
         "evidenceRunner": "systemd",
-        "minCalendarDays": 7,
-        "minValidMarketOpenDays": 5,
+        "durationPolicy": "operator_selected",
+        "fixedDurationDays": None,
+        "autoStopOnDuration": False,
+        "autoPassOnDuration": False,
+        "autoFailOnDuration": False,
         "profitThresholdRequired": False,
         "passCriteria": [
             "P0 safety controls enforced",
@@ -300,6 +347,7 @@ def one_week_gate_template() -> Dict[str, Any]:
             "no-order dry-run boundary preserved",
             "local-only bind and alerts",
             "audit logs and daily summaries present",
+            "operator-selected observation-window metadata present",
         ],
         "excludedEvidence": ["tmux", "screen", "manual shell-only sessions"],
     }
@@ -345,11 +393,11 @@ def get_runner_status(at_kst: Optional[str] = None) -> Dict[str, Any]:
         },
         "alerts": alert_channels_metadata(),
         "auditLog": audit_log_categories_metadata(),
-        "oneWeekGate": one_week_gate_template(),
+        "paperObservation": paper_observation_template(),
         "readiness": {
             "liveRunnerReady": False,
-            "oneWeekEvidenceComplete": False,
-            "note": "skeleton only; systemd templates not executed",
+            "paperObservationAccepted": False,
+            "note": "runtime services may be active, but operational paper-trading readiness remains false until the full UNIT-011 through UNIT-015 queue passes Go/Check/Prove",
         },
     }
 

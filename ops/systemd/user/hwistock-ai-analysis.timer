@@ -1,0 +1,14 @@
+# hwiStock DeepSeek/MoonBridge analysis timer.
+
+[Unit]
+Description=hwiStock DeepSeek analysis every hour
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1h
+AccuracySec=1min
+Persistent=true
+Unit=hwistock-ai-analysis.service
+
+[Install]
+WantedBy=timers.target

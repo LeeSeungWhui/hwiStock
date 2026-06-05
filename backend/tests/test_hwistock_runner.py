@@ -243,11 +243,13 @@ def test_daily_close_template_shape():
     assert "runtime_duration" in template["sections"]
 
 
-def test_one_week_gate_template():
-    gate = runner.one_week_gate_template()
-    assert gate["minCalendarDays"] == 7
-    assert gate["minValidMarketOpenDays"] == 5
+def test_paper_observation_template_is_operator_selected():
+    gate = runner.paper_observation_template()
+    assert gate["durationPolicy"] == "operator_selected"
+    assert gate["fixedDurationDays"] is None
+    assert gate["autoStopOnDuration"] is False
     assert gate["profitThresholdRequired"] is False
+    assert "operator-selected observation-window metadata present" in gate["passCriteria"]
 
 
 def test_runner_status_paper_defaults():

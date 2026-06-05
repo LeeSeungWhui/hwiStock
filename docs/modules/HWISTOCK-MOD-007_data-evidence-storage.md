@@ -65,8 +65,8 @@ future live-readiness review reproducible.
   forbidden in artifacts and reports. Use redacted aliases such as
   `paper_account_alias`.
 - Retain normalized events, AI artifacts, trading logs, reports, and evidence
-  through at least the one-week paper/sandbox gate. Long-term retention defaults
-  to local-only until backup policy is explicitly selected.
+  through the operator-selected paper/sandbox observation gate. Long-term
+  retention defaults to local-only until backup policy is explicitly selected.
 
 ## 3. Storage Backend
 
@@ -100,8 +100,7 @@ date on which the artifact was collected.
 - `data/raw/YYYY-MM-DD/market-data/*.jsonl`
 - `data/normalized/YYYY-MM-DD/events.jsonl`
 - `data/ai/YYYY-MM-DD/deepseek-pro/hourly/HH00.json`
-- `data/ai/YYYY-MM-DD/deepseek-pro/market-regime/HH00.json`
-- `data/ai/YYYY-MM-DD/deepseek-flash/intraday/*.json`
+- `data/ai/YYYY-MM-DD/deepseek-flash/trade-documents/HHMM.json`
 - `data/candidates/YYYY-MM-DD/*.json`
 - `data/trading/YYYY-MM-DD/orders.jsonl`
 - `data/trading/YYYY-MM-DD/fills.jsonl`

@@ -1,0 +1,15 @@
+# hwiStock 24h market intelligence collector tick.
+# Install as a user or system service only after operator review.
+
+[Unit]
+Description=hwiStock market intelligence collector tick
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/data/workspace/My/hwiStock
+EnvironmentFile=-/home/hwi/.config/hwistock/hwistock.env
+Environment=HWISTOCK_BIND_HOST=127.0.0.1
+ExecStart=/usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/market_intelligence_ingestion.py --once'
+NoNewPrivileges=true

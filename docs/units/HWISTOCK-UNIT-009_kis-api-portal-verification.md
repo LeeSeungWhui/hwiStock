@@ -118,9 +118,9 @@ Checked on 2026-06-02 KST.
   references say paper/mock is KRX-only. Use no-order dry-run records or
   disabled/fallback markers for NXT/SOR before requiring a separate approved
   live-readonly/support-confirmation path for live NXT/SOR routing.
-- The one-week KIS paper/sandbox gate can prove only the KIS-supported KRX paper
-  path unless a future official document or account-mode change expands paper
-  NXT/SOR support.
+- The operator-selected KIS paper/sandbox observation window can prove only the
+  KIS-supported KRX paper path unless a future official document or account-mode
+  change expands paper NXT/SOR support.
 - Paper-unsupported helper APIs, such as modify/cancel eligibility lookup,
   sellable quantity, realized PnL, holiday lookup, and NXT/integrated realtime
   feeds, are tracked in

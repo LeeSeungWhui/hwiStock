@@ -1,0 +1,20 @@
+# hwiStock local API user service.
+# Local-only FastAPI backend on 127.0.0.1:5001.
+
+[Unit]
+Description=hwiStock local FastAPI API (user, loopback)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/data/workspace/My/hwiStock
+EnvironmentFile=-/home/hwi/.config/hwistock/hwistock.env
+Environment=HWISTOCK_BIND_HOST=127.0.0.1
+ExecStart=/usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && cd backend && exec uvicorn server:app --host 127.0.0.1 --port 5001'
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

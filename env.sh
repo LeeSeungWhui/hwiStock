@@ -116,6 +116,7 @@ load_hwistock_env_file() {
 # Project-local secret/config files. Values are never stored in this repository.
 load_hwistock_env_file "$HWISTOCK_ENV_DIR/hwistock.env"
 load_hwistock_env_file "$HWISTOCK_ENV_DIR/deepseek.env"
+load_hwistock_env_file "$HOME/.config/deepseek.env"
 load_hwistock_env_file "$HWISTOCK_ENV_DIR/source-apis.env"
 load_hwistock_env_file "$HWISTOCK_ENV_DIR/kis-paper.env"
 

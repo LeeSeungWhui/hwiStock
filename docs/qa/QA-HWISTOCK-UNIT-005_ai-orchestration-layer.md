@@ -34,8 +34,9 @@ accepting hallucinated/malformed recommendations.
 In scope:
 
 - AI structured output schema
-- DeepSeek Pro hourly news/disclosure and 08:00-19:00 market-regime job schemas
-- DeepSeek Flash intraday label schema
+- DeepSeek Pro hourly aggregate source/market schema with market-regime/session
+  section during market hours
+- DeepSeek Flash minute trade-document schema
 - 06:50 GPT prompt generation and 07:00 GPT Pro review fallback
 - 20:00 daily close report schema
 - draft `order_intent` schema
@@ -73,7 +74,7 @@ Out of scope:
 | QA-009 | P0 | schema | Submit draft `order_intent` with missing risk reference, stale source, or invalid sizing | Intent is rejected before policy approval | schema/policy log |
 | QA-010 | P0 | adapter | Submit policy-approved `order_intent` before KIS paper approval | Intent is recorded as no-order dry-run only; no broker endpoint, internal fake broker, simulated fill, or fake balance is reachable | adapter/network log |
 | QA-011 | P0 | safety | Submit AI output naming a KIS/external broker endpoint, broker demo endpoint, live endpoint, or credential | Output is rejected and logged as policy violation | policy log |
-| QA-012 | P0 | schedule | Inspect AI job registry | DeepSeek Pro 24h news/disclosure, Pro 08:00-19:00 market-regime, Flash intraday, GPT Pro 07:00, and 20:00 daily report jobs are separated | schema/config review |
+| QA-012 | P0 | schedule | Inspect AI job registry | DeepSeek Pro hourly aggregate analysis, Flash minute trade-document generation, GPT Pro 07:00, and 20:00 daily report jobs are separated; market-regime/session analysis is inside the Pro hourly artifact for operational runtime | schema/config review |
 | QA-013 | P1 | fallback | Simulate GPT Pro late/unavailable at 07:00 | DeepSeek-only morning report is used and fallback is logged | scheduler/log |
 | QA-014 | P1 | calculation | Generate 20:00 daily report | PnL numbers come from system calculations and AI only explains/interprets them | report review |
 | QA-015 | P0 | tool-boundary | Inspect AI job config and submit output that asks to browse/call tools | First-pass AI jobs accept normalized bundles only; model tool use is disabled and tool requests are rejected | config/policy log |

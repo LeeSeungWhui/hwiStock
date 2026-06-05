@@ -95,8 +95,9 @@ links:
 Prepare the empty `/data/workspace/My/hwiStock` root for a stock day-trading
 automation project using Hwi Work Harness, while explicitly blocking live trading
 and broker side effects until future Set contracts approve them. Actual live
-operation must be preceded by at least one full week of paper/sandbox testing
-with named evidence.
+operation must be preceded by an operator-selected paper/sandbox observation
+window with named evidence and explicit go/no-go approval. The runner must not
+hardcode the observation duration.
 
 ## 2. Baseline Module Contract
 
@@ -137,7 +138,7 @@ Initial creation of `HWISTOCK-MOD-001`.
 | AC-03 | P0 | Initial safety module exists | `HWISTOCK-MOD-001` exists | file review | QA-003 |
 | AC-04 | P1 | Bootstrap QA scenario exists | QA file exists and references this unit | file review | QA-004 |
 | AC-05 | P1 | Decisions and remaining Go/operational boundaries are listed | selected broker, stack, strategy/risk, paper-boundary, source registry, closed Ready-Set state, and remaining Go/operational restrictions are visible | file review | QA-005 |
-| AC-06 | P0 | Live operation requires a one-week test gate | profile/module mention one full week of paper/sandbox evidence before live | file review | QA-006 |
+| AC-06 | P0 | Live operation requires an observation evidence gate | profile/module mention operator-selected paper/sandbox observation evidence before live | file review | QA-006 |
 | AC-07 | P0 | Capital policy is cash-only | profile/module forbid credit, margin, 미수, borrowed funds, and leveraged capital by default | file review | QA-007 |
 
 ## 6. Implementation Notes
@@ -195,7 +196,7 @@ Still future strategy/provider follow-up, not permission to infer during Go:
 | --- | --- | --- | --- |
 | module | sufficient | `HWISTOCK-MOD-001` covers safety, approvals, runtime, broker boundary, risk invariants, and verification families | no |
 | unit | sufficient | docs-only bootstrap contract and boundaries are explicit | no |
-| qa_scenario | sufficient | docs-only QA rows cover profile, module, one-week gate, and capital policy | no |
+| qa_scenario | sufficient | docs-only QA rows cover profile, module, operator-selected paper observation gate, and capital policy | no |
 | smoke | minimal_exception | docs-only unit; smoke is file/content review | no |
 | prove_full_run | minimal_exception | docs-only unit; no browser/API/product flow exists | no |
 

@@ -1,0 +1,15 @@
+# hwiStock 24h market intelligence collector timer.
+# Runs the collector continuously through systemd without a Codex session.
+
+[Unit]
+Description=hwiStock market intelligence collector every 10 minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=10min
+AccuracySec=30s
+Persistent=true
+Unit=hwistock-intel-collector.service
+
+[Install]
+WantedBy=timers.target

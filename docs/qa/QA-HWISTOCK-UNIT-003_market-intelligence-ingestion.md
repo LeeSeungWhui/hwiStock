@@ -67,7 +67,7 @@ Out of scope:
 | QA-008 | P0 | blocked-source | Inspect source registry and implementation config | General media HTML scraping and unofficial finance APIs are disabled by default | config/source review |
 | QA-009 | P0 | broker-boundary | Inspect source registry and implementation config | KIS/broker quote/news/realtime sources are deferred and cannot run in this unit | config/profile review |
 | QA-010 | P1 | event-schema | Inspect normalized event schema | Required fields include source ids, timestamps, symbol/corp code, dedupe key, body storage policy, and candidate eligibility | schema review |
-| QA-011 | P0 | network-boundary | Run first foundation Go smoke with source credentials absent/disabled | Fixture/config ingestion succeeds; live OpenDART, Naver, KIS/broker, KRX/KIND, unofficial API, and HTML scraping calls are not attempted | network/config log |
+| QA-011 | P0 | network-boundary | Run foundation smoke with network disabled, then run approved live collector smoke | Fixture/config ingestion succeeds without network; approved public RSS may collect metadata-only news; OpenDART/Naver skip when keys are missing; KIS/broker, unofficial API, and general HTML scraping calls are not attempted | network/config log |
 
 ## 3-1. Go Smoke Mapping
 
@@ -86,14 +86,15 @@ Current Go smoke coverage lives in
 | QA-008 | `testQa008AndQa009BlockedSourcesCannotIngestInFoundation` verifies HTML scraping and unofficial APIs are blocked. |
 | QA-009 | `testQa008AndQa009BlockedSourcesCannotIngestInFoundation` verifies KIS/broker market/realtime/news data is deferred and cannot ingest. |
 | QA-010 | `testQa010NormalizedEventSchemaContainsRequiredFields` verifies required normalized event fields and validation. |
-| QA-011 | `testQa011FoundationSmokeSucceedsWithoutCredentialsOrNetwork` and `testQa002AndQa011NoNetworkEnvOrRoutingImports` prove fixture/config ingestion succeeds while live network/credential/order paths are absent. |
+| QA-011 | `testQa011FoundationSmokeSucceedsWithoutCredentialsOrNetwork`, `testLiveCollectorWritesFailClosedHealthWhenKeysAreMissing`, `testLiveCollectorNoNetworkModeDoesNotCallSourcesButWritesHealth`, `testPublicRssRowsCanNormalizeWithoutApiKeys`, `testCollectorJsonlAppendSkipsExistingEventIds`, and `testQa002AndQa011NoNetworkEnvOrRoutingImports` prove fixture/config ingestion succeeds, approved public RSS metadata can normalize without API keys, repeat runs do not duplicate JSONL rows, and broker/order/KIS routing paths remain absent. |
 
 ## 4. PASS / FAIL / BLOCKED Rules
 
-- PASS: only approved fixture/config sources are collected in first foundation
-  Go, rate/terms notes exist, duplicates are handled, blocked/deferred sources
-  cannot run, chart source policy exists when chart signals are enabled, and
-  ingestion cannot directly place orders.
+- PASS: only approved fixture/config sources and approved public RSS metadata
+  are collected in the current first live collector path, rate/terms notes
+  exist, duplicates are handled, blocked/deferred sources cannot run, chart
+  source policy exists when chart signals are enabled, and ingestion cannot
+  directly place orders.
 - FAIL: unapproved scraping occurs, conditional/deferred sources run without Set
   approval, source policies are missing, broker network calls are made, or
   ingestion can invoke order routing.
@@ -109,12 +110,15 @@ Current Go smoke coverage lives in
 - ingestion health output
 - summary evidence
 - blocked-source review
-- network/config proof that live OpenDART and all conditional/deferred sources
-  remain disabled during first foundation Go
+- network/config proof that OpenDART/Naver skip safely when keys are absent,
+  approved public RSS metadata collection works when enabled, and
+  conditional/deferred/broker/general-HTML sources remain disabled unless later
+  approved
 
 Current Go-Check evidence:
 
 - `docs/evidence/RUN-20260604_unit-003-go-check-rebaseline.md`
+- `docs/evidence/RUN-20260605_unit-003-live-collector-hotfix.md`
 - `python -m unittest backend.tests.test_market_intelligence_ingestion`
 - `python -m unittest backend.tests.test_market_intelligence_ingestion backend.tests.test_storage_contract`
 - `python -m py_compile backend/lib/market_intelligence.py backend/service/market_intelligence_ingestion.py backend/tests/test_market_intelligence_ingestion.py`

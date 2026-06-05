@@ -2,22 +2,24 @@
 schema_version: hwi.source/v0
 id: HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE
 type: calendar_alert_paper_gate_policy
-name: hwiStock market calendar, alert, and paper gate policy
+name: hwiStock market calendar, alert, and paper observation policy
 status: set
 owner: hwi
 created_at: 2026-06-02
-updated_at: 2026-06-02
+updated_at: 2026-06-05
 unit_refs:
   - HWISTOCK-UNIT-002
   - HWISTOCK-UNIT-004
   - HWISTOCK-UNIT-006
+  - HWISTOCK-UNIT-010
 module_refs:
   - HWISTOCK-MOD-001
   - HWISTOCK-MOD-003
   - HWISTOCK-MOD-005
+  - HWISTOCK-MOD-008
 ---
 
-# hwiStock Market Calendar, Alert, And Paper Gate Policy
+# hwiStock Market Calendar, Alert, And Paper Observation Policy
 
 ## 1. Purpose
 
@@ -25,10 +27,17 @@ This policy closes the first Set contract for:
 
 - trading-day and session calendar authority
 - first-pass local alert channel
-- one-week paper/sandbox pass criteria
+- operator-controlled paper/sandbox observation criteria
 
 It does not approve broker network calls, AI network calls, live trading, public
 dashboard exposure, or profit claims.
+
+Current correction: the runner is a 24-hour continuous home-server service. The
+paper/sandbox observation period is **not** hardcoded as seven days or any other
+fixed duration in the program. The project owner/operator decides when an
+observation window starts, when it stops, and whether the collected evidence is
+enough for a later go/no-go discussion. Docs and code must model the period as
+operator-supplied run metadata, not as a baked-in service lifetime.
 
 ## 2. Market Calendar Source Contract
 
@@ -106,17 +115,24 @@ External alert delivery such as Telegram, email, Discord, SMS, or webhook is
 deferred and requires a later Set approval because it creates new credentials,
 privacy, delivery, and network-operation risks.
 
-## 4. One-Week Paper/Sandbox Pass Criteria
+## 4. Operator-Controlled Paper/Sandbox Observation Criteria
 
-The one-week test is a safety, evidence, and operational-readiness gate. It is
-not a profit target and does not prove expected future profit.
+The paper/sandbox observation window is a safety, evidence, and operational
+readiness gate. It is not a profit target and does not prove expected future
+profit.
 
-Minimum duration:
+Duration policy:
 
-- at least 7 consecutive calendar days of runner evidence
-- at least 5 valid Korean market open days
-- if holidays or exceptional closures reduce open days below 5, extend the run
-  until 5 valid open days are covered
+- The runner is designed to run continuously, 24 hours a day, across operator
+  observation windows.
+- The observation window length is chosen by the operator outside the program.
+- The service must not auto-stop, auto-pass, or auto-fail because a fixed day
+  count was reached.
+- Evidence reports must record `observation_window_started_at_kst`,
+  `observation_window_ended_at_kst` when ended, elapsed runtime, covered market
+  days, skipped/closed days, and any operator note.
+- If a future live-readiness policy sets a minimum duration, it belongs in the
+  approval/evidence decision record, not as a runner loop hardcode.
 
 Pass requires all P0 rows below:
 
@@ -127,7 +143,7 @@ Pass requires all P0 rows below:
 | broker boundary | before approved KIS paper, records stop at no-order dry-run; after approved KIS paper, only supported KRX paper paths may produce broker-backed evidence |
 | calendar/session | trading/order loops are idle on closed/stale-calendar days and outside the configured KRX/NXT envelope |
 | risk gates | every order intent passes or is rejected by cash reserve 0.25, max holdings 5, AI stop max -5, stale-data, and kill-switch checks |
-| evidence completeness | every day has a paper-day evidence manifest, health summary, risk rejects, order-intent/order-state summary, and daily close report |
+| evidence completeness | every observation day has a paper-day evidence manifest, health summary, risk rejects, order-intent/order-state summary, and daily close report |
 | PnL calculation | PnL fields are system-calculated from order/fill/position records; AI may interpret but not calculate the numbers |
 | source policy | only approved/conditional-approved data sources run; blocked HTML scraping and unofficial APIs do not run |
 | reconciliation | KIS KRX paper orders/fills/balances reconcile when KIS paper is approved; unsupported NXT/SOR branches are disabled or explicit-fallback-only |
@@ -146,11 +162,12 @@ Automatic fail or extension triggers:
 - any unreconciled KIS paper order/fill/balance discrepancy after the daily
   close reconciliation window
 
-After passing, live operation still requires an explicit user go/no-go approval.
+After the operator accepts an observation window, live operation still requires
+an explicit user go/no-go approval and a current profile/unit update.
 
 ## 5. Evidence Requirements
 
-Each day of the paper/sandbox gate must link:
+Each observation day must link:
 
 - `data/evidence/YYYY-MM-DD/paper-day.json`
 - `data/reports/YYYY-MM-DD/morning-0700.md`
@@ -162,6 +179,7 @@ Each day of the paper/sandbox gate must link:
 - risk reject summary
 - PnL summary with `calculation_source: system`
 
-The final one-week evidence report must list every day, market-open status,
-runner uptime, P0 pass/fail rows, critical alerts, fixes, unresolved blockers,
-and the explicit live-readiness recommendation.
+The final observation evidence report must list every covered day, market-open
+status, runner uptime, P0 pass/fail rows, critical alerts, fixes, unresolved
+blockers, operator-selected window start/end metadata, and the explicit
+live-readiness recommendation if one is requested.

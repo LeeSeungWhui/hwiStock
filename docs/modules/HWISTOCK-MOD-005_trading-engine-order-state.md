@@ -66,8 +66,8 @@ execution adapter.
 - Before KIS paper approval, the engine may use a no-order dry-run recorder only.
 - The first broker-backed execution adapter is KIS KRX paper/mock-investment
   after official portal verification and explicit approval.
-- Live orders remain forbidden until one full week of approved paper/sandbox
-  evidence and explicit user go/no-go.
+- Live orders remain forbidden until an operator-selected paper/sandbox
+  observation window has approved evidence and explicit user go/no-go.
 
 ## 2-1. Condition Schema Contract
 

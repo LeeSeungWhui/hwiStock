@@ -1,0 +1,18 @@
+# hwiStock DeepSeek analysis tick.
+# Report-only; no order routing.
+
+[Unit]
+Description=hwiStock DeepSeek market intelligence analysis tick
+After=network-online.target hwistock-intel-collector.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/data/workspace/My/hwiStock
+EnvironmentFile=-/home/hwi/.config/hwistock/deepseek.env
+Environment=HWISTOCK_DEEPSEEK_MODEL=deepseek-v4-pro
+Environment=HWISTOCK_AI_EVENT_LIMIT=12
+Environment=HWISTOCK_AI_MAX_OUTPUT_TOKENS=2000
+Environment=HWISTOCK_AI_REASONING_EFFORT=low
+ExecStart=/usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/ai_analysis_runner.py --once --model "${HWISTOCK_DEEPSEEK_MODEL:-deepseek-v4-pro}"'
+NoNewPrivileges=true

@@ -7,7 +7,7 @@ project_root: /data/workspace/My/hwiStock
 docs_base: docs
 status: active
 owner: hwi
-updated_at: 2026-06-04
+updated_at: 2026-06-05
 vcs_adapter: git
 frameworks:
   - python
@@ -57,8 +57,10 @@ This profile configures Hwi Work Harness for `hwiStock`, a stock day-trading
 automation project. The profile is intentionally safety-first: no code path,
 test, worker, or QA run may place real orders or access real brokerage accounts
 until the required approvals, sandbox evidence, and risk controls are documented.
-Actual live operation also requires at least one full week of paper/sandbox
-testing with named evidence and an explicit user go/no-go approval.
+Actual live operation also requires an operator-selected paper/sandbox
+observation window with named evidence and an explicit user go/no-go approval.
+The runner itself must not hardcode seven days, one week, or any other fixed
+test duration; observation windows are operator/runtime metadata.
 The intended runtime is a 24-hour home-server program/service. Codex sessions are
 not the runtime; they are used for development, review, and verification.
 The first market scope is Korea domestic stocks (`국장`). The runtime has two
@@ -108,14 +110,54 @@ Paper/mock investment target budget is 10,000,000 KRW until paper balance
 evidence proves the actual value. This paper target is separate from the
 intended live starting capital of 2,000,000 KRW cash.
 
-AI orchestration direction is selected for planning: DeepSeek Pro handles
-hourly news/disclosure analysis across 24 hours, with market-regime/session
-analysis added during 08:00-19:00 KST; DeepSeek Flash handles intraday
-lightweight candidate, chart, and risk-label analysis; ChatGPT Pro is used as a
-07:00 external morning reviewer through browser automation when available. AI
-never places orders. The hwiStock orchestrator submits prompts and stores
-answers; DeepSeek, Flash, and GPT Pro do not hold broker credentials or order
-permissions.
+Current operational-paper correction: the continuous KIS paper runner foundation
+(`HWISTOCK-UNIT-010`) is not the complete trading program. Actual paper-run
+readiness now requires the 2026-06-05 operational queue
+(`HWISTOCK-UNIT-011` through `HWISTOCK-UNIT-015`) covering service supervision,
+24-hour news/disclosure collection, KIS intraday market-data collection,
+DeepSeek Pro/Flash runtime analysis, source-grounded trade-document to paper
+intent generation, KIS KRX paper order execution/reconciliation, and read-only
+operator observation Prove.
+
+Current owner-defined runtime architecture is file-driven:
+
+1. `news_disclosure_collector` runs 24 hours and collects only permitted/free
+   public sources. Initial recommended sources are OpenDART disclosures, NAVER
+   Search News API when keys are configured, and public RSS/news-search metadata
+   as a no-key fallback. KRX KIND or other portal scraping remains deferred
+   until terms/access are explicitly recorded.
+2. `kis_intraday_market_collector` runs continuously during the approved
+   intraday window and collects KIS paper-supported KRX market data:
+   WebSocket realtime trade price/orderbook where paper-supported, plus REST
+   ranking/analysis snapshots every 1-3 minutes such as volume rank,
+   fluctuation, volume power, program-trading aggregate status where supported,
+   top-interest stocks, and intraday minute bars. NXT/SOR KIS broker-facing
+   collection remains disabled or fallback-only until later support confirmation.
+3. `deepseek_pro_hourly` runs on the top of every hour. It reads the accumulated
+   news/disclosure and KIS market-data files. During market hours it includes
+   market-regime/session analysis in the same hourly Pro artifact, not as a
+   detached side design.
+4. `deepseek_flash_decision_10m` runs every 10 minutes during market hours. It
+   reads the latest Pro artifact, the recent 10-minute news/disclosure window,
+   KIS REST ranking changes, current KIS market snapshots, and realtime
+   price/orderbook data. It must also read either the previous trade document
+   chain or the current portfolio/order-state snapshot, and preferably both, so
+   new actions do not conflict with current holdings, pending orders, exits,
+   stops, cooldowns, or still-valid earlier trade decisions. It then writes at
+   most one trade document for that 10-minute decision bucket. The document
+   contains at most five symbol actions. Each action must include ticker/name,
+   action type (`WAIT_BUY`, `BUY_NOW`, `HOLD`, `SELL`, or `NO_TRADE`), entry
+   zone if relevant, take-profit, stop-loss, trailing-stop percent,
+   cancel-if-not-filled window, size/cash cap, validity window, source refs, and
+   risk notes.
+5. `trade_document_executor` watches newly written trade documents, validates
+   them through deterministic strategy/risk gates plus current holdings,
+   pending-order, and open-exit checks, and submits only approved KIS KRX
+   paper/mock cash orders. AI artifacts never call broker APIs directly and
+   never hold credentials.
+
+ChatGPT Pro remains optional external review through browser automation when
+available; it is not required for the runtime loop to stay running.
 
 ## 2. Project Layout
 
@@ -164,7 +206,9 @@ permissions.
   - `/home/hwi/.config/hwistock/kis-paper.env`: optional KIS paper/mock secrets
 - Generated output folders: not created yet
 - Runtime target: home server, 24-hour service/process managed by `systemd`
-  for the one-week paper/sandbox evidence run
+  or an approved service manager for continuous paper/sandbox evidence.
+  Observation window duration is chosen by the operator, not hardcoded by the
+  runner.
 - Market scope: Korea domestic stocks (`국장`) first
 - Trading venues: KRX + NXT
 - Trading routing policy: 09:00-15:00 KST -> KRX; 08:00-09:00 and 15:00-20:00
@@ -229,6 +273,22 @@ permissions.
   `docs/modules/HWISTOCK-MOD-006_dashboard-operator-console.md`
 - Data/evidence storage source:
   `docs/modules/HWISTOCK-MOD-007_data-evidence-storage.md`
+- Continuous KIS paper runtime source:
+  `docs/modules/HWISTOCK-MOD-008_continuous-paper-runtime.md`
+- Operational paper-trading program source:
+  `docs/modules/HWISTOCK-MOD-009_operational-paper-trading-program.md`
+- Current operational Ready-Set queue:
+  `docs/set/READY-SET-COMPLETION-20260605_operational-paper-trading-program_hwistock.md`
+- Current operational Go-Check row closure:
+  `docs/set/READY-SET-ROW-CLOSURE-20260605_operational-paper-trading-program_hwistock.md`
+- Current operational Go preflight:
+  `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-paper-trading-program_hwistock.md`
+- Current operational implementation units:
+  - `docs/units/HWISTOCK-UNIT-011_operational-runtime-supervisor.md`
+  - `docs/units/HWISTOCK-UNIT-012_ai-analysis-runtime.md`
+  - `docs/units/HWISTOCK-UNIT-013_signal-to-intent-pipeline.md`
+  - `docs/units/HWISTOCK-UNIT-014_kis-paper-order-execution-reconciliation.md`
+  - `docs/units/HWISTOCK-UNIT-015_operator-console-observation-prove.md`
 - Storage backend: PostgreSQL with hwiStock isolation
   - database: `hwistock`
   - schema: `hwistock_core`
@@ -238,7 +298,7 @@ permissions.
   `docs/units/HWISTOCK-UNIT-009_kis-api-portal-verification.md`
 - KIS API capability matrix:
   `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md`
-- Market calendar, alert, and one-week paper gate policy:
+- Market calendar, alert, and paper observation policy:
   `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`
 - 24-hour branch: market intelligence ingestion, not order execution
 - Market calendar: selected source hierarchy is KRX official trading-days/
@@ -272,6 +332,12 @@ The earlier full Ready-Set closure and Go-Check queue are superseded by
 Do not treat prior `implementation_ready: true`, `ready_for_go_check`, or
 `go_check_passed` labels as current until the Ready-Set bundle is reissued
 against the imported MyWebTemplate code baseline.
+
+The 2026-06-05 operational paper-trading Ready-Set is now
+`implementation_ready: true` only for the contract-hardened Go-Check queue after
+`HWISTOCK-UNIT-016` closed runtime data/execution contracts. This does not mean
+paper-run-ready, operationally complete, or live-ready; UNIT-012, UNIT-013,
+UNIT-014, and UNIT-015 still require Go/Check/Prove evidence.
 
 ## 3. Source Of Truth Order
 
@@ -340,7 +406,8 @@ Manual checklist review always includes:
   reserve floor, maximum simultaneous holdings, and stop-loss trigger
 - cash-only capital policy before any order path
 - all-in single-stock deployment blocked by default
-- at least one full week of paper/sandbox testing before live operation
+- operator-selected paper/sandbox observation evidence before live operation;
+  the program must not hardcode the observation duration
 - overtrading controls for the 08:00-20:00 envelope are not part of the first
   minimal risk policy unless a future Set decision adds them; signal-quality and
   stale-data gates still apply
@@ -451,6 +518,20 @@ Planned gate ids:
   expanded paper API smoke still needs longer position/reject/paper-budget
   evidence. This gate does not prove NXT/SOR broker behavior under the current
   KIS paper constraints.
+- `continuous-paper-runner-go-check`: foundation Go gate for
+  `HWISTOCK-UNIT-010`. It proves the KIS paper runner boundary and local
+  no-network implementation, but it is not the complete operational
+  stock-trading program.
+- `operational-paper-program-go-check`: current Go queue for
+  `HWISTOCK-UNIT-011` through `HWISTOCK-UNIT-015`. It must prove service
+  supervision, current DeepSeek Pro/Flash analysis runtime,
+  source-grounded signal-to-intent generation, KIS KRX paper order
+  execution/reconciliation, read-only operator observation, and no fake/live
+  behavior.
+- `paper-observation-window-prove`: future Prove gate for an operator-selected
+  observation window. The window length is chosen by the project owner/operator
+  and recorded in evidence; the runner must not auto-pass, auto-fail, or
+  auto-stop because a fixed duration was reached.
 - `dashboard-readonly-access-smoke`: future smoke gate proving the dashboard
   exposes no direct order controls, masks sensitive values, binds local-only by
   default, and rejects public/LAN exposure unless a later Set contract approves
@@ -469,8 +550,8 @@ Explicit approval is required before:
   scopes it
 - any live account login
 - any order placement, even paper/sandbox, unless the unit explicitly scopes it
-- treating the system as live-ready before at least one full week of
-  paper/sandbox testing has been completed and reviewed
+- treating the system as live-ready before an operator-selected paper/sandbox
+  observation window has been completed, reviewed, and explicitly accepted
 - real-money trading
 - production deployment or remote operation
 - selecting an AI API provider/model or sending project data to an AI API
@@ -494,9 +575,10 @@ For trading-related work, evidence must label the environment:
 - `live_order`
 
 `live_order` evidence is forbidden until explicitly approved in a Set contract.
-The earliest live-operation approval must link one full week of paper/sandbox
-testing evidence, including dates, test environment, scenario coverage, order
-simulation results, failures, fixes, and final go/no-go verdict.
+The earliest live-operation approval must link operator-selected paper/sandbox
+observation evidence, including dates, test environment, scenario coverage,
+paper order/reconciliation results where approved, failures, fixes, observation
+window metadata, and final go/no-go verdict.
 
 ## 9. Document Paths
 
@@ -530,10 +612,12 @@ simulation results, failures, fixes, and final go/no-go verdict.
   `minimum_cash_reserve_ratio = 0.25` of total capital; AI may recommend a
   per-entry stop price, but deterministic risk gates cap accepted stops at a
   maximum -5% loss envelope.
-- One-week paper/sandbox test acceptance criteria: selected by
-  `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`. The gate is at
-  least 7 consecutive calendar days and at least 5 valid Korean market open
-  days, with P0 safety/evidence/reconciliation criteria and no profit threshold.
+- Paper/sandbox observation acceptance criteria: selected by
+  `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`. The runner is a
+  continuous 24-hour service; observation-window start, end, and duration are
+  chosen by the operator and recorded as evidence metadata. P0
+  safety/evidence/reconciliation criteria and no-profit-threshold policy remain
+  required.
 - Paper/sandbox provider: KIS paper/mock API use is limited to the KRX-supported
   path unless later official evidence changes this. NXT/SOR remain
   venue/session parameters in the engine, but KIS-facing NXT/SOR branches stay
@@ -558,9 +642,10 @@ simulation results, failures, fixes, and final go/no-go verdict.
 - MyWebTemplate reuse: reuse suitable `frontend-web`/`backend` code skeleton and
   tooling patterns only. Do not copy MyWebTemplate `docs/` or template-product
   PST content into hwiStock.
-- Home-server process manager: selected as `systemd` for the one-week
-  paper/sandbox runner evidence path. Docker Compose is deferred; tmux/screen is
-  allowed only for early manual experiments, not official evidence.
+- Home-server process manager: selected as `systemd` or an approved service
+  manager for the continuous paper/sandbox runner evidence path. Docker Compose
+  is deferred; tmux/screen is allowed only for early manual experiments, not
+  official evidence.
 - Service health/alerting channel: selected as local-only first pass:
   systemd journal, `data/alerts/YYYY-MM-DD/alerts.jsonl`, dashboard audit/error
   panel when implemented, and daily close report. External alert delivery is
@@ -570,7 +655,8 @@ simulation results, failures, fixes, and final go/no-go verdict.
   cached calendar forces trading/order loops idle.
 - Market-intelligence source registry:
   `docs/sources/HWISTOCK-SOURCE-REGISTRY.md`
-  - approved first Go: OPENDART / DART Open API
+  - approved first Go: OPENDART / DART Open API and no-key public RSS news
+    metadata search
   - conditional after key approval: NAVER Search API news
   - conditional after terms/access check: KRX KIND, KRX Data Marketplace delayed
     context data
@@ -585,7 +671,7 @@ simulation results, failures, fixes, and final go/no-go verdict.
   explicitly scopes KIS paper/mock behavior.
 - Crawling/rate-limit policy: first Go uses API/RSS/official-source first and
   blocks general HTML crawling by default; long-term retention remains
-  unresolved beyond the one-week evidence gate.
+  unresolved beyond the operator-selected paper observation evidence gate.
 
 ## 11. Ready / Set Questions
 
@@ -600,10 +686,11 @@ These must be answered before implementation-ready Go:
    local cached calendar for runtime, and KIS `국내휴장일조회` only after approved
    broker-network integration.
 3. Which sources are allowed for 24-hour market intelligence ingestion: closed
-   for first Go by `docs/sources/HWISTOCK-SOURCE-REGISTRY.md`; DART is approved,
-   Naver Search API news is conditional after key/query/rate approval, KRX/KIND
-   are conditional after terms/access check, KIS broker data is deferred, and
-   general HTML scraping is blocked by default.
+   for first Go by `docs/sources/HWISTOCK-SOURCE-REGISTRY.md`; DART and no-key
+   public RSS news metadata search are approved, Naver Search API news is
+   conditional after key/query/rate approval, KRX/KIND are conditional after
+   terms/access check, KIS broker data is deferred, and general HTML scraping is
+   blocked by default.
 4. What collection policy is allowed for crawlers: closed for first Go as
    API/RSS/official-source first; no general HTML crawling unless a later
    source-specific Set approval records terms, rate limits, and storage policy.
@@ -634,9 +721,10 @@ These must be answered before implementation-ready Go:
 14. Should any account-level risk controls such as daily loss halt, max trades,
    or cooldown remain excluded for the first test, or should they be added later
    after paper evidence?
-15. One-week paper/sandbox pass criteria: closed by
-    `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`. Minimum 7
-    consecutive calendar days, at least 5 valid Korean market open days, P0
+15. Paper/sandbox observation criteria: closed by
+    `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`. The runner is
+    continuous; the operator chooses the observation period. Evidence must
+    record start/end/duration metadata, covered market days, P0
     safety/evidence/reconciliation criteria, and no profit threshold.
 16. What data source is permitted for historical and realtime quotes? First-pass
     recommendation is packaged in
@@ -647,17 +735,22 @@ These must be answered before implementation-ready Go:
     design source exists; use no-design fallback and require `agy` Gemini Pro
     design review before dashboard Go. Review packet:
     `docs/set/READY-SET-DASHBOARD-DESIGN-REVIEW-PACKET-20260602_hwistock.md`.
-18. 24-hour runner process manager: closed as `systemd` for the one-week
-   paper/sandbox evidence path. Docker Compose deferred; tmux/screen only for
-   early manual experiments.
+18. 24-hour runner process manager: closed as `systemd` or approved service
+   manager for continuous paper/sandbox evidence. Docker Compose deferred;
+   tmux/screen only for early manual experiments.
 19. Alert channel: closed for first pass as local-only systemd journal,
     `data/alerts/YYYY-MM-DD/alerts.jsonl`, dashboard audit/error panel when
     implemented, and daily close report. External delivery is deferred.
-20. For a later KIS integration unit, which personal-account eligibility,
-    endpoint mode, credential flow, account type, rate limits, KRX paper
-    symbol/venue fields, and order APIs must be verified from current official
-    KIS docs before any network call?
-21. Can the official KIS paper/mock-investment API be used for the one-week test,
-    and how should its 10,000,000 KRW paper budget be mapped down to the intended
-    2,000,000 KRW live starting-capital policy, given that NXT/SOR broker
-    behavior cannot be paper-proven by the current KIS references?
+20. KIS paper integration scope: `HWISTOCK-UNIT-010` is the foundation runner
+    boundary; actual operational KIS paper order execution and reconciliation
+    belongs to `HWISTOCK-UNIT-014`. Bounded KIS KRX paper/mock network calls and
+    paper orders may be implemented only inside the selected unit after
+    preflight; live, NXT/SOR broker routing, secret printing, and fake broker
+    state remain denied.
+21. KIS paper/mock API use for continuous testing: current operational use is
+    governed by the 2026-06-05 operational Ready-Set queue. The official
+    paper/mock investment API can be used for operator-selected observation
+    windows in the KRX-supported paper path. The 10,000,000 KRW paper budget is
+    broker-visible paper context only; hwiStock risk sizing must preserve the
+    2,000,000 KRW live-capital policy overlay unless a future explicit
+    profile/unit change says otherwise.

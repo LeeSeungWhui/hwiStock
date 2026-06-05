@@ -39,6 +39,10 @@ links:
   - HWISTOCK-MOD-001
   - HWISTOCK-MOD-002
   - HWISTOCK-MOD-003
+operational_runtime_authority:
+  superseded_by_module_ref: docs/modules/HWISTOCK-MOD-009_operational-paper-trading-program.md
+  superseded_by_unit_ref: docs/units/HWISTOCK-UNIT-012_ai-analysis-runtime.md
+  note: UNIT-005/MOD-004 remain the safety foundation; operational Pro/Flash scheduling and trade-document schemas are governed by MOD-009/UNIT-012.
 ---
 
 # AI Orchestration Layer
@@ -141,10 +145,10 @@ AI output never skips step 4 or step 5.
 
 ### 4.2-1 Model Schedule / Roles
 
-- DeepSeek Pro hourly news/disclosure analysis: runs 24 hours, delta-only,
+- DeepSeek Pro hourly aggregate analysis: runs 24 hours, delta-only,
   source-grounded, and stores hourly artifacts.
-- DeepSeek Pro market-regime/session analysis: added during 08:00-19:00 KST
-  where current market/venue context is meaningful.
+- DeepSeek Pro market-regime/session analysis: during market hours this is a
+  section inside the hourly Pro artifact, not a detached operational subsystem.
 - 06:50 aggregator: combines overnight hourly analysis artifacts into a GPT Pro
   prompt. It must not reprocess all raw news when existing analysis artifacts
   are sufficient.
@@ -152,9 +156,10 @@ AI output never skips step 4 or step 5.
   08:00 watchlist candidates, themes, risks, and invalidation conditions. If it
   misses the configured cutoff, the system falls back to the DeepSeek-only
   morning report.
-- DeepSeek Flash intraday labels: lightweight analysis of scanner-selected
-  candidates, chart state, risk flags, and dashboard summaries. It does not
-  decide final orders.
+- DeepSeek Flash minute trade document: during market hours, reads latest Pro
+  analysis, new news/disclosures, KIS price/ranking/realtime snapshots, previous
+  trade documents and/or current portfolio/order-state snapshots, then writes
+  one `flash_trade_document/v0` for the minute. It does not decide final orders.
 - 20:00 daily close report: uses system-calculated profit, loss, net PnL,
   fees/taxes when available, trade logs, AI candidate results, and market/news
   context. AI explains; the system calculates numbers.
@@ -166,9 +171,8 @@ not crawl, retrieve, or call broker tools in the first implementation.
 
 | job_id | schedule | model role | input schema | output schema | latency/cutoff |
 | --- | --- | --- | --- | --- | --- |
-| `deepseek_pro_news_hourly` | hourly, 24h | DeepSeek Pro | `intel_delta_bundle/v0` | `hourly_intel_analysis/v0` | soft 10m, hard 20m |
-| `deepseek_pro_market_regime` | hourly, 08:00-19:00 KST | DeepSeek Pro | `market_regime_bundle/v0` | `market_regime_report/v0` | soft 10m, hard 20m |
-| `deepseek_flash_intraday_label` | event-triggered during 08:00-20:00 KST | DeepSeek Flash | `candidate_context_bundle/v0` | `intraday_candidate_label/v0` | soft 15s, hard 30s |
+| `deepseek_pro_hourly_market_analysis` | top of every hour, 24h | DeepSeek Pro | `pro_hourly_input_bundle/v0` | `pro_hourly_market_analysis/v0` | soft 10m, hard 20m |
+| `deepseek_flash_minute_trade_document` | every minute during market hours | DeepSeek Flash | `flash_minute_input_bundle/v0` | `flash_trade_document/v0` | soft 15s, hard 30s |
 | `gpt_prompt_0650` | 06:50 KST | local orchestrator / DeepSeek Pro summary artifacts | `overnight_analysis_bundle/v0` | `gpt_morning_prompt/v0` | hard 07:00 |
 | `chatgpt_pro_morning_review` | 07:00 KST | ChatGPT Pro external reviewer | `gpt_morning_prompt/v0` | `morning_review_report/v0` | hard 07:20 |
 | `daily_close_2000` | 20:00 KST | DeepSeek Pro | `daily_close_bundle/v0` | `daily_close_report/v0` | soft 20m, hard 21:00 |
@@ -202,17 +206,15 @@ All AI outputs are JSON documents with `schema_version`, `job_id`,
 - `prompt_schema_version`
 - `valid_for_minutes` when used for intraday candidate labels
 
-`hourly_intel_analysis/v0` includes: theme summaries, affected symbols,
-disclosure/news source ids, risk notes, novelty/dedup flags, and `next_watch`
-candidates. It cannot include executable order fields.
+`pro_hourly_market_analysis/v0` includes: theme summaries, affected symbols,
+disclosure/news source ids, KIS market-data refs, risk notes, novelty/dedup
+flags, `next_watch` candidates, and during market hours a market-regime/session
+section. It cannot include executable order fields.
 
-`market_regime_report/v0` includes: session, venue, broad market direction,
-volatility/risk notes, sector/theme notes, and stale-data warnings. It cannot
-recommend order quantity.
-
-`intraday_candidate_label/v0` includes: candidate id, chart interval, source
-path, label, invalidation notes, stale-data status, and optional
-`ai_recommendation/v0`.
+`flash_trade_document/v0` is one document per Flash minute tick. Its
+`candidates` list contains at most five symbols. Each candidate includes entry
+price/rule, take-profit, stop-loss, sizing/cash cap, validity window, source
+refs, KIS market-data refs, portfolio-conflict status, and risk notes.
 
 `gpt_morning_prompt/v0` includes: overnight analysis digest, source ids, themes,
 candidate list, questions for GPT Pro, and explicit forbidden actions.
@@ -357,10 +359,11 @@ Future interfaces may include:
 - Decision: internal fake broker execution is not used. Before KIS paper
   approval, approved intents are no-order dry-run records only; KIS and external
   broker endpoints are forbidden until a later approved unit.
-- Decision: DeepSeek Pro is the hourly news/disclosure and 08:00-19:00
-  market-regime analyst.
-- Decision: DeepSeek Flash is the intraday lightweight candidate/chart/risk
-  labeler.
+- Decision: DeepSeek Pro is the hourly aggregate source/market analyst; during
+  market hours the same artifact includes market-regime/session analysis.
+- Decision: DeepSeek Flash writes one market-minute trade document whose
+  candidates list contains at most five symbols and is aware of prior trade
+  documents and/or current portfolio/order state.
 - Decision: ChatGPT Pro is the 07:00 morning external reviewer through browser
   automation when available before cutoff.
 - Decision: 20:00 daily close report includes system-calculated PnL and AI

@@ -35,6 +35,14 @@ async def runner_status(atKst: Optional[str] = None):
     return _json_ok(result)
 
 
+@router.get("/kis-paper-continuous-status")
+async def kis_paper_continuous_status(atKst: Optional[str] = None):
+    from service import kis_paper_continuous_runner
+
+    result = kis_paper_continuous_runner.evaluateContinuousPaperRunnerStatus(at_kst=atKst)
+    return _json_ok(result)
+
+
 @router.get("/route-preview")
 async def route_preview(atKst: str):
     result = HwiStockRunnerService.preview_route(atKst)

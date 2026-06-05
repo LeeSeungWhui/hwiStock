@@ -20,7 +20,7 @@ completeness:
   status: sufficient
   audit_ref: docs/qa/QA-HWISTOCK-UNIT-002_home-server-paper-runner.md
 owner: hwi
-updated_at: 2026-06-04
+updated_at: 2026-06-05
 last_verified_at: 2026-06-04
 source_snapshot:
   input_digest: "홈서버에서 프로그램을 24시간 돌리는 운영 목표"
@@ -100,6 +100,8 @@ evidence_refs:
     status: pass
   - run_id: RUN-20260604-unit-002-go-check
     status: pass
+  - run_id: RUN-20260605-ready-set-continuous-paper-runner
+    status: docs_correction
 links:
   - HWISTOCK-MOD-001
   - docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md
@@ -121,10 +123,12 @@ record no-order dry-run decisions. The first broker-backed order/fill path is
 the approved KIS KRX paper/mock-investment adapter. The official paper/mock
 starting budget candidate is 10,000,000 KRW.
 
-The first one-week evidence runner uses `systemd`. Manual shell, tmux, or screen
-sessions are allowed only for early experiments and do not count as official
-one-week evidence. Docker Compose is deferred until a later unit explicitly
-chooses containerized operation.
+The continuous runner uses `systemd` or an equivalent approved service manager
+for official long-running evidence. Manual shell, tmux, or screen sessions are
+allowed only for early experiments and do not count as official continuous-run
+evidence. Docker Compose is deferred until a later unit explicitly chooses
+containerized operation. The service lifetime is not the test period: the
+operator chooses each observation window outside the runner loop.
 
 ## 2. Baseline Module Contract
 
@@ -139,7 +143,7 @@ None. This unit uses the existing safety-core module contract.
 ## 3. Included Scope
 
 - Runtime process shape for a home server.
-- `systemd` service lifecycle for the one-week paper/sandbox evidence path.
+- `systemd` service lifecycle for the continuous paper/sandbox evidence path.
 - Paper/sandbox-only default mode.
 - No-order dry-run behavior before KIS paper approval: candidate/risk/order
   intent records only, with no simulated fills or fake balances.
@@ -153,10 +157,10 @@ None. This unit uses the existing safety-core module contract.
 - Audit log categories.
 - Kill switch behavior.
 - Daily paper-run summary evidence.
-- Requirements for the future one-week paper/sandbox test period.
+- Requirements for future operator-selected paper/sandbox observation windows.
 - Local-only API/dashboard binding policy for service health surfaces.
 - Market calendar source hierarchy, local cached calendar behavior, local alert
-  channel, and one-week pass criteria from
+  channel, and operator-controlled paper observation criteria from
   `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`.
 
 ## 4. Excluded Scope
@@ -179,25 +183,25 @@ None. This unit uses the existing safety-core module contract.
 | AC-03 | P0 | Kill switch blocks dry-run and future order routing | Kill switch state is visible and enforced | log/health output | QA-003 |
 | AC-04 | P1 | Health state is observable | Health check reports loop/data/risk/order-gate state | health output | QA-004 |
 | AC-05 | P1 | Audit logs are separated by event type | signal/decision/risk/order/error logs are inspectable | log file review | QA-005 |
-| AC-06 | P1 | One-week paper test evidence can be produced | Daily summary format is defined | evidence summary | QA-006 |
+| AC-06 | P1 | Continuous paper observation evidence can be produced | Daily summary and operator observation-window formats are defined | evidence summary | QA-006 |
 | AC-07 | P0 | Runner is market-session aware | Out-of-session mode does not run active trading/order loops | calendar/health/log output | QA-007 |
 | AC-08 | P0 | Information ingestion branch is separate | 24h crawler/news/disclosure branch cannot place orders | config/log review | QA-008 |
 | AC-09 | P0 | Venue routing is simple and deterministic | 09:00-15:00 routes KRX; 08:00-09:00 and 15:00-20:00 route NXT | calendar/route test | QA-009 |
 | AC-10 | P0 | Pre-approval execution is dry-run only | Approved order intents are recorded without broker calls, simulated fills, or fake balances before KIS paper approval | adapter/log review | QA-010 |
 | AC-11 | P0 | KIS/external broker and broker paper/mock network use requires approval | KIS/external broker endpoints, paper/mock/demo/testbed endpoints, credentials, and tokens are absent from runner config until an approved KIS unit enables them | config/network review | QA-011 |
 | AC-12 | P0 | Paper budget is separated from live capital | Official paper/mock budget candidate is 10,000,000 KRW while live baseline remains 2,000,000 KRW cash | config/doc review | QA-012 |
-| AC-13 | P0 | Official evidence runner uses systemd | Planned service files and health checks are under `ops/systemd/`; tmux/screen/manual shells do not count for the one-week evidence run | service config review | QA-013 |
+| AC-13 | P0 | Official evidence runner uses a service manager | Planned service files and health checks are under `ops/systemd/`; tmux/screen/manual shells do not count for continuous-run evidence | service config review | QA-013 |
 | AC-14 | P0 | Missing market-data source does not create unsafe trading | Data-dependent trading loops report `source_unconfigured`/idle and cannot route orders | health/config review | QA-014 |
 | AC-15 | P0 | Health/API surfaces bind local-only by default | Runner/API/dashboard health surfaces bind `127.0.0.1` unless a future Set contract approves authenticated exposure | config review | QA-015 |
 | AC-16 | P0 | Calendar source hierarchy is selected | Runtime uses local cached calendar generated from KRX/NXT official sources; KIS holiday lookup is later-approved broker cross-check only | config/doc review | QA-016 |
 | AC-17 | P0 | Alert channel is local-only first pass | Alerts write systemd journal, `data/alerts`, dashboard audit panel when implemented, and daily close report; no external delivery | config/log review | QA-017 |
-| AC-18 | P0 | One-week pass criteria are explicit | Minimum 7 calendar days, at least 5 valid market-open days, P0 safety/evidence criteria, and no profit threshold are documented | evidence contract review | QA-018 |
+| AC-18 | P0 | Observation-window criteria are explicit | Test duration is operator-controlled metadata; P0 safety/evidence criteria and no-profit-threshold policy are documented without a hardcoded runner duration | evidence contract review | QA-018 |
 
 ## 6. Implementation Notes
 
 Selected process manager:
 
-- `systemd` is the official runner/process-manager path for one-week
+- `systemd` is the official runner/process-manager path for continuous
   paper/sandbox evidence.
 - Planned service config root: `ops/systemd/`.
 - Planned services:
@@ -228,13 +232,14 @@ Selected process manager:
   - External alert delivery is deferred.
 - Docker Compose is deferred.
 - tmux/screen/manual shell is acceptable only for early manual experiments and
-  cannot count toward the official one-week evidence run.
+  cannot count toward the official continuous-run evidence.
 
 Broker direction is KIS because KB Securities is blocked as a practical personal
 API candidate. This unit should define the no-order dry-run runner behavior
 first so pre-approval evidence can be produced without credentials, KIS
-paper/mock investment APIs, or broker network calls. A later KIS paper unit can
-approve official KIS KRX paper/mock API use for the one-week evidence run.
+paper/mock investment APIs, or broker network calls. `HWISTOCK-UNIT-010` is the
+later KIS paper unit that can approve official KIS KRX paper/mock API use for a
+continuous runner whose observation period is chosen by the operator.
 
 ## 7. Open Questions
 
@@ -244,7 +249,7 @@ Closed by Set:
   and KIS KRX paper adapter boundary are selected by this unit.
 - No-order dry-run and KIS paper state contracts are selected by
   `HWISTOCK-UNIT-006`.
-- Official/broker calendar source, local alert channel, and one-week pass
+- Official/broker calendar source, local alert channel, and paper observation
   criteria are selected by
   `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`.
 

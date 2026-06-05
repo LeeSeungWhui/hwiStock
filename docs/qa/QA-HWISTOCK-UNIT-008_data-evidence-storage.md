@@ -26,8 +26,8 @@ evidence_refs:
 
 Prove that hwiStock's first storage implementation uses an isolated PostgreSQL
 database/schema plus date-partitioned artifacts, while preserving auditable
-links between sources, AI outputs, trading state, PnL, reports, and one-week
-paper evidence.
+links between sources, AI outputs, trading state, PnL, reports, and
+operator-selected paper observation evidence.
 
 ## 2. Scope
 
@@ -40,7 +40,7 @@ In scope:
 - artifact paths and hashes linked to PostgreSQL rows
 - system-calculated PnL
 - redaction and article-body storage policy
-- one-week paper evidence manifest linkage
+- operator-selected paper observation manifest linkage
 
 Out of scope:
 
@@ -59,7 +59,7 @@ Out of scope:
 | QA-003 | P0 | path | Inspect artifact path contract | Raw, normalized, AI, candidate, reports, trading, and evidence files are separated by path | path/schema review |
 | QA-004 | P0 | schema | Inspect common artifact schemas | Artifacts include id, type, KST timestamps, environment, source links, redaction status, and hashes where applicable | schema review |
 | QA-005 | P0 | report | Generate or inspect daily close schema | Profit/loss/net PnL come from system calculation fields with `calculation_source: system` | report/schema review |
-| QA-006 | P0 | evidence | Inspect one-week paper evidence manifest | Each day can link source artifacts, AI outputs, candidates, trades, PnL, morning report, and daily close | evidence review |
+| QA-006 | P0 | evidence | Inspect paper observation evidence manifest | Each observation day can link source artifacts, AI outputs, candidates, trades, PnL, morning report, and daily close | evidence review |
 | QA-007 | P0 | redaction | Inspect sample artifacts/reports | Credentials, API keys, raw account ids, and private account identifiers are absent or redacted | redaction review |
 | QA-008 | P1 | audit | Inspect artifact-to-DB linkage | PostgreSQL rows store artifact id/path/hash and can be traced back to files | db/file review |
 | QA-009 | P1 | copyright | Inspect source artifact storage policy | Article bodies are not stored unless source terms allow it; metadata/hash/summary policy is recorded | source artifact review |

@@ -8,7 +8,17 @@ environment: docs_only
 status: pass_with_followups
 owner: hwi
 created_at: 2026-06-02
-updated_at: 2026-06-02
+updated_at: 2026-06-05
+superseded_by:
+  - RUN-20260605-owner-runtime-architecture-clarification
+  - RUN-20260605-ready-set-operational-paper-trading-program
+superseded_note: >
+  This evidence records the first-pass UNIT-005 Set state from 2026-06-02.
+  The operational AI runtime roles and schemas are superseded by the
+  2026-06-05 owner-clarified Ready-Set: DeepSeek Pro writes the hourly
+  aggregate including market-regime analysis, and DeepSeek Flash writes one
+  market-minute trade document whose candidate list contains at most five
+  symbols and is portfolio/order-state aware.
 unit_refs:
   - HWISTOCK-UNIT-005
 module_refs:
@@ -20,6 +30,13 @@ profile_refs:
 ---
 
 # UNIT-005 AI Orchestration Layer Set
+
+> Supersession note (2026-06-05): this file is historical evidence for the
+> first-pass UNIT-005 Set. Current operational AI runtime authority is
+> `RUN-20260605_owner-runtime-architecture-clarification.md`,
+> `RUN-20260605_ready-set-operational-paper-trading-program.md`,
+> `HWISTOCK-MOD-009_operational-paper-trading-program.md`, and
+> `HWISTOCK-UNIT-012_ai-analysis-runtime.md`.
 
 ## 1. Scope
 

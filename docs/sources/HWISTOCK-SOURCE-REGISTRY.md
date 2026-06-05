@@ -6,7 +6,7 @@ name: hwiStock market intelligence source registry
 status: set
 owner: hwi
 created_at: 2026-06-02
-updated_at: 2026-06-02
+updated_at: 2026-06-05
 unit_refs:
   - HWISTOCK-UNIT-003
   - HWISTOCK-UNIT-002
@@ -50,6 +50,7 @@ Default policy:
 | source_id | source | status | method | env / credential | storage policy | notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | `dart_openapi_disclosures` | OPENDART / DART Open API | `approved_first_go` | official API | `DART_API_KEY` | metadata, filing ids, timestamps, summaries, selected XML snapshots only when needed | Primary disclosure source for first Go. Use list/search endpoints and source ids. |
+| `public_news_rss_search` | Public news search RSS metadata feed | `approved_first_go` | public RSS/search feed metadata | none | title, link, source, published timestamp, query metadata, and RSS summary/excerpt only | No-key news source for first live collector hotfix. No article-body crawling, login scraping, paywall scraping, or general HTML scraping. |
 | `naver_search_news_api` | NAVER Developers Search API - news | `conditional_after_key` | official API | `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` | title, original link, Naver link, description/excerpt, timestamps, query metadata | General news source after API credentials and query/rate config are approved. No article-body scraping. |
 | `kind_krx_disclosure_portal` | KRX KIND disclosure portal | `conditional_after_terms_check` | official web portal / future approved method | none until approved | metadata only until method is approved | Official disclosure portal, but automated collection needs source-specific terms/access confirmation. DART remains first source. |
 | `krx_data_marketplace_delayed` | KRX Data Marketplace | `conditional_after_terms_check` | official data portal/product | none until approved | delayed market-data metadata/OHLCV only after terms/access confirmation | Use for delayed/context data only after access policy is recorded. Realtime trading feed is not approved here. |
@@ -78,6 +79,8 @@ Checked on 2026-06-02.
 
 - OPENDART: respect official API limits and error codes. First implementation
   should also apply a local conservative cap and backoff.
+- Public RSS news search: no credential required; use conservative polling,
+  metadata/excerpt-only storage, and no article-body HTML crawling.
 - NAVER Search API: use only after credentials are approved; first config must
   include daily cap, query list, and backoff.
 - KRX/KIND: no automated collection until terms/access method is recorded.

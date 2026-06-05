@@ -94,6 +94,10 @@ branch.
   feeds over generic scraping.
 - First source allowlist:
   - OPENDART / DART Open API is approved for the first ingestion implementation.
+  - Public news search RSS metadata is approved for the first live collector
+    path without API keys. It stores feed metadata and RSS summaries/excerpts
+    only and must not crawl article bodies, login pages, paywalled pages, or
+    general HTML pages.
   - NAVER Developers Search API news is conditionally allowed only after API
     credentials, query list, rate cap, and storage policy are approved.
   - KRX KIND and KRX Data Marketplace are registered as official sources, but
@@ -121,7 +125,7 @@ branch.
 | source registry | `backend.lib.market_intelligence.loadSourceRegistryConfig` | allowed sources and limits | unapproved sources | config review |
 | crawler/fetcher | `backend.service.market_intelligence_ingestion.ingestFixtureRows` | fixture-only metadata/events | direct trading/live fetch | logs/tests |
 | disclosure source | DART first; KIND conditional | public disclosure events | private data | source evidence |
-| news source | Naver Search API conditional; general HTML scraping forbidden | news/article metadata | full article copying beyond allowed policy | source evidence |
+| news source | Public RSS metadata approved; Naver Search API conditional; general HTML scraping forbidden | news/article metadata and permitted RSS summaries/excerpts | full article copying beyond allowed policy | source evidence |
 | chart data source | KRX delayed conditional; KIS realtime deferred | candles/OHLCV/volume/latency | chart image scraping | data evidence |
 | event bus/store | future store | normalized candidate events | orders | data review |
 
@@ -155,8 +159,8 @@ Future interfaces may include:
 - Source allowlist is required before implementation.
 - Source registry is `docs/sources/HWISTOCK-SOURCE-REGISTRY.md`.
 - Retention default: keep normalized events, source metadata, and summaries
-  through at least the one-week paper/sandbox gate. Longer retention and
-  compression remain storage-policy questions.
+  through the operator-selected paper/sandbox observation gate. Longer retention
+  and compression remain storage-policy questions.
 - Copyright/terms handling is source-specific. Full article body storage is
   forbidden unless the registry explicitly allows it.
 - News/disclosure/chart events must be labeled as informational until
@@ -193,6 +197,9 @@ Future interfaces may include:
 - Decision: chart signals must use approved raw market data, not scraped chart
   images.
 - Decision: OPENDART / DART Open API is the first approved disclosure source.
+- Decision: no-key public RSS news metadata search is approved for first live
+  collection when it stores metadata/excerpts only and does not crawl article
+  bodies.
 - Decision: NAVER Search API news is conditional after key/query/rate approval.
 - Decision: KIND/KRX are official source candidates but automated collection is
   deferred until terms/access checks are complete.

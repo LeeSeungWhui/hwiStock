@@ -1,0 +1,14 @@
+# hwiStock runner evidence timer.
+
+[Unit]
+Description=hwiStock runner evidence every 5 minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+AccuracySec=20s
+Persistent=true
+Unit=hwistock-runner-tick.service
+
+[Install]
+WantedBy=timers.target

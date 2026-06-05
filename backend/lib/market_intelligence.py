@@ -138,6 +138,18 @@ def _build_registry_sources() -> Dict[str, Dict[str, Any]]:
             body_storage_policy="excerpt_allowed",
             live_enabled=False,
         ),
+        "public_news_rss_search": _source_entry(
+            "public_news_rss_search",
+            SOURCE_STATUS_APPROVED_FIRST_GO,
+            collection_method="public_rss",
+            credential_policy="none",
+            storage_policy="title, link, source, published timestamp, and RSS summary only",
+            rate_limit_policy="local conservative polling; no article-body crawling",
+            terms_notes="public RSS/search feed metadata only; no paywall/login/HTML article scraping",
+            retention_notes="metadata and permitted RSS summaries only",
+            body_storage_policy="excerpt_allowed",
+            live_enabled=True,
+        ),
         "kind_krx_disclosure_portal": _source_entry(
             "kind_krx_disclosure_portal",
             SOURCE_STATUS_CONDITIONAL_AFTER_TERMS,

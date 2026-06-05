@@ -59,7 +59,7 @@ overlap with MyWebTemplate.
 - 20:00 daily close report.
 - Candidate cards.
 - Order/fill/position/PnL logs.
-- Evidence paths for one-week paper testing.
+- Evidence paths for operator-selected paper observation windows.
 - Redaction and article-body storage policy.
 - Artifact-link and hash behavior between PostgreSQL rows and files.
 
@@ -81,7 +81,7 @@ overlap with MyWebTemplate.
 | AC-03 | P0 | Storage separates data types | Raw, normalized, AI, candidate, trading, report, and evidence artifacts are type-separated by path | path/schema review | QA-003 |
 | AC-04 | P0 | Common artifact fields are required | Every artifact schema includes ids, dates, environment, source links, redaction status, and hash fields where applicable | schema review | QA-004 |
 | AC-05 | P0 | PnL is system-calculated | 20:00 report references computed PnL fields, not AI-calculated numbers | report review | QA-005 |
-| AC-06 | P0 | Evidence is linkable | One-week paper test can link each day to source, AI, candidate, trading, PnL, and report artifacts | evidence review | QA-006 |
+| AC-06 | P0 | Evidence is linkable | Operator-selected paper observation windows can link each day to source, AI, candidate, trading, PnL, and report artifacts | evidence review | QA-006 |
 | AC-07 | P0 | Secrets and private identifiers are excluded | Credentials, keys, raw account numbers, and private account ids are absent from artifacts | redaction review | QA-007 |
 | AC-08 | P1 | Artifact links are auditable | PostgreSQL rows can be traced to artifact paths and content hashes | smoke/test output | QA-008 |
 | AC-09 | P1 | Copyright-sensitive bodies are controlled | Source artifacts record body storage policy and avoid full article bodies unless allowed | source artifact review | QA-009 |
@@ -96,9 +96,8 @@ Use KST dates.
 | `data/raw/YYYY-MM-DD/disclosures/*.json` | collected disclosure metadata and source hashes |
 | `data/raw/YYYY-MM-DD/market-data/*.jsonl` | raw permitted quote/candle/order-book bundles when source is approved |
 | `data/normalized/YYYY-MM-DD/events.jsonl` | normalized source events used by AI and candidate generation |
-| `data/ai/YYYY-MM-DD/deepseek-pro/hourly/HH00.json` | hourly news/disclosure analysis |
-| `data/ai/YYYY-MM-DD/deepseek-pro/market-regime/HH00.json` | 08:00-19:00 market-regime/session analysis |
-| `data/ai/YYYY-MM-DD/deepseek-flash/intraday/*.json` | intraday lightweight candidate/chart/risk labels |
+| `data/ai/YYYY-MM-DD/deepseek-pro/hourly/HH00.json` | hourly aggregate source and market analysis; during market hours includes market-regime/session section |
+| `data/ai/YYYY-MM-DD/deepseek-flash/trade-documents/HHMM.json` | one Flash trade document per market-minute; candidates list max 5 symbols and includes portfolio-conflict status |
 | `data/candidates/YYYY-MM-DD/*.json` | candidate cards compiled from sources and AI outputs |
 | `data/trading/YYYY-MM-DD/orders.jsonl` | order intents and order-state events |
 | `data/trading/YYYY-MM-DD/fills.jsonl` | fill events from later approved KIS paper/live adapters only; no fake broker fills |

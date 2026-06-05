@@ -20,14 +20,14 @@ completeness:
   status: sufficient
   audit_ref: docs/units/HWISTOCK-UNIT-001_project-bootstrap.md
 owner: hwi
-updated_at: 2026-06-04
+updated_at: 2026-06-05
 last_verified_at: 2026-06-04
 source_inputs:
   - kind: user_prompt
     path_or_url: "주식자동매매단타프로젝트"
     confidence: medium
   - kind: user_prompt
-    path_or_url: "실제 가동하기 전에 일주일 정도 테스트 기간"
+    path_or_url: "프로그램은 24시간 계속 돌리고 테스트 기간은 운영자가 정한다"
     confidence: high
   - kind: user_prompt
     path_or_url: "현금으로 한다 / 총자금은 200만원"
@@ -65,7 +65,8 @@ links:
 This module owns the durable safety contract for `hwiStock`: no real-money
 automation, live brokerage access, or order placement is allowed until the
 project has explicit approval gates, paper/sandbox evidence, credential safety,
-risk limits, auditability, and at least one full week of paper/sandbox testing.
+risk limits, auditability, and an operator-selected paper/sandbox observation
+window with named evidence.
 The trading direction is short-term day trading (`단타`) with cash-only capital.
 Initial starting capital is 2,000,000 KRW cash, and all-in single-stock
 deployment is forbidden by default.
@@ -98,7 +99,9 @@ deployment is forbidden by default.
 - Credential-safety contract.
 - Auditability for signals, decisions, orders, rejects, and failures.
 - Evidence requirements before implementation and before live trading.
-- One-week paper/sandbox test gate before actual live operation.
+- Operator-selected paper/sandbox observation gate before actual live operation.
+  The runner is continuous; the observation period is not hardcoded into the
+  program.
 - 24-hour home-server runtime safety expectations: restartability, health
   checks, audit logging, and kill switch.
 - Market-session gating for Korea domestic stocks across KRX + NXT: active
@@ -132,7 +135,8 @@ deployment is forbidden by default.
   bounded smoke does not authorize unscoped future calls or paper orders.
 - UI/dashboard implementation.
 - Real-money trading.
-- Skipping the one-week test period.
+- Skipping the operator-selected paper/sandbox observation and explicit
+  go/no-go approval.
 - Profit expectation or financial recommendation.
 
 ## 4. Product / Capability Contract
@@ -158,8 +162,9 @@ deployment is forbidden by default.
   personal-account eligibility, KRX/NXT/SOR support boundaries, and live safety
   gates. The official paper/mock-investment starting budget is 10,000,000 KRW
   and must not change the intended 2,000,000 KRW live starting-capital policy.
-- Live operation must remain disabled until one full week of paper/sandbox
-  testing has named evidence and an explicit user go/no-go approval.
+- Live operation must remain disabled until the operator-selected
+  paper/sandbox observation window has named evidence and an explicit user
+  go/no-go approval.
 - The trading runner must be an independently restartable home-server service or
   process. Codex sessions must not be required for the program to keep running.
 - The runner must separate service uptime, 24-hour information ingestion, and
@@ -181,7 +186,7 @@ deployment is forbidden by default.
 | capital | cash-only | no leverage by default | credit/margin/미수 | config + order review |
 | unit | `HWISTOCK-UNIT-001` | bootstrap readiness | code implementation | file list + doc review |
 | environment | docs/backtest/paper/sandbox/live | environment labels and gates | live order execution | QA scenario |
-| test gate | one-week paper/sandbox period | live-readiness prerequisite | shortcut approval | evidence summary |
+| test gate | operator-selected paper/sandbox observation window | live-readiness prerequisite; not runner duration | shortcut approval or hardcoded period | evidence summary |
 | runtime | home-server runner | 24h service health/restart/kill switch | Codex-as-runtime | service smoke evidence |
 | scheduler | Korea KRX/NXT routing calendar | 09-15 KRX, 08-09/15-20 NXT, idle outside envelope | extra session-mode split | calendar smoke evidence |
 | information branch | news/disclosure ingestion | 24h collection and normalization | direct order placement | source/evidence logs |
@@ -256,14 +261,16 @@ Future interfaces may include:
 - `HWISTOCK-UNIT-007`: read-only dashboard/operator console planning.
 - `HWISTOCK-UNIT-008`: data/evidence storage and report artifact planning.
 - `HWISTOCK-UNIT-009`: KIS official API portal verification planning.
-- `HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE`: calendar, alert, and one-week
-  paper/sandbox pass criteria policy.
+- `HWISTOCK-UNIT-010`: continuous KIS paper runner planning.
+- `HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE`: calendar, alert, and
+  operator-controlled paper/sandbox observation criteria policy.
 
 ## 10. Decisions / Open Contract Questions
 
 - Decision: start safety-first; no live orders by default.
-- Decision: actual live operation requires at least one full week of
-  paper/sandbox testing before user go/no-go approval.
+- Decision: actual live operation requires an operator-selected paper/sandbox
+  observation window with named evidence before user go/no-go approval. The
+  runner must not hardcode that duration.
 - Decision: the 24-hour runtime target is a home-server program/service, not a
   Codex session.
 - Decision: Korea domestic stocks are the first market scope, and 24-hour service
@@ -298,9 +305,9 @@ Future interfaces may include:
 - Decision: first-pass alerting is local-only through systemd journal,
   `data/alerts/YYYY-MM-DD/alerts.jsonl`, dashboard audit/error panel when
   implemented, and daily close report.
-- Decision: one-week paper/sandbox pass criteria require at least 7 consecutive
-  calendar days and at least 5 valid Korean market open days, P0 safety and
-  evidence criteria, and no profit threshold.
+- Decision: paper/sandbox observation criteria are operator-controlled. Evidence
+  must record observation-window start/end/duration metadata, covered market
+  days, P0 safety/evidence criteria, and no profit threshold.
 - Rebaseline Ready-Set completion is closed for the
   `skeleton_sandbox_safe_rebaseline_queue`; remaining restrictions are
   operational, not Ready-Set blockers: no unscoped KIS/broker/AI calls, no paper
@@ -329,8 +336,8 @@ Future interfaces may include:
 | state and data | sufficient | dry-run, KIS paper, future live states and audit boundaries defined | no |
 | permissions | sufficient | approval-required operations and credential/broker boundaries defined | no |
 | design basis | minimal_exception | no UI yet | no |
-| invariants | sufficient | cash-only, no internal fake broker, one-week gate, AI no-direct-order, and local-only dashboard invariants defined | no |
-| verification families | sufficient | docs bootstrap QA plus named future smoke families and one-week evidence gate defined | no |
+| invariants | sufficient | cash-only, no internal fake broker, operator-controlled paper observation gate, AI no-direct-order, and local-only dashboard invariants defined | no |
+| verification families | sufficient | docs bootstrap QA plus named future smoke families and paper observation evidence gate defined | no |
 
 ## 11. Evidence References
 
@@ -344,6 +351,7 @@ Future interfaces may include:
 - `docs/evidence/RUN-20260604_unit-001-go-check.md`
 - `docs/evidence/RUN-20260604_unit-001-go-preflight-rebaseline.md`
 - `docs/evidence/RUN-20260604_unit-001-go-check-rebaseline.md`
+- `docs/evidence/RUN-20260605_ready-set-continuous-paper-runner.md`
 - `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`
 
 ## 12. Design References

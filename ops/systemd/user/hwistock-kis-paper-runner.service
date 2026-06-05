@@ -1,0 +1,17 @@
+# hwiStock continuous KIS paper/mock runner tick.
+# Paper/mock KRX only. No live endpoint. No fake broker state.
+
+[Unit]
+Description=hwiStock continuous KIS paper/mock runner tick
+After=network-online.target hwistock-api.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/data/workspace/My/hwiStock
+EnvironmentFile=-/home/hwi/.config/hwistock/hwistock.env
+EnvironmentFile=-/home/hwi/.config/hwistock/kis-paper.env
+Environment=HWISTOCK_BIND_HOST=127.0.0.1
+Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=false
+ExecStart=/usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/kis_paper_continuous_runner.py --once --write-evidence --allow-paper-network'
+NoNewPrivileges=true

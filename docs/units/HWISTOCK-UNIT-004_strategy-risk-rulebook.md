@@ -207,6 +207,7 @@ Initial creation of `HWISTOCK-MOD-003`.
   user approval before full trading strategy Go.
 - Later refinement of liquidity, take-profit, and trailing parameters remains a
   follow-up item after backtest/paper evidence.
-- One-week paper pass criteria are closed by
+- Paper observation criteria are closed by
   `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`; the gate is
-  safety/evidence/reconciliation based and has no profit threshold.
+  operator-selected, safety/evidence/reconciliation based, and has no profit
+  threshold.

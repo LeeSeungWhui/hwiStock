@@ -86,8 +86,8 @@ when it must stop trading.
   exit reason.
 - As an operator, I can verify the first test does not add broad account-level
   risk controls unless a later Set decision approves them.
-- As the owner, I can paper-test the rules for one full week before approving
-  live operation.
+- As the owner, I can paper-test the rules for an observation window I choose
+  before approving live operation.
 
 ## 3. Scope
 
@@ -413,9 +413,10 @@ Future interfaces may include:
   `docs/set/READY-SET-STRATEGY-DECISION-PACKET-20260602_hwistock.md`.
 - Open: later refinement of liquidity, take-profit, and trailing parameters after
   backtest/paper evidence.
-- Decision: one-week paper-run pass criteria are defined by
+- Decision: paper-run observation criteria are defined by
   `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md` and are safety/
-  evidence criteria, not a profit target.
+  evidence criteria, not a profit target. The observation duration is selected
+  by the operator and is not hardcoded into the runner.
 
 ## 11. Evidence References
 
