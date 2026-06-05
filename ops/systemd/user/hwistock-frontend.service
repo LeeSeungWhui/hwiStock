@@ -13,6 +13,7 @@ Environment=HOSTNAME=127.0.0.1
 Environment=PORT=5000
 Environment=NODE_ENV=production
 Environment=NEXT_TELEMETRY_DISABLED=1
+Environment=NEXT_PUBLIC_HWISTOCK_OPERATOR_USERNAME=operator@hwistock.local
 ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-frontend -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && cd frontend-web && exec pnpm start'
 Restart=on-failure
 RestartSec=5

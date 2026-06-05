@@ -65,3 +65,35 @@ def testBuildPostgresqlUrlKeepsBracketedIpv6Host():
     )
 
     assert dbUrl == "postgresql://demo:secret@[::1]:5432/appdb"
+
+
+def testBuildPostgresqlConnectOptionsSetsHwiStockSearchPath():
+    from server import buildPostgresqlConnectOptions
+
+    options = buildPostgresqlConnectOptions("hwistock_core")
+
+    assert options == {"server_settings": {"search_path": "hwistock_core,public"}}
+
+
+def testResolveHwiStockPostgresqlRuntimeConnectionOverridesTemplateDatabase(monkeypatch):
+    from server import resolveHwiStockPostgresqlRuntimeConnection
+
+    monkeypatch.delenv("HWISTOCK_DATABASE_URL", raising=False)
+    monkeypatch.setenv("HWISTOCK_DB_ISOLATION_ENABLED", "true")
+    monkeypatch.setenv("HWISTOCK_POSTGRES_DB", "hwistock")
+    monkeypatch.setenv("HWISTOCK_POSTGRES_SCHEMA", "hwistock_core")
+
+    dbUrl, options, meta = resolveHwiStockPostgresqlRuntimeConnection(
+        {
+            "host": "127.0.0.1",
+            "port": "5432",
+            "database": "mywebtemplate",
+            "user": "demo",
+            "password": "secret",
+        }
+    )
+
+    assert dbUrl == "postgresql://demo:secret@127.0.0.1:5432/hwistock"
+    assert options == {"server_settings": {"search_path": "hwistock_core,public"}}
+    assert meta["database"] == "hwistock"
+    assert meta["schema"] == "hwistock_core"

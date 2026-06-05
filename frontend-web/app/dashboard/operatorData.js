@@ -10,13 +10,13 @@ const DASHBOARD_ERROR_KEYS = {
 
 export const OPERATOR_FALLBACK_FIXTURE = {
   status: {
-    mode: "paper",
-    sessionKst: "장중 · KST 09:12",
-    venueRoute: "KRX · domestic",
+    mode: "unknown",
+    sessionKst: "KST -",
+    venueRoute: "-",
     killSwitch: "off",
     serviceHealth: "degraded",
-    dataSourceHealth: "fixture",
-    orderGate: "blocked_fixture",
+    dataSourceHealth: "not_loaded",
+    orderGate: "unknown",
   },
   summary: {
     cashBalance: "masked",
@@ -26,7 +26,7 @@ export const OPERATOR_FALLBACK_FIXTURE = {
     riskRejects: 0,
     aiJobStatus: "missing_or_safe_blocked",
     reportStatus: "operator_window_required",
-    accountId: "paper_account_alias:masked",
+    accountId: "account_alias:masked",
     paperNetworkEnabled: false,
     paperOrderEnabled: false,
     paperOrdersSubmitted: false,
@@ -34,11 +34,11 @@ export const OPERATOR_FALLBACK_FIXTURE = {
     operationalTradingReadiness: false,
   },
   readinessTruth: {
-    headline: "NOT_READY_FOR_PAPER_TRADING",
+    headline: "NOT_READY",
     severity: "danger",
-    operatorMessage: "로컬 폴백 데이터입니다. 모의매매 관찰 준비 완료로 해석하면 안 됩니다.",
+    operatorMessage: "운영 API 응답을 아직 받지 못했습니다. 이 값은 실데이터가 아닙니다.",
     blockers: [
-      "fallback_fixture",
+      "fallback_snapshot",
       "paper_network_disabled",
       "paper_orders_not_submitted",
       "paper_observation_not_accepted",
@@ -49,7 +49,7 @@ export const OPERATOR_FALLBACK_FIXTURE = {
     paperOrdersSubmitted: false,
     paperObservationAccepted: false,
     operationalTradingReadiness: false,
-    orderGate: "blocked_fixture",
+    orderGate: "unknown",
     fallbackArtifactKeys: [],
     serviceVisibilityIsNotReadiness: true,
   },

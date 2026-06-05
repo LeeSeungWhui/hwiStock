@@ -328,7 +328,7 @@ const OperatorConsoleView = ({
               <Skeleton variant="text" lines={4} />
             ) : (
               <ul className="space-y-2">
-                {snapshot.candidates.map((item) => (
+                {snapshot.candidates.length ? snapshot.candidates.map((item) => (
                   <li
                     key={`${item.symbol}-${item.name}`}
                     className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50 px-3 py-2"
@@ -336,6 +336,9 @@ const OperatorConsoleView = ({
                     <div>
                       <div className="text-sm font-medium text-slate-800">{item.name}</div>
                       <div className="font-mono text-xs text-slate-500">{item.symbol}</div>
+                      {item.reason ? (
+                        <div className="mt-1 text-xs text-slate-500">{item.reason}</div>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" size="sm">{item.signal}</Badge>
@@ -344,7 +347,11 @@ const OperatorConsoleView = ({
                       </Badge>
                     </div>
                   </li>
-                ))}
+                )) : (
+                  <li className="rounded-md border border-slate-100 px-3 py-4 text-sm text-slate-500">
+                    {LANG_KO.view.candidates.empty}
+                  </li>
+                )}
               </ul>
             )}
           </Card>
@@ -354,7 +361,7 @@ const OperatorConsoleView = ({
               <Skeleton variant="text" lines={4} />
             ) : (
               <ol className="space-y-2">
-                {snapshot.intelligence.map((item, index) => (
+                {snapshot.intelligence.length ? snapshot.intelligence.map((item, index) => (
                   <li key={`${item.at}-${index}`} className="rounded-md border border-slate-100 px-3 py-2">
                     <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
                       <span>{item.at}</span>
@@ -362,7 +369,11 @@ const OperatorConsoleView = ({
                     </div>
                     <p className="mt-1 text-sm text-slate-800">{item.title}</p>
                   </li>
-                ))}
+                )) : (
+                  <li className="rounded-md border border-slate-100 px-3 py-4 text-sm text-slate-500">
+                    {LANG_KO.view.intelligence.empty}
+                  </li>
+                )}
               </ol>
             )}
           </Card>
@@ -374,7 +385,7 @@ const OperatorConsoleView = ({
               <Skeleton variant="text" lines={6} />
             ) : (
               <div className="space-y-3">
-                {snapshot.aiThread.map((message, index) => (
+                {snapshot.aiThread.length ? snapshot.aiThread.map((message, index) => (
                   <article
                     key={`${message.at}-${index}`}
                     className="rounded-md border border-indigo-100 bg-indigo-50/40 px-3 py-3"
@@ -390,7 +401,11 @@ const OperatorConsoleView = ({
                     </header>
                     <p className="text-sm leading-relaxed text-slate-700">{message.body}</p>
                   </article>
-                ))}
+                )) : (
+                  <div className="rounded-md border border-slate-100 px-3 py-4 text-sm text-slate-500">
+                    {LANG_KO.view.aiThread.empty}
+                  </div>
+                )}
               </div>
             )}
           </Card>
@@ -400,7 +415,7 @@ const OperatorConsoleView = ({
               <Skeleton variant="text" lines={5} />
             ) : (
               <ul className="space-y-2">
-                {snapshot.auditLog.map((entry, index) => (
+                {snapshot.auditLog.length ? snapshot.auditLog.map((entry, index) => (
                   <li
                     key={`${entry.at}-${entry.code}-${index}`}
                     className="rounded-md border border-slate-100 px-3 py-2"
@@ -416,7 +431,11 @@ const OperatorConsoleView = ({
                     </div>
                     <p className="mt-1 text-sm text-slate-700">{entry.message}</p>
                   </li>
-                ))}
+                )) : (
+                  <li className="rounded-md border border-slate-100 px-3 py-4 text-sm text-slate-500">
+                    {LANG_KO.view.audit.empty}
+                  </li>
+                )}
               </ul>
             )}
           </Card>

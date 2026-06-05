@@ -163,7 +163,7 @@ test("로그인 성공 시 next가 없으면 대시보드로 이동한다", asyn
     expect.objectContaining({
       method: "POST",
       body: expect.objectContaining({
-        username: "demo@demo.demo",
+        username: "operator@hwistock.local",
         password: "password123",
       }),
     }),

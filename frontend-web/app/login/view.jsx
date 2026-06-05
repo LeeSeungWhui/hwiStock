@@ -27,7 +27,7 @@ const LoginView = ({ initialDataObj, initialErrorObj }) => {
   /* 1. 상수 ======================================================================================================================= */
   const minPasswordLength = 8;
   const operatorUsername = String(
-    process.env.NEXT_PUBLIC_HWISTOCK_OPERATOR_USERNAME || "demo@demo.demo",
+    process.env.NEXT_PUBLIC_HWISTOCK_OPERATOR_USERNAME || "operator@hwistock.local",
   ).trim();
 
   /* 2. 데이터 ======================================================================================================================= */

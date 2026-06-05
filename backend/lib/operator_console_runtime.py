@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import date, datetime
+import re
+from html import unescape
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo
@@ -34,6 +36,7 @@ def parseKstTime(value: Optional[str]) -> datetime:
 def latestRuntimePaths(root: Path, day: str) -> Dict[str, Optional[str]]:
     artifactPathByKey = {
         "marketIntelligence": root / "normalized" / day / "events.jsonl",
+        "compiledWatch": root / "compiled-watch" / day / "compiled-watch-latest.json",
         "ai": root / "ai" / day / "pro-hourly-latest.json",
         "flashTradeDocument": root / "trade-documents" / day / "flash-trade-document-latest.json",
         "kisMarket": root / "kis-market" / day / "kis-market-snapshot-latest.json",
@@ -50,17 +53,292 @@ def pathStatus(path: Optional[str]) -> str:
     return "present" if path else "missing_or_safe_blocked"
 
 
-def timelineFromLatest(latestArtifactPaths: Dict[str, Optional[str]]) -> list[Dict[str, str]]:
-    timelineRows: list[Dict[str, str]] = []
-    for artifactKey, artifactPath in latestArtifactPaths.items():
-        timelineRows.append(
+def readJsonArtifact(path: Optional[str]) -> Dict[str, Any]:
+    if not path:
+        return {}
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def readJsonlTail(path: Optional[str], limit: int = 12) -> list[Dict[str, Any]]:
+    if not path:
+        return []
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    rows: list[Dict[str, Any]] = []
+    for line in lines[-max(1, limit * 2):]:
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            rows.append(parsed)
+    return rows[-limit:]
+
+
+def cleanDisplayText(value: Any, fallback: str = "-") -> str:
+    text = unescape(str(value or "").strip())
+    text = re.sub(r"<[^>]+>", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or fallback
+
+
+def formatKstMinute(value: Optional[str], fallback: Optional[datetime] = None) -> str:
+    try:
+        return parseKstTime(value).strftime("%H:%M")
+    except Exception:
+        if fallback:
+            return fallback.astimezone(KST).strftime("%H:%M")
+    return "-"
+
+
+def fileMtimeKst(path: Optional[str]) -> str:
+    if not path:
+        return "-"
+    try:
+        return datetime.fromtimestamp(Path(path).stat().st_mtime, KST).strftime("%H:%M:%S")
+    except OSError:
+        return "-"
+
+
+def sourceLabelFromEvent(event: Dict[str, Any]) -> str:
+    sourceName = event.get("source_name") or event.get("source") or event.get("provider")
+    if sourceName:
+        return cleanDisplayText(sourceName)
+    dedupeKey = str(event.get("dedupe_key") or "")
+    if ":" in dedupeKey:
+        return dedupeKey.split(":", 1)[0]
+    return cleanDisplayText(event.get("event_type") or "market_event")
+
+
+def buildIntelligenceRows(eventsPath: Optional[str], snapshotAt: datetime, limit: int = 8) -> list[Dict[str, str]]:
+    rows: list[Dict[str, str]] = []
+    for event in reversed(readJsonlTail(eventsPath, limit=limit)):
+        title = (
+            event.get("title")
+            or event.get("headline")
+            or event.get("report_name")
+            or event.get("event_summary")
+            or event.get("event_id")
+        )
+        rows.append(
             {
-                "at": date.today().isoformat(),
-                "source": artifactKey,
-                "title": "artifact present" if artifactPath else "artifact missing or safe-blocked",
+                "at": formatKstMinute(event.get("published_at_kst") or event.get("collected_at_kst"), snapshotAt),
+                "source": sourceLabelFromEvent(event),
+                "title": cleanDisplayText(title, "제목 없음"),
             }
         )
-    return timelineRows
+    return rows
+
+
+def loadRuntimeArtifacts(latestArtifactPaths: Dict[str, Optional[str]]) -> Dict[str, Dict[str, Any]]:
+    return {
+        artifactKey: readJsonArtifact(artifactPath)
+        for artifactKey, artifactPath in latestArtifactPaths.items()
+        if artifactKey != "marketIntelligence"
+    }
+
+
+def buildCandidateRows(artifacts: Dict[str, Dict[str, Any]], limit: int = 5) -> list[Dict[str, Any]]:
+    compiledItems = artifacts.get("compiledWatch", {}).get("items") or []
+    compiledByName = {
+        cleanDisplayText(item.get("name"), "").lower(): item
+        for item in compiledItems
+        if isinstance(item, dict) and item.get("name")
+    }
+    compiledBySymbol = {
+        str(item.get("symbol") or item.get("ticker") or "").strip(): item
+        for item in compiledItems
+        if isinstance(item, dict) and (item.get("symbol") or item.get("ticker"))
+    }
+
+    actions = artifacts.get("flashTradeDocument", {}).get("actions") or []
+    candidateRows: list[Dict[str, Any]] = []
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        name = cleanDisplayText(action.get("name"), "종목명 없음")
+        symbol = str(action.get("symbol") or action.get("ticker") or "").strip()
+        compiled = compiledBySymbol.get(symbol) or compiledByName.get(name.lower()) or {}
+        symbol = symbol or str(compiled.get("symbol") or compiled.get("ticker") or "-")
+        conflict = action.get("portfolio_conflict") if isinstance(action.get("portfolio_conflict"), dict) else {}
+        hasConflict = bool(conflict.get("has_conflict"))
+        entryZone = action.get("entry_zone") if isinstance(action.get("entry_zone"), list) else []
+        entryText = ""
+        if len(entryZone) >= 2:
+            entryText = f"진입 {entryZone[0]}~{entryZone[1]}"
+        reasonParts = [
+            cleanDisplayText(action.get("reason"), ""),
+            entryText,
+        ]
+        if hasConflict:
+            reasonParts.append("보유/대기 주문 충돌")
+        reason = " · ".join([part for part in reasonParts if part])
+        actionText = cleanDisplayText(action.get("action"), "WAIT")
+        candidateRows.append(
+            {
+                "symbol": symbol,
+                "name": name,
+                "signal": actionText,
+                "risk": "high" if hasConflict or actionText == "NO_TRADE" else "medium",
+                "reason": reason or cleanDisplayText(compiled.get("condition_card_id"), "runtime candidate"),
+            }
+        )
+        if len(candidateRows) >= limit:
+            return candidateRows
+
+    for item in compiledItems:
+        if not isinstance(item, dict):
+            continue
+        candidateRows.append(
+            {
+                "symbol": str(item.get("symbol") or item.get("ticker") or "-"),
+                "name": cleanDisplayText(item.get("name"), "종목명 없음"),
+                "signal": "WATCH",
+                "risk": "medium",
+                "reason": cleanDisplayText(item.get("condition_card_id"), "compiled watch candidate"),
+            }
+        )
+        if len(candidateRows) >= limit:
+            break
+    return candidateRows
+
+
+def buildAiThreadRows(artifacts: Dict[str, Dict[str, Any]], snapshotAt: datetime) -> list[Dict[str, str]]:
+    rows: list[Dict[str, str]] = []
+    pro = artifacts.get("ai", {})
+    if pro:
+        marketRegime = pro.get("market_regime") if isinstance(pro.get("market_regime"), dict) else {}
+        marketMode = cleanDisplayText(marketRegime.get("market_mode"), "UNKNOWN")
+        strong = ", ".join(cleanDisplayText(item, "") for item in (pro.get("strong_conditions") or [])[:3])
+        avoid = ", ".join(cleanDisplayText(item, "") for item in (pro.get("avoid_conditions") or [])[:3])
+        bodyParts = [
+            cleanDisplayText(pro.get("summary"), "요약 없음"),
+            f"강한 조건: {strong}" if strong else "",
+            f"피할 조건: {avoid}" if avoid else "",
+        ]
+        rows.append(
+            {
+                "at": formatKstMinute(pro.get("produced_at_kst"), snapshotAt),
+                "role": "report",
+                "subject": f"DeepSeek Pro 정각 분석 · {marketMode}",
+                "body": " / ".join([part for part in bodyParts if part]),
+            }
+        )
+
+    flash = artifacts.get("flashTradeDocument", {})
+    if flash:
+        actionCount = len(flash.get("actions") or [])
+        validationStatus = cleanDisplayText(flash.get("validation_status"), "unknown")
+        providerSummary = cleanDisplayText(flash.get("provider_summary"), "")
+        body = providerSummary or (
+            f"Flash 10분 매매문서 후보 {actionCount}개 · validation={validationStatus} · "
+            f"entry_unlocked={bool(flash.get('entry_unlocked'))}"
+        )
+        rows.append(
+            {
+                "at": formatKstMinute(flash.get("produced_at_kst"), snapshotAt),
+                "role": "assistant",
+                "subject": f"DeepSeek Flash 10분 매매문서 · {actionCount}개",
+                "body": body,
+            }
+        )
+    return rows
+
+
+def buildAuditRows(
+    *,
+    snapshotAt: datetime,
+    runnerStatus: Dict[str, Any],
+    readinessTruth: Dict[str, Any],
+    latestArtifactPaths: Dict[str, Optional[str]],
+    artifacts: Dict[str, Dict[str, Any]],
+    paperOrderEnabled: bool,
+) -> list[Dict[str, Any]]:
+    nowText = snapshotAt.strftime("%H:%M")
+    rows: list[Dict[str, Any]] = [
+        {
+            "at": nowText,
+            "level": "info",
+            "code": "ORDER_GATE",
+            "message": str(runnerStatus.get("orderGate") or "unknown"),
+            "tags": ["runner", "order_gate"],
+        }
+    ]
+
+    for artifactKey, artifactPath in latestArtifactPaths.items():
+        rows.append(
+            {
+                "at": fileMtimeKst(artifactPath) if artifactPath else nowText,
+                "level": "info" if artifactPath else "warn",
+                "code": f"ARTIFACT_{artifactKey}",
+                "message": Path(artifactPath).name if artifactPath else "missing_or_safe_blocked",
+                "tags": ["artifact", artifactKey],
+            }
+        )
+
+    kis = artifacts.get("kisMarket", {})
+    for result in (kis.get("input_results") or [])[:8]:
+        if not isinstance(result, dict):
+            continue
+        status = cleanDisplayText(result.get("status"), "unknown")
+        rows.append(
+            {
+                "at": formatKstMinute(kis.get("produced_at_kst"), snapshotAt),
+                "level": "info" if status == "pass" else "warn",
+                "code": f"KIS_{cleanDisplayText(result.get('input_id'), 'input')}",
+                "message": (
+                    f"{status} · http={result.get('http_status', '-')} · "
+                    f"rows={result.get('row_count', '-')}"
+                ),
+                "tags": ["kis", cleanDisplayText(result.get("transport"), "rest")],
+            }
+        )
+
+    continuous = artifacts.get("kisPaperRunner", {})
+    for step in (continuous.get("steps") or [])[:8]:
+        if not isinstance(step, dict):
+            continue
+        status = cleanDisplayText(step.get("status"), "unknown")
+        if status == "pass":
+            continue
+        rows.append(
+            {
+                "at": formatKstMinute(continuous.get("timestamp_kst"), snapshotAt),
+                "level": "warn",
+                "code": f"RUNNER_{cleanDisplayText(step.get('step'), 'step')}",
+                "message": (
+                    f"{status} · http={step.get('http_status', '-')} · "
+                    f"msg={cleanDisplayText(step.get('msg_cd'), '-')}"
+                ),
+                "tags": ["runner", "kis_paper_continuous"],
+            }
+        )
+
+    rows.extend(
+        [
+            {"at": nowText, "level": "info", "code": "READ_ONLY", "message": "dashboard exposes no order controls", "tags": ["dashboard"]},
+            {
+                "at": nowText,
+                "level": "warn" if paperOrderEnabled else "info",
+                "code": "SYSTEMD_ORDER_FLAG",
+                "message": "enabled" if paperOrderEnabled else "disabled",
+                "tags": ["systemd", "order_flag"],
+            },
+            {
+                "at": nowText,
+                "level": "warn",
+                "code": "NOT_READY",
+                "message": ",".join(readinessTruth.get("blockers") or []),
+                "tags": ["readiness"],
+            },
+        ]
+    )
+    return rows
 
 
 def inspectKisPaperRunnerServicePolicy(
@@ -168,6 +446,7 @@ def buildOperatorConsoleSnapshot(
     dayKey = snapshotAt.astimezone(KST).date().isoformat()
     runnerStatus = baseRunner.get_runner_status(snapshotAt.strftime("%Y-%m-%dT%H:%M:%S"))
     latestArtifactPaths = latestRuntimePaths(runtimeRoot, dayKey)
+    runtimeArtifacts = loadRuntimeArtifacts(latestArtifactPaths)
     servicePolicy = inspectKisPaperRunnerServicePolicy(serviceUnitPaths)
     readiness = runnerStatus["readiness"]
     paperNetworkEnabled = bool(servicePolicy["paperNetworkEnabledByService"])
@@ -189,6 +468,37 @@ def buildOperatorConsoleSnapshot(
         paperObservationAccepted=paperObservationAccepted,
         operationalTradingReadiness=operationalTradingReadiness,
     )
+    candidateRows = buildCandidateRows(runtimeArtifacts)
+    intelligenceRows = buildIntelligenceRows(latestArtifactPaths.get("marketIntelligence"), snapshotAt)
+    aiThreadRows = buildAiThreadRows(runtimeArtifacts, snapshotAt)
+    flashArtifact = runtimeArtifacts.get("flashTradeDocument", {})
+    continuousArtifact = runtimeArtifacts.get("kisPaperRunner", {})
+    riskRejects = sum(
+        1
+        for action in (flashArtifact.get("actions") or [])
+        if isinstance(action, dict)
+        and (
+            action.get("action") == "NO_TRADE"
+            or bool(
+                (action.get("portfolio_conflict") if isinstance(action.get("portfolio_conflict"), dict) else {}).get("has_conflict")
+            )
+        )
+    )
+    aiJobStatus = " / ".join(
+        [
+            f"pro:{pathStatus(latestArtifactPaths.get('ai'))}",
+            f"flash:{pathStatus(latestArtifactPaths.get('flashTradeDocument'))}",
+        ]
+    )
+    reportStatus = "continuous_tick:" + cleanDisplayText(continuousArtifact.get("status"), "missing")
+    auditRows = buildAuditRows(
+        snapshotAt=snapshotAt,
+        runnerStatus=runnerStatus,
+        readinessTruth=readinessTruth,
+        latestArtifactPaths=latestArtifactPaths,
+        artifacts=runtimeArtifacts,
+        paperOrderEnabled=paperOrderEnabled,
+    )
     return {
         "schema_version": "operator_console_snapshot/v0",
         "snapshot_at_kst": snapshotAt.isoformat(),
@@ -207,9 +517,9 @@ def buildOperatorConsoleSnapshot(
             "reserveBalance": "masked",
             "todayPnl": "system_report_only",
             "openPositions": 0,
-            "riskRejects": 0,
-            "aiJobStatus": pathStatus(latestArtifactPaths.get("ai")),
-            "reportStatus": "operator_window_required",
+            "riskRejects": riskRejects,
+            "aiJobStatus": aiJobStatus,
+            "reportStatus": reportStatus,
             "paperNetworkEnabled": paperNetworkEnabled,
             "paperOrderEnabled": paperOrderEnabled,
             "paperOrdersSubmitted": paperOrdersSubmitted,
@@ -231,27 +541,10 @@ def buildOperatorConsoleSnapshot(
             "publicBind": False,
         },
         "holdings": [],
-        "candidates": [],
-        "intelligence": timelineFromLatest(latestArtifactPaths),
-        "aiThread": [
-            {
-                "at": snapshotAt.strftime("%H:%M"),
-                "role": "report",
-                "subject": "read-only runtime status",
-                "body": "AI artifacts are analysis/trade-document files only; no AI artifact can submit broker orders.",
-            }
-        ],
-        "auditLog": [
-            {"at": snapshotAt.strftime("%H:%M"), "level": "info", "code": "ORDER_GATE", "message": runnerStatus["orderGate"]},
-            {"at": snapshotAt.strftime("%H:%M"), "level": "info", "code": "READ_ONLY", "message": "dashboard exposes no buy/sell/live controls"},
-            {
-                "at": snapshotAt.strftime("%H:%M"),
-                "level": "warn" if paperOrderEnabled else "info",
-                "code": "SYSTEMD_ORDER_FLAG",
-                "message": "enabled" if paperOrderEnabled else "disabled",
-            },
-            {"at": snapshotAt.strftime("%H:%M"), "level": "warn", "code": "NOT_PAPER_READY", "message": ",".join(readinessTruth["blockers"])},
-        ],
+        "candidates": candidateRows,
+        "intelligence": intelligenceRows,
+        "aiThread": aiThreadRows,
+        "auditLog": auditRows,
         "readiness": {
             "runningServiceVisible": True,
             "paperNetworkEnabled": paperNetworkEnabled,

@@ -24,6 +24,10 @@ alembic -c backend/alembic.ini revision --autogenerate -m "description"
 # Upgrade to head
 alembic -c backend/alembic.ini upgrade head
 
+# Seed/update the local dashboard operator user after migrations
+HWISTOCK_OPERATOR_PASSWORD='<local secret>' \
+  python backend/scripts/seed_operator_user.py
+
 # Downgrade one step
 alembic -c backend/alembic.ini downgrade -1
 ```

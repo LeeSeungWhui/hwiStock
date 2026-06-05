@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import sys
+import json
 from pathlib import Path
 
 baseDir = os.path.dirname(os.path.dirname(__file__))
@@ -327,3 +328,140 @@ def test_unit015_operator_snapshot_detects_order_enabled_service_contradiction(t
     assert snapshot["runtime"]["kisPaperRunnerServicePolicy"]["paperOrderEnabledByService"] is True
     assert "systemd_order_enabled_contradicts_readiness" in snapshot["readinessTruth"]["blockers"]
     assert any(entry["code"] == "SYSTEMD_ORDER_FLAG" and entry["message"] == "enabled" for entry in snapshot["auditLog"])
+
+
+def test_unit015_operator_snapshot_maps_runtime_artifacts_to_dashboard_rows(tmp_path: Path):
+    (tmp_path / "normalized" / "2026-06-05").mkdir(parents=True)
+    (tmp_path / "compiled-watch" / "2026-06-05").mkdir(parents=True)
+    (tmp_path / "ai" / "2026-06-05").mkdir(parents=True)
+    (tmp_path / "trade-documents" / "2026-06-05").mkdir(parents=True)
+    (tmp_path / "kis-market" / "2026-06-05").mkdir(parents=True)
+    (tmp_path / "evidence" / "2026-06-05").mkdir(parents=True)
+
+    (tmp_path / "normalized" / "2026-06-05" / "events.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "event_type": "news_event",
+                        "dedupe_key": "naver_search_news_api:https://example.test/1",
+                        "title": "<b>삼성전자</b> 급락",
+                        "published_at_kst": "2026-06-05T18:58:00+09:00",
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    {
+                        "event_type": "disclosure_event",
+                        "dedupe_key": "open_dart:corp:1",
+                        "report_name": "주요사항보고서",
+                        "published_at_kst": "2026-06-05T18:59:00+09:00",
+                    },
+                    ensure_ascii=False,
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "compiled-watch" / "2026-06-05" / "compiled-watch-latest.json").write_text(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "symbol": "005930",
+                        "name": "삼성전자",
+                        "condition_card_id": "condition_005930",
+                        "entry_intent": {"entry_zone": [50000, 51000]},
+                    }
+                ],
+                "produced_at_kst": "2026-06-05T19:00:00+09:00",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "ai" / "2026-06-05" / "pro-hourly-latest.json").write_text(
+        json.dumps(
+            {
+                "summary": "시장 RISK_OFF",
+                "market_regime": {"market_mode": "RISK_OFF"},
+                "strong_conditions": ["인버스 강세"],
+                "avoid_conditions": ["반도체 약세"],
+                "produced_at_kst": "2026-06-05T19:00:01+09:00",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "trade-documents" / "2026-06-05" / "flash-trade-document-latest.json").write_text(
+        json.dumps(
+            {
+                "actions": [
+                    {
+                        "action": "NO_TRADE",
+                        "name": "삼성전자",
+                        "entry_zone": [50000, 51000],
+                        "portfolio_conflict": {"has_conflict": True, "reasons": ["prior_trade_document_still_valid"]},
+                        "reason": "portfolio/order conflict",
+                    }
+                ],
+                "validation_status": "pass",
+                "produced_at_kst": "2026-06-05T19:10:00+09:00",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "kis-market" / "2026-06-05" / "kis-market-snapshot-latest.json").write_text(
+        json.dumps(
+            {
+                "produced_at_kst": "2026-06-05T19:10:08+09:00",
+                "input_results": [
+                    {
+                        "input_id": "rest_volume_rank",
+                        "status": "pass",
+                        "http_status": 200,
+                        "row_count": 10,
+                        "transport": "rest",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "evidence" / "2026-06-05" / "kis-paper-continuous-latest.json").write_text(
+        json.dumps({"status": "warn", "steps": []}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (tmp_path / "evidence" / "2026-06-05" / "runner-latest.json").write_text(
+        json.dumps({"event": "runner_once"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    safe_unit = tmp_path / "hwistock-kis-paper-runner.service"
+    safe_unit.write_text(
+        "\n".join(
+            [
+                "[Service]",
+                "Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=false",
+                "ExecStart=python backend/service/kis_paper_continuous_runner.py --once --allow-paper-network",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    snapshot = operator_console.buildOperatorConsoleSnapshot(
+        "2026-06-05T19:11:00+09:00",
+        dataRoot=tmp_path,
+        serviceUnitPaths=[safe_unit],
+    )
+
+    assert snapshot["candidates"][0]["symbol"] == "005930"
+    assert snapshot["candidates"][0]["signal"] == "NO_TRADE"
+    assert snapshot["summary"]["riskRejects"] == 1
+    assert snapshot["intelligence"][0]["source"] == "open_dart"
+    assert snapshot["intelligence"][0]["title"] == "주요사항보고서"
+    assert any("DeepSeek Pro" in row["subject"] for row in snapshot["aiThread"])
+    assert any(entry["code"] == "KIS_rest_volume_rank" for entry in snapshot["auditLog"])

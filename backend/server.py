@@ -7,9 +7,12 @@
 
 import importlib
 import ipaddress
+import json
 import os
 import pkgutil
+import re
 from urllib.parse import quote_plus
+from urllib.parse import urlsplit
 
 import router
 
@@ -94,6 +97,123 @@ def normalizeNetworkDbHost(host: object) -> str:
     return rawHost
 
 
+FALSE_ENV_VALUES = frozenset(("0", "false", "no", "off"))
+TRUE_ENV_VALUES = frozenset(("1", "true", "yes", "on"))
+SAFE_POSTGRES_SCHEMA_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def envText(name: str) -> str:
+    return str(os.getenv(name, "") or "").strip()
+
+
+def hwiStockDbIsolationEnabled() -> bool:
+    """
+    설명: hwiStock 런타임 DB 격리 강제 여부 반환
+    처리 규칙: 기본값은 활성화. pytest 통합 테스트는 명시 opt-in 없으면 기존 테스트 DB를 존중.
+    반환값: 격리 강제 활성화 여부
+    갱신일: 2026-06-05
+    """
+    raw = envText("HWISTOCK_DB_ISOLATION_ENABLED").lower()
+    if raw in FALSE_ENV_VALUES:
+        return False
+    if os.getenv("PYTEST_CURRENT_TEST") and raw not in TRUE_ENV_VALUES:
+        return False
+    return True
+
+
+def validatePostgresqlSchemaName(schema: str) -> str:
+    """
+    설명: PostgreSQL search_path에 넣을 hwiStock schema 이름 검증
+    처리 규칙: identifier 한 개만 허용해 옵션 주입/다중 명령을 방지
+    반환값: 검증된 schema 이름
+    갱신일: 2026-06-05
+    """
+    schemaText = str(schema or "").strip()
+    if not schemaText:
+        return ""
+    if not SAFE_POSTGRES_SCHEMA_PATTERN.fullmatch(schemaText):
+        raise RuntimeError("HWISTOCK_POSTGRES_SCHEMA contains an unsafe identifier.")
+    return schemaText
+
+
+def buildPostgresqlConnectOptions(schema: str) -> dict[str, dict[str, str]]:
+    """
+    설명: asyncpg pool 생성 시 모든 연결에 적용할 PostgreSQL 서버 설정 구성
+    처리 규칙: hwiStock schema가 있으면 search_path를 schema,public으로 고정
+    반환값: databases.Database에 전달할 connect option dict
+    갱신일: 2026-06-05
+    """
+    schemaText = validatePostgresqlSchemaName(schema)
+    if not schemaText:
+        return {}
+    return {"server_settings": {"search_path": f"{schemaText},public"}}
+
+
+def databaseNameFromUrl(databaseUrl: str) -> str:
+    """
+    설명: 로그/검증용으로 DSN path의 database 이름만 추출
+    반환값: database 이름 또는 빈 문자열
+    갱신일: 2026-06-05
+    """
+    try:
+        parsed = urlsplit(databaseUrl)
+        return (parsed.path or "").lstrip("/")
+    except Exception:
+        return ""
+
+
+def resolveHwiStockPostgresqlRuntimeConnection(dbConfig) -> tuple[str | None, dict[str, dict[str, str]], dict[str, str]]:
+    """
+    설명: MyWebTemplate-derived config.ini 대신 hwiStock 전용 런타임 DB 경계를 적용
+    처리 규칙:
+      1. HWISTOCK_DATABASE_URL이 있으면 전체 DSN을 우선한다.
+      2. 없으면 기존 host/user/password는 유지하되 database는 HWISTOCK_POSTGRES_DB로 강제한다.
+      3. HWISTOCK_POSTGRES_SCHEMA는 asyncpg server_settings.search_path로 고정한다.
+    반환값: (override DSN 또는 None, connect options, 감사용 공개 메타)
+    갱신일: 2026-06-05
+    """
+    if not hwiStockDbIsolationEnabled():
+        return None, {}, {"isolation": "disabled"}
+
+    schema = validatePostgresqlSchemaName(envText("HWISTOCK_POSTGRES_SCHEMA") or "hwistock_core")
+    connectOptions = buildPostgresqlConnectOptions(schema)
+    explicitUrl = envText("HWISTOCK_DATABASE_URL")
+    if explicitUrl:
+        return (
+            explicitUrl,
+            connectOptions,
+            {
+                "isolation": "enabled",
+                "source": "HWISTOCK_DATABASE_URL",
+                "database": databaseNameFromUrl(explicitUrl),
+                "schema": schema,
+            },
+        )
+
+    database = envText("HWISTOCK_POSTGRES_DB")
+    if not database:
+        return None, connectOptions, {"isolation": "enabled", "schema": schema}
+
+    dbUrl = buildNetworkDbUrl(
+        scheme="postgresql",
+        host=envText("HWISTOCK_POSTGRES_HOST") or dbConfig.get("host", "localhost"),
+        port=envText("HWISTOCK_POSTGRES_PORT") or dbConfig.get("port", "5432"),
+        database=database,
+        user=envText("HWISTOCK_POSTGRES_USER") or dbConfig.get("user"),
+        password=envText("HWISTOCK_POSTGRES_PASSWORD") or dbConfig.get("password"),
+    )
+    return (
+        dbUrl,
+        connectOptions,
+        {
+            "isolation": "enabled",
+            "source": "HWISTOCK_POSTGRES_DB",
+            "database": database,
+            "schema": schema,
+        },
+    )
+
+
 async def onShutdown():
     """
     설명: 애플리케이션 종료 시 DB 연결과 쿼리 워처 리소스 정리
@@ -130,6 +250,7 @@ async def onStartup():
         dbConfig = config[section]
         dbName = dbConfig.get("name", section.lower())
         dbType = dbConfig.get("type")
+        dbConnectOptions = {}
 
         if dbType == "sqlite":
 
@@ -174,13 +295,40 @@ async def onStartup():
                 user=user,
                 password=password,
             )
+            dbConnectOptions = {}
+            overrideUrl, overrideOptions, overrideMeta = resolveHwiStockPostgresqlRuntimeConnection(dbConfig)
+            if overrideUrl:
+                dbUrl = overrideUrl
+                dbConnectOptions = overrideOptions
+                logger.info(
+                    json.dumps(
+                        {
+                            "event": "hwistock.db.isolation",
+                            "dbName": dbName,
+                            "source": overrideMeta.get("source"),
+                            "database": overrideMeta.get("database"),
+                            "schema": overrideMeta.get("schema"),
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            elif hwiStockDbIsolationEnabled() and str(database or "").strip().lower() == "mywebtemplate":
+                raise RuntimeError(
+                    "HWISTOCK_DATABASE_ISOLATION_REQUIRED: refusing to connect hwiStock runtime to mywebtemplate database."
+                )
         else:
             logger.warning(f"unsupported database type: {dbType}")
             continue
 
         try:
-            if dbName not in DB.dbManagers or not getattr(DB.dbManagers[dbName], "databaseUrl", None):
-                DB.dbManagers[dbName] = DatabaseManager(dbUrl)
+            existingManager = DB.dbManagers.get(dbName)
+            if (
+                existingManager is None
+                or not getattr(existingManager, "databaseUrl", None)
+                or getattr(existingManager, "databaseUrl", None) != dbUrl
+                or getattr(existingManager, "connectOptions", {}) != dbConnectOptions
+            ):
+                DB.dbManagers[dbName] = DatabaseManager(dbUrl, connectOptions=dbConnectOptions)
             if hasattr(DB.dbManagers[dbName], "connect"):
                 await DB.dbManagers[dbName].connect()
             logger.info(f"database connected: {dbName}")

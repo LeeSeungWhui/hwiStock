@@ -31,7 +31,19 @@ if not DATABASE_URL:
         "Source env.sh or export HWISTOCK_DATABASE_URL before running migrations."
     )
 
-config.set_main_option("sqlalchemy.url", DATABASE_URL)
+
+def to_sync_sqlalchemy_url(database_url: str) -> str:
+    """Convert runtime postgresql URL to Alembic's sync psycopg driver URL."""
+    if database_url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + database_url[len("postgresql://"):]
+    return database_url
+
+
+SYNC_DATABASE_URL = to_sync_sqlalchemy_url(DATABASE_URL)
+
+# ConfigParser interpolation treats URL-encoded percent signs as interpolation
+# markers. Escape them before writing the runtime URL into Alembic config.
+config.set_main_option("sqlalchemy.url", SYNC_DATABASE_URL.replace("%", "%%"))
 
 # -- Metadata -------------------------------------------------------------
 # Placeholder: add ORM MetaData objects here when declarative models exist.
@@ -68,7 +80,7 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode (connect to the database)."""
     connectable = create_engine(
-        DATABASE_URL,
+        SYNC_DATABASE_URL,
         poolclass=pool.NullPool,
     )
 
@@ -78,6 +90,10 @@ def run_migrations_online() -> None:
             connection.exec_driver_sql(
                 f'SET search_path TO "{safe_schema}", public'
             )
+            # SQLAlchemy 2 starts an implicit transaction even for SET. Commit it
+            # before Alembic opens its migration transaction, otherwise the DDL
+            # can be rolled back when the connection closes.
+            connection.commit()
 
         context.configure(
             connection=connection,

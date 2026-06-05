@@ -197,10 +197,11 @@ class QueryManager:
 class DatabaseManager:
     """설명: databases. Database 래퍼로 실행/바인딩 검증 담당 갱신일: 2025-11-12"""
 
-    def __init__(self, databaseUrl: str):
+    def __init__(self, databaseUrl: str, connectOptions: dict[str, Any] | None = None):
         """설명: DB 연결 URL 기반 클라이언트 준비 부작용: databases.Database 및 QueryManager 참조 초기화. 갱신일: 2025-11-12"""
         self.databaseUrl = databaseUrl
-        self.database = Database(databaseUrl)
+        self.connectOptions = dict(connectOptions or {})
+        self.database = Database(databaseUrl, **self.connectOptions)
         self.metadata = MetaData()
         self.queryManager = QueryManager.getInstance()
 
