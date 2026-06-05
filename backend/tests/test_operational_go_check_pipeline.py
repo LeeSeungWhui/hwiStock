@@ -74,6 +74,91 @@ def test_unit013_kis_collector_is_six_input_bounded_and_blocks_extra_endpoint():
     assert payload["order_cancel_modify_called"] is False
 
 
+class FakeKisMarketAdapter:
+    def __init__(self):
+        self.calls = []
+
+    def missingEnvKeys(self):
+        return []
+
+    def configSummary(self):
+        return {"paperDomainOnly": True, "env": {"credentialValuesPrinted": False}}
+
+    def issueTokenWithValue(self):
+        self.calls.append("token")
+        return {"step": "oauth_token", "status": "pass", "token_present": True}, "fake-token"
+
+    def issueWebsocketApproval(self):
+        self.calls.append("approval")
+        return {"step": "websocket_approval", "status": "pass", "approval_key_present": True}
+
+    def inquirePrice(self, token, symbol):
+        self.calls.append(("price", symbol))
+        return {
+            "step": "quote_inquire_price",
+            "status": "pass",
+            "endpoint_called": True,
+            "broker_order_surface": False,
+            "rows_preview": [{"stck_shrn_iscd": symbol, "hts_kor_isnm": "삼성전자", "stck_prpr": "70000"}],
+        }
+
+    def inquireOrderbook(self, token, symbol):
+        self.calls.append(("orderbook", symbol))
+        return {
+            "step": "quote_inquire_orderbook",
+            "status": "pass",
+            "endpoint_called": True,
+            "broker_order_surface": False,
+            "rows_preview": [{"stck_shrn_iscd": symbol, "askp1": "70100", "bidp1": "70000"}],
+        }
+
+    def volumeRank(self, token):
+        self.calls.append("volume")
+        return {
+            "step": "rest_volume_rank",
+            "status": "pass",
+            "endpoint_called": True,
+            "broker_order_surface": False,
+            "row_count": 1,
+            "rows_preview": [{"mksc_shrn_iscd": "000660", "hts_kor_isnm": "SK하이닉스", "stck_prpr": "180000", "data_rank": "1"}],
+        }
+
+    def volumePowerRank(self, token):
+        self.calls.append("power")
+        return {"step": "rest_volume_power_rank", "status": "pass", "endpoint_called": True, "rows_preview": []}
+
+    def fluctuationRank(self, token):
+        self.calls.append("fluctuation")
+        return {"step": "rest_fluctuation_rank", "status": "pass", "endpoint_called": True, "rows_preview": []}
+
+    def programTradeToday(self, token, *, market_class="K"):
+        self.calls.append(("program", market_class))
+        return {"step": f"rest_program_trading_aggregate_{market_class}", "status": "pass", "endpoint_called": True, "rows_preview": []}
+
+    def revokeToken(self, token):
+        self.calls.append("revoke")
+        return {"step": "oauth_revoke", "status": "pass"}
+
+
+def test_unit013_kis_collector_calls_paper_read_and_builds_compiled_watch():
+    adapter = FakeKisMarketAdapter()
+    payload = kis_collector.collectKisMarketDataOnce(
+        env={
+            "HWISTOCK_KIS_MARKET_READ_NETWORK_ENABLED": "true",
+            "HWISTOCK_KIS_MIN_CALL_GAP_SEC": "0",
+        },
+        adapter=adapter,
+    )
+    assert payload["status"] == "ok"
+    assert payload["order_cancel_modify_called"] is False
+    assert all(row["endpoint_called"] for row in payload["input_results"])
+    assert payload["compiled_watch"]["candidate_count"] >= 1
+    first = payload["compiled_watch"]["items"][0]
+    assert first["schema_version"] == "compiled_watch/v0"
+    assert first["entry_intent"]["entry_zone"]
+    assert "order-cash" not in " ".join(map(str, adapter.calls))
+
+
 def test_unit013_flash_document_to_intent_requires_compiled_universe_and_refs():
     doc = _flash_doc("005930")
     pipeline = engine.generatePaperOrderIntentsFromFlashDocument(
@@ -91,7 +176,32 @@ def test_unit013_flash_document_to_intent_requires_compiled_universe_and_refs():
     assert intent["market_data_refs"]
     assert intent["portfolio_snapshot_ref"].startswith("art_portfolio")
     assert intent["order_state_snapshot_ref"].startswith("art_order_state")
+    assert intent["order_division"] == "00"
+    assert intent["order_price"] == 10000
+    assert intent["quantity"] == 10
     assert intent["broker_endpoint_called"] is False
+
+
+def test_flash_document_ignores_expired_previous_wait_buy_documents():
+    doc = ao.buildFlashTradeDocument(
+        pro_artifact={"artifact_id": "art_pro_hourly_20260605_0900"},
+        recent_events=[{"source_event_id": "naver:news:1"}],
+        kis_market_snapshots=[{"artifact_id": "art_kis_snapshot_20260605_0939"}],
+        compiled_watch=[_compiled_watch("005930")],
+        portfolio_snapshot={"artifact_id": "art_portfolio_20260605_0951", "holdings": []},
+        order_state_snapshot={"artifact_id": "art_order_state_20260605_0951", "pending_orders": []},
+        previous_trade_documents=[
+            {
+                "artifact_id": "old_flash",
+                "valid_until": "2026-06-05T09:50:00+09:00",
+                "actions": [{"ticker": "005930", "action": "WAIT_BUY"}],
+            }
+        ],
+        produced_at_kst="2026-06-05T09:51:00+09:00",
+    )
+    assert doc["actions"][0]["ticker"] == "005930"
+    assert doc["actions"][0]["action"] == "WAIT_BUY"
+    assert doc["actions"][0]["portfolio_conflict"]["has_conflict"] is False
 
 
 def test_unit013_rejects_off_universe_and_portfolio_conflict_without_intent():

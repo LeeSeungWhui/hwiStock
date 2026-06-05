@@ -28,29 +28,37 @@ from service.kis_paper_adapter import (  # noqa: E402
 
 
 class FakeTransport:
-    def __init__(self):
+    def __init__(self, *, order_status="pass"):
         self.calls = []
+        self.order_status = order_status
 
     def request_json(self, method, url, *, headers=None, body=None, timeout=20):
         self.calls.append({"method": method, "url": url, "headers": dict(headers or {}), "body": dict(body or {}) if body else None})
         if url.endswith("/oauth2/tokenP"):
             return {"http_status": 200, "payload": {"rt_cd": "0", "access_token": "fake-token"}}
+        if "/uapi/domestic-stock/v1/trading/order-cash" in url:
+            rt_cd = "0" if self.order_status == "pass" else "1"
+            return {"http_status": 200, "payload": {"rt_cd": rt_cd, "msg_cd": "ok" if rt_cd == "0" else "reject"}}
         return {"http_status": 200, "payload": {"rt_cd": "0", "msg_cd": "ok", "output1": [{"row": 1}]}}
 
 
 @pytest.fixture(autouse=True)
 def reset_env(monkeypatch):
     base_runner.reset_runtime_for_tests()
+    continuous.resetContinuousPaperRunnerForTests()
     for key in (
         "HWISTOCK_KIS_PAPER_NETWORK_ENABLED",
         "HWISTOCK_KIS_PAPER_ORDER_ENABLED",
         "HWISTOCK_MARKET_DATA_SOURCE",
         "HWISTOCK_CALENDAR_PATH",
         "HWISTOCK_KILL_SWITCH",
+        "HWISTOCK_DATA_DIR",
+        "HWISTOCK_KIS_PAPER_STATE_FILE",
     ):
         monkeypatch.delenv(key, raising=False)
     yield
     base_runner.reset_runtime_for_tests()
+    continuous.resetContinuousPaperRunnerForTests()
 
 
 def _env():
@@ -62,6 +70,7 @@ def _env():
         "KIS_PAPER_BASE_URL": "https://openapivts.koreainvestment.com:29443",
         "HWISTOCK_KIS_PAPER_NETWORK_ENABLED": "true",
         "HWISTOCK_MARKET_DATA_SOURCE": "local_fixture",
+        "HWISTOCK_KIS_MIN_CALL_GAP_SEC": "0",
     }
 
 
@@ -161,6 +170,7 @@ def test_tick_blocks_intent_when_paper_order_flag_disabled(tmp_path, monkeypatch
     _calendar(tmp_path, monkeypatch)
     env = _env()
     env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(tmp_path / "data")
     transport = FakeTransport()
     adapter = KisPaperAdapter(env=env, transport=transport)
     payload = continuous.runContinuousPaperTick(
@@ -168,6 +178,8 @@ def test_tick_blocks_intent_when_paper_order_flag_disabled(tmp_path, monkeypatch
         adapter=adapter,
         at_kst="2026-06-05T09:30:00",
         intent={
+            "intent_id": "test-disabled-1",
+            "idempotency_key": "test-disabled-1",
             "symbol": "005930",
             "side": "buy",
             "quantity": 1,
@@ -189,6 +201,7 @@ def test_tick_with_fake_transport_processes_safe_krx_paper_intent_when_order_ena
     env = _env()
     env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
     env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(tmp_path / "data")
     transport = FakeTransport()
     adapter = KisPaperAdapter(env=env, transport=transport)
     payload = continuous.runContinuousPaperTick(
@@ -196,6 +209,8 @@ def test_tick_with_fake_transport_processes_safe_krx_paper_intent_when_order_ena
         adapter=adapter,
         at_kst="2026-06-05T09:30:00",
         intent={
+            "intent_id": "test-enabled-1",
+            "idempotency_key": "test-enabled-1",
             "symbol": "005930",
             "side": "buy",
             "quantity": 1,
@@ -216,6 +231,7 @@ def test_tick_blocks_non_krx_or_reserve_breach_before_order(tmp_path, monkeypatc
     _calendar(tmp_path, monkeypatch)
     env = _env()
     env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(tmp_path / "data")
     transport = FakeTransport()
     adapter = KisPaperAdapter(env=env, transport=transport)
     payload = continuous.runContinuousPaperTick(
@@ -223,6 +239,8 @@ def test_tick_blocks_non_krx_or_reserve_breach_before_order(tmp_path, monkeypatc
         adapter=adapter,
         at_kst="2026-06-05T09:30:00",
         intent={
+            "intent_id": "test-risk-block-1",
+            "idempotency_key": "test-risk-block-1",
             "symbol": "005930",
             "side": "buy",
             "quantity": 1,
@@ -238,3 +256,109 @@ def test_tick_blocks_non_krx_or_reserve_breach_before_order(tmp_path, monkeypatc
     assert "minimum_cash_reserve_breach" in cash_order["errors"]
     order_calls = [call for call in transport.calls if "/order-cash" in call["url"]]
     assert order_calls == []
+
+
+def test_tick_blocks_paper_order_outside_krx_regular_session(tmp_path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    env = _env()
+    env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(tmp_path / "data")
+    transport = FakeTransport()
+    adapter = KisPaperAdapter(env=env, transport=transport)
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=adapter,
+        at_kst="2026-06-05T16:10:00",
+        intent={
+            "intent_id": "test-nxt-block-1",
+            "idempotency_key": "test-nxt-block-1",
+            "symbol": "005930",
+            "side": "buy",
+            "quantity": 1,
+            "order_price": 70000,
+            "venue_route": "KRX",
+            "available_cash_krw": 2_000_000,
+            "planned_order_cash_krw": 100_000,
+            "current_holdings_count": 0,
+            "paper_only": True,
+        },
+    )
+    cash_order = [step for step in payload["steps"] if step.get("step") == "cash_order"][-1]
+    assert cash_order["status"] == "blocked_risk_overlay"
+    assert "kis_paper_order_requires_krx_regular_session" in cash_order["errors"]
+    assert not any("/order-cash" in call["url"] for call in transport.calls)
+
+
+def test_tick_auto_loads_latest_intent_queue_and_persists_only_passed_order(tmp_path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    data_root = tmp_path / "data"
+    intent_dir = data_root / "intents" / "2026-06-05"
+    intent_dir.mkdir(parents=True)
+    intent = {
+        "schema_version": "paper_order_intent/v0",
+        "intent_id": "intent-queue-1",
+        "idempotency_key": "intent-queue-1",
+        "flash_trade_document_ref": "flash-queue-1",
+        "symbol": "005930",
+        "side": "buy",
+        "quantity": 1,
+        "order_price": 70000,
+        "venue_route": "KRX",
+        "available_cash_krw": 2_000_000,
+        "planned_order_cash_krw": 100_000,
+        "current_holdings_count": 0,
+        "valid_until_kst": "2026-06-05T09:50:00+09:00",
+        "paper_only": True,
+    }
+    (intent_dir / "paper-order-intents-latest.jsonl").write_text(json.dumps(intent, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    env = _env()
+    env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(data_root)
+    transport = FakeTransport()
+    adapter = KisPaperAdapter(env=env, transport=transport)
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=adapter,
+        at_kst="2026-06-05T09:30:00",
+    )
+    assert payload["intent_source"] == "latest_intent_queue"
+    assert any(step.get("step") == "cash_order" and step.get("status") == "pass" for step in payload["steps"])
+    state_path = data_root / "state" / "kis-paper-runner-state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert "intent-queue-1" in state["consumed_intent_keys"]
+    assert state["pending_orders"][0]["symbol"] == "005930"
+
+
+def test_tick_does_not_mark_intent_consumed_when_broker_warns(tmp_path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    data_root = tmp_path / "data"
+    env = _env()
+    env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(data_root)
+    transport = FakeTransport(order_status="warn")
+    adapter = KisPaperAdapter(env=env, transport=transport)
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=adapter,
+        at_kst="2026-06-05T09:30:00",
+        intent={
+            "intent_id": "intent-warn-1",
+            "idempotency_key": "intent-warn-1",
+            "symbol": "005930",
+            "side": "buy",
+            "quantity": 1,
+            "order_price": 70000,
+            "venue_route": "KRX",
+            "available_cash_krw": 2_000_000,
+            "planned_order_cash_krw": 100_000,
+            "current_holdings_count": 0,
+            "paper_only": True,
+        },
+    )
+    assert any(step.get("step") == "cash_order" and step.get("status") == "warn" for step in payload["steps"])
+    assert any(step.get("step") == "local_state" and step.get("status") == "not_marked_consumed" for step in payload["steps"])
+    assert not (data_root / "state" / "kis-paper-runner-state.json").exists()

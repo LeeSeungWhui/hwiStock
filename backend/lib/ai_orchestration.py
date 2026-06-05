@@ -379,7 +379,7 @@ def buildFlashTradeDocument(
 
     held_symbols = _symbol_set_from_snapshot(portfolio, "holdings")
     pending_symbols = _symbol_set_from_snapshot(order_state, "pending_orders")
-    active_prior_symbols = _active_symbols_from_trade_documents(previous_docs)
+    active_prior_symbols = _active_symbols_from_trade_documents(previous_docs, now_kst=produced_at)
     market_refs = [
         str(row.get("artifact_id") or row.get("snapshot_id") or "").strip()
         for row in market_rows
@@ -1095,12 +1095,20 @@ def _symbol_set_from_snapshot(snapshot: Mapping[str, Any], key: str) -> Set[str]
     return symbols
 
 
-def _active_symbols_from_trade_documents(documents: Sequence[Mapping[str, Any]]) -> Set[str]:
+def _active_symbols_from_trade_documents(documents: Sequence[Mapping[str, Any]], *, now_kst: Optional[str] = None) -> Set[str]:
     symbols: Set[str] = set()
+    errors: List[str] = []
+    reference_now = _parse_kst_timestamp(now_kst, "now_kst", errors) if now_kst else None
     for document in documents:
         valid_state = str(document.get("document_state") or document.get("status") or "active").lower()
         if valid_state in {"expired", "cancelled", "closed"}:
             continue
+        valid_until_raw = document.get("valid_until") or document.get("valid_until_kst")
+        if reference_now and valid_until_raw:
+            expiry_errors: List[str] = []
+            expiry = _parse_kst_timestamp(valid_until_raw, "valid_until_kst", expiry_errors)
+            if expiry and expiry <= reference_now:
+                continue
         for action in document.get("actions") or []:
             if not isinstance(action, Mapping):
                 continue

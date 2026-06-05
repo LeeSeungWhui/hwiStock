@@ -24,8 +24,10 @@ if str(BACKEND_ROOT) not in sys.path:
 
 try:
     from lib import ai_orchestration as ao
+    from lib import trading_engine
 except ImportError:  # pragma: no cover
     from backend.lib import ai_orchestration as ao
+    from backend.lib import trading_engine
 
 KST = timezone(timedelta(hours=9))
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -128,6 +130,128 @@ def _build_prompt(events: Sequence[Mapping[str, Any]], *, produced_at_kst: str) 
         f"시각={produced_at_kst}. "
         f"제목={json.dumps(titles, ensure_ascii=False)}"
     )
+
+
+def _build_pro_hourly_prompt(
+    events: Sequence[Mapping[str, Any]],
+    kis_snapshots: Sequence[Mapping[str, Any]],
+    *,
+    produced_at_kst: str,
+) -> str:
+    titles = [
+        {
+            "event_id": str(event.get("event_id") or event.get("source_id") or "")[:80],
+            "title": str(event.get("title") or "")[:160],
+            "type": str(event.get("event_type") or "")[:40],
+        }
+        for event in events[:20]
+    ]
+    market_rows = []
+    for snapshot in kis_snapshots[-6:]:
+        market_rows.append(
+            {
+                "artifact_id": str(snapshot.get("artifact_id") or "")[:80],
+                "status": str(snapshot.get("status") or ""),
+                "inputs": [
+                    {
+                        "input_id": str(row.get("input_id") or row.get("step") or ""),
+                        "status": str(row.get("status") or ""),
+                        "row_count": row.get("row_count"),
+                        "rows_preview": (row.get("rows_preview") or [])[:3],
+                    }
+                    for row in (snapshot.get("input_results") or [])[:6]
+                    if isinstance(row, Mapping)
+                ],
+            }
+        )
+    return (
+        "JSON만 출력. 직접 주문, 수익 보장, 계좌/비밀값 언급 금지. "
+        "역할은 한국 장중 시장국면/테마/피해야 할 조건 정리다. "
+        "형식: {\"summary\":\"한문장\", \"market_mode\":\"RISK_ON|NEUTRAL|RISK_OFF|NO_TRADE\", "
+        "\"themes\":[\"테마\"], \"strong_conditions\":[\"조건\"], "
+        "\"avoid_conditions\":[\"조건\"], \"risk_flags\":[\"리스크\"], \"order_safety\":\"no_order\"}. "
+        f"시각={produced_at_kst}. "
+        f"뉴스/공시={json.dumps(titles, ensure_ascii=False)} "
+        f"KIS요약={json.dumps(market_rows, ensure_ascii=False)}"
+    )
+
+
+def _build_flash_prompt(
+    *,
+    pro_artifact: Mapping[str, Any],
+    events: Sequence[Mapping[str, Any]],
+    kis_snapshots: Sequence[Mapping[str, Any]],
+    compiled_watch: Sequence[Mapping[str, Any]],
+    portfolio: Mapping[str, Any],
+    order_state: Mapping[str, Any],
+    produced_at_kst: str,
+) -> str:
+    watch_summary = [
+        {
+            "symbol": row.get("symbol") or row.get("ticker"),
+            "name": row.get("name") or row.get("symbol_name"),
+            "entry_intent": row.get("entry_intent"),
+            "valid_until_kst": row.get("valid_until_kst"),
+        }
+        for row in compiled_watch[:5]
+    ]
+    return (
+        "JSON만 출력. 직접 주문 실행 금지. 후보는 compiled_watch 안에서 최대 5개만 평가. "
+        "보유/대기 주문과 충돌하는 신규매수 금지. "
+        "형식: {\"summary\":\"한문장\", \"candidate_notes\":[{\"symbol\":\"000000\",\"stance\":\"watch|avoid\",\"reason\":\"짧게\"}], "
+        "\"risk_flags\":[\"리스크\"], \"order_safety\":\"no_direct_order\"}. "
+        f"시각={produced_at_kst}. "
+        f"Pro분석={json.dumps(_compact_json_for_prompt(pro_artifact, 2000), ensure_ascii=False)} "
+        f"최근뉴스={json.dumps(list(events)[-20:], ensure_ascii=False)} "
+        f"KIS스냅샷={json.dumps(_compact_json_for_prompt(list(kis_snapshots)[-3:], 2500), ensure_ascii=False)} "
+        f"후보={json.dumps(watch_summary, ensure_ascii=False)} "
+        f"포트폴리오={json.dumps(_compact_json_for_prompt(portfolio, 1200), ensure_ascii=False)} "
+        f"주문상태={json.dumps(_compact_json_for_prompt(order_state, 1200), ensure_ascii=False)}"
+    )
+
+
+def _compact_json_for_prompt(value: Any, max_chars: int) -> Any:
+    text = json.dumps(value, ensure_ascii=False, sort_keys=True)
+    if len(text) <= max_chars:
+        return value
+    return {"truncated_json": text[:max_chars], "truncated": True}
+
+
+def _parse_provider_json(text: str) -> Dict[str, Any]:
+    raw = str(text or "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return dict(parsed) if isinstance(parsed, Mapping) else {}
+
+
+def _provider_meta(provider: Optional[Mapping[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not provider:
+        return None
+    return {
+        "http_status": provider.get("http_status"),
+        "finish_reason": provider.get("finish_reason"),
+        "model": provider.get("model"),
+        "usage": provider.get("usage"),
+        "error": provider.get("error"),
+        "text_present": bool(str(provider.get("text") or "").strip()),
+    }
+
+
+def _provider_status(provider: Mapping[str, Any]) -> str:
+    error = provider.get("error")
+    if isinstance(error, Mapping) and error.get("code") == "missing_deepseek_api_key":
+        return "blocked_missing_deepseek_api_key"
+    if error:
+        return "provider_failed"
+    if provider.get("finish_reason") == "stop" and str(provider.get("text") or "").strip():
+        return "ok"
+    if provider.get("http_status") == 200 and str(provider.get("text") or "").strip():
+        return "ok"
+    return "provider_failed"
 
 
 def _deepseek_api_key() -> str:
@@ -249,21 +373,182 @@ def _write_artifact_bundle(
     return {"latest": str(latest_path), "stamped": str(stamped_path), "health": str(health_path)}
 
 
+def _latest_named_json(data_root: Path, family: str, day: str, name: str) -> Optional[Path]:
+    path = data_root / family / day / name
+    return path if path.is_file() else None
+
+
+def _read_previous_trade_documents(data_root: Path, *, at: datetime, limit: int = 3) -> List[Dict[str, Any]]:
+    directory = data_root / "trade-documents" / at.date().isoformat()
+    if not directory.is_dir():
+        return []
+    rows: List[Dict[str, Any]] = []
+    for path in sorted(directory.glob("flash-trade-document-*.json"))[-limit:]:
+        if path.name.endswith("-latest.json"):
+            continue
+        payload = _read_json_artifact(path)
+        if payload:
+            rows.append(payload)
+    return rows[-limit:]
+
+
+def _default_portfolio_snapshot(now: datetime) -> Dict[str, Any]:
+    return {
+        "schema_version": "portfolio_snapshot/v0",
+        "artifact_id": f"art_portfolio_policy_snapshot_{now.strftime('%Y%m%d_%H%M%S')}",
+        "snapshot_id": f"portfolio_policy_snapshot_{now.strftime('%Y%m%d_%H%M%S')}",
+        "produced_at_kst": now.isoformat(),
+        "source": "policy_budget_snapshot_for_paper_sizing",
+        "available_cash_krw": 2_000_000,
+        "total_capital_krw": 2_000_000,
+        "holdings": [],
+        "credential_values_printed": False,
+        "raw_account_displayed": False,
+        "fake_broker_used": False,
+    }
+
+
+def _default_order_state_snapshot(now: datetime, *, data_root: Path = DEFAULT_DATA_ROOT) -> Dict[str, Any]:
+    state_path = data_root / "state" / "kis-paper-runner-state.json"
+    pending_orders: list[Dict[str, Any]] = []
+    consumed_ids: list[str] = []
+    if state_path.is_file():
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            state = {}
+        if isinstance(state, Mapping):
+            pending_orders = [
+                dict(row)
+                for row in (state.get("pending_orders") or [])
+                if isinstance(row, Mapping)
+            ]
+            consumed_ids = [
+                str(item)
+                for item in (state.get("consumed_trade_document_ids") or state.get("consumed_intent_keys") or [])
+                if str(item).strip()
+            ]
+    return {
+        "schema_version": "order_state_snapshot/v0",
+        "artifact_id": f"art_order_state_local_snapshot_{now.strftime('%Y%m%d_%H%M%S')}",
+        "snapshot_id": f"order_state_local_snapshot_{now.strftime('%Y%m%d_%H%M%S')}",
+        "produced_at_kst": now.isoformat(),
+        "source": "local_kis_paper_runner_state",
+        "pending_orders": pending_orders,
+        "active_exits": [],
+        "cooldowns": [],
+        "consumed_trade_document_ids": consumed_ids,
+        "credential_values_printed": False,
+        "fake_broker_used": False,
+    }
+
+
+def _read_existing_intents(data_root: Path, *, at: datetime) -> List[Dict[str, Any]]:
+    path = data_root / "intents" / at.date().isoformat() / "paper-order-intents-latest.jsonl"
+    if not path.is_file():
+        return []
+    rows: List[Dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, Mapping):
+            rows.append(dict(parsed))
+    return rows
+
+
+def _write_paper_intents(
+    pipeline: Mapping[str, Any],
+    *,
+    data_root: Path,
+    at: datetime,
+) -> Dict[str, str]:
+    output_dir = _date_dir(data_root, "intents", at)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    stamp = at.strftime("%H%M%S")
+    latest_jsonl = output_dir / "paper-order-intents-latest.jsonl"
+    stamped_jsonl = output_dir / f"paper-order-intents-{stamp}.jsonl"
+    latest_pipeline = output_dir / "paper-order-intent-pipeline-latest.json"
+    stamped_pipeline = output_dir / f"paper-order-intent-pipeline-{stamp}.json"
+    intents = [
+        dict(row)
+        for row in (pipeline.get("accepted_intents") or [])
+        if isinstance(row, Mapping)
+    ]
+    jsonl = "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in intents)
+    latest_jsonl.write_text(jsonl, encoding="utf-8")
+    stamped_jsonl.write_text(jsonl, encoding="utf-8")
+    text = json.dumps(dict(pipeline), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    latest_pipeline.write_text(text, encoding="utf-8")
+    stamped_pipeline.write_text(text, encoding="utf-8")
+    return {
+        "latest_jsonl": str(latest_jsonl),
+        "stamped_jsonl": str(stamped_jsonl),
+        "latest_pipeline": str(latest_pipeline),
+        "stamped_pipeline": str(stamped_pipeline),
+    }
+
+
 def run_pro_hourly_once(
     *,
     data_root: Path = DEFAULT_DATA_ROOT,
     at: Optional[datetime] = None,
+    model: Optional[str] = None,
 ) -> Dict[str, Any]:
     now = at or _now_kst()
     events = _read_recent_events(data_root, at=now)
     kis_snapshots = _read_recent_kis_snapshots(data_root, at=now)
-    provider_status = "blocked_missing_deepseek_api_key" if not _deepseek_api_key() else "provider_network_not_called_in_local_go"
+    selected_model = model or os.getenv("HWISTOCK_DEEPSEEK_MODEL", ao.DEEPSEEK_PRO_MODEL)
+    provider: Optional[Dict[str, Any]] = None
+    provider_json: Dict[str, Any] = {}
+    if events or kis_snapshots:
+        try:
+            provider = _call_deepseek(
+                _build_pro_hourly_prompt(events, kis_snapshots, produced_at_kst=now.isoformat()),
+                model=selected_model,
+            )
+            provider_json = _parse_provider_json(str(provider.get("text") or ""))
+            provider_status = _provider_status(provider)
+        except Exception as exc:  # noqa: BLE001 - fail closed and keep evidence.
+            provider = {"error": {"code": "provider_exception", "class": exc.__class__.__name__, "message": str(exc)[:200]}}
+            provider_status = "provider_error"
+    else:
+        provider_status = "blocked_no_source_inputs"
     artifact = ao.buildProHourlyMarketAnalysis(
         events=events,
         kis_market_snapshots=kis_snapshots,
         produced_at_kst=now.isoformat(),
         provider_status=provider_status,
     )
+    artifact["model_name"] = selected_model
+    artifact["provider"] = _provider_meta(provider)
+    if provider_json:
+        artifact["provider_json"] = provider_json
+        if str(provider_json.get("summary") or "").strip():
+            artifact["summary"] = str(provider_json["summary"])[:1000]
+        themes = provider_json.get("themes")
+        if isinstance(themes, list):
+            artifact["themes"] = [str(item)[:80] for item in themes[:12]]
+        risk_flags = provider_json.get("risk_flags")
+        if isinstance(risk_flags, list):
+            artifact["risk_flags"] = [str(item)[:120] for item in risk_flags[:12]]
+        strong = provider_json.get("strong_conditions")
+        if isinstance(strong, list):
+            artifact["strong_conditions"] = [str(item)[:120] for item in strong[:12]]
+        avoid = provider_json.get("avoid_conditions")
+        if isinstance(avoid, list):
+            artifact["avoid_conditions"] = [str(item)[:120] for item in avoid[:12]]
+        market_mode = str(provider_json.get("market_mode") or "").strip()
+        if market_mode:
+            artifact["market_regime"]["market_mode"] = market_mode[:40]
+    if provider_status not in {"ok", "blocked_no_source_inputs"}:
+        artifact["validation_status"] = "safe_block"
+        artifact["document_kind"] = "NO_TRADE"
+        artifact["market_regime"]["market_mode"] = "NO_TRADE"
+        artifact["safe_block_reason"] = provider_status
     artifact["artifact_paths"] = _write_artifact_bundle(
         artifact,
         data_root=data_root,
@@ -278,15 +563,42 @@ def run_flash_trade_document_once(
     *,
     data_root: Path = DEFAULT_DATA_ROOT,
     at: Optional[datetime] = None,
+    model: Optional[str] = None,
 ) -> Dict[str, Any]:
     now = at or _now_kst()
-    latest_pro_path = _latest_json_file(data_root, "ai", now.date().isoformat())
+    day = now.date().isoformat()
+    latest_pro_path = (
+        _latest_named_json(data_root, "ai", day, "pro-hourly-latest.json")
+        or _latest_json_file(data_root, "ai", day)
+    )
     pro_artifact = _read_json_artifact(latest_pro_path) if latest_pro_path else None
     events = _read_recent_events(data_root, limit=20, at=now)
     kis_snapshots = _read_recent_kis_snapshots(data_root, at=now)
     compiled_watch = _read_compiled_watch(data_root, at=now)
-    portfolio = _read_json_artifact(_latest_json_file(data_root, "portfolio", now.date().isoformat()) or Path())
-    order_state = _read_json_artifact(_latest_json_file(data_root, "orders", now.date().isoformat()) or Path())
+    portfolio = _read_json_artifact(_latest_json_file(data_root, "portfolio", day) or Path()) or _default_portfolio_snapshot(now)
+    order_state = _read_json_artifact(_latest_json_file(data_root, "orders", day) or Path()) or _default_order_state_snapshot(now, data_root=data_root)
+    previous_docs = _read_previous_trade_documents(data_root, at=now)
+    selected_model = model or os.getenv("HWISTOCK_DEEPSEEK_MODEL", ao.DEEPSEEK_FLASH_MODEL)
+    provider: Optional[Dict[str, Any]] = None
+    provider_json: Dict[str, Any] = {}
+    if pro_artifact and compiled_watch and (events or kis_snapshots):
+        try:
+            provider = _call_deepseek(
+                _build_flash_prompt(
+                    pro_artifact=pro_artifact,
+                    events=events,
+                    kis_snapshots=kis_snapshots,
+                    compiled_watch=compiled_watch,
+                    portfolio=portfolio,
+                    order_state=order_state,
+                    produced_at_kst=now.isoformat(),
+                ),
+                model=selected_model,
+                timeout=60,
+            )
+            provider_json = _parse_provider_json(str(provider.get("text") or ""))
+        except Exception as exc:  # noqa: BLE001
+            provider = {"error": {"code": "provider_exception", "class": exc.__class__.__name__, "message": str(exc)[:200]}}
     artifact = ao.buildFlashTradeDocument(
         pro_artifact=pro_artifact,
         recent_events=events,
@@ -294,12 +606,43 @@ def run_flash_trade_document_once(
         compiled_watch=compiled_watch,
         portfolio_snapshot=portfolio,
         order_state_snapshot=order_state,
-        previous_trade_documents=[],
+        previous_trade_documents=previous_docs,
         produced_at_kst=now.isoformat(),
     )
+    artifact["model_name"] = selected_model
+    artifact["provider_status"] = _provider_status(provider or {}) if provider else "blocked_no_flash_provider_inputs"
+    artifact["provider"] = _provider_meta(provider)
+    if provider_json:
+        artifact["provider_json"] = provider_json
+        notes = provider_json.get("candidate_notes")
+        if isinstance(notes, list):
+            artifact["provider_candidate_notes"] = notes[:5]
+        if str(provider_json.get("summary") or "").strip():
+            artifact["provider_summary"] = str(provider_json["summary"])[:1000]
     validation = ao.validateFlashTradeDocument(artifact, compiled_watch=compiled_watch)
     artifact = validation["document"]
     artifact["validation_errors"] = validation["errors"]
+    if artifact.get("validation_status") == "accepted":
+        pipeline = trading_engine.generatePaperOrderIntentsFromFlashDocument(
+            artifact,
+            compiled_watch=compiled_watch,
+            portfolio_snapshot=portfolio,
+            order_state_snapshot=order_state,
+            existing_intents=_read_existing_intents(data_root, at=now),
+            now_kst=now.isoformat(),
+        )
+    else:
+        pipeline = {
+            "schema_version": "paper_intent_pipeline_result/v0",
+            "ok": artifact.get("validation_status") in {"safe_block", "accepted"},
+            "accepted_intents": [],
+            "rejected_actions": [{"reason": artifact.get("no_trade_reason") or "flash_document_not_accepted"}],
+            "accepted_count": 0,
+            "rejected_count": 1,
+            "order_cancel_modify_called": False,
+        }
+    artifact["paper_intent_pipeline"] = pipeline
+    artifact["paper_intent_paths"] = _write_paper_intents(pipeline, data_root=data_root, at=now)
     artifact["artifact_paths"] = _write_artifact_bundle(
         artifact,
         data_root=data_root,
@@ -410,9 +753,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         parser.print_help(sys.stderr)
         return 2
     if args.job == "pro-hourly":
-        result = run_pro_hourly_once(data_root=Path(args.data_root))
+        result = run_pro_hourly_once(data_root=Path(args.data_root), model=args.model)
     elif args.job == "flash-10m":
-        result = run_flash_trade_document_once(data_root=Path(args.data_root))
+        result = run_flash_trade_document_once(data_root=Path(args.data_root), model=args.model)
     else:
         result = run_analysis_once(data_root=Path(args.data_root), model=args.model)
     sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n")

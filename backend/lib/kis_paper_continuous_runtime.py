@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence
@@ -21,6 +22,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 try:
+    from lib.kis_paper_token_cache import loadKisPaperAccessToken, tokenCacheRevokeSkippedStep
     from lib import paper_trading_ledger as ledger
     from service import HwiStockRunnerService as base_runner
     from service.kis_paper_adapter import (
@@ -31,6 +33,7 @@ try:
         loadKisPaperCapabilityFlags,
     )
 except ImportError:  # pragma: no cover
+    from backend.lib.kis_paper_token_cache import loadKisPaperAccessToken, tokenCacheRevokeSkippedStep
     from backend.lib import paper_trading_ledger as ledger
     from backend.service import HwiStockRunnerService as base_runner
     from backend.service.kis_paper_adapter import (
@@ -58,6 +61,16 @@ def _bool_env(env: Mapping[str, str], key: str, default: bool = False) -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
+def _float_env(env: Mapping[str, str], key: str, default: float) -> float:
+    raw = str(env.get(key, "")).strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
 def loadContinuousPaperRunnerConfig(env: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
     source = env if env is not None else os.environ
     return {
@@ -72,6 +85,8 @@ def loadContinuousPaperRunnerConfig(env: Optional[Mapping[str, str]] = None) -> 
         "paper_order_enabled": _bool_env(source, "HWISTOCK_KIS_PAPER_ORDER_ENABLED", False),
         "intent_file": str(source.get("HWISTOCK_KIS_PAPER_INTENT_FILE", "")).strip(),
         "data_root": str(source.get("HWISTOCK_DATA_DIR", str(DEFAULT_DATA_ROOT))).strip(),
+        "state_file": str(source.get("HWISTOCK_KIS_PAPER_STATE_FILE", "")).strip(),
+        "min_call_gap_sec": _float_env(source, "HWISTOCK_KIS_MIN_CALL_GAP_SEC", 1.35),
         "paper_env": describeKisPaperEnv(source),
         "capabilities": loadKisPaperCapabilityFlags(),
     }
@@ -86,6 +101,7 @@ def evaluatePaperRiskOverlay(
     runner_status = dict(status or base_runner.get_runner_status())
     errors = []
     route = str(payload.get("venue_route") or payload.get("venue") or runner_status.get("routing", {}).get("venue") or "").upper()
+    session_venue = str(runner_status.get("routing", {}).get("venue") or "").upper()
     available_cash = int(payload.get("available_cash_krw") or 0)
     planned_cash = int(payload.get("planned_order_cash_krw") or 0)
     current_holdings = int(payload.get("current_holdings_count") or 0)
@@ -97,6 +113,8 @@ def evaluatePaperRiskOverlay(
         errors.append("calendar_not_ready")
     if runner_status.get("routing", {}).get("venue") == "idle":
         errors.append("off_session")
+    if session_venue != "KRX":
+        errors.append("kis_paper_order_requires_krx_regular_session")
     if route != "KRX":
         errors.append("kis_paper_order_route_must_be_krx")
     if current_holdings >= 5:
@@ -118,6 +136,7 @@ def evaluatePaperRiskOverlay(
             "reserve_floor_krw": reserve_floor,
             "max_simultaneous_holdings": 5,
             "route": route,
+            "session_venue": session_venue,
         },
     }
 
@@ -163,9 +182,15 @@ def evaluateIntentExecutionPreflight(
     doc_ref = str(payload.get("flash_trade_document_ref") or "").strip()
     if doc_ref and doc_ref in consumed_docs:
         errors.append("trade_document_already_consumed")
+    expiry = _parse_optional_kst_timestamp(payload.get("valid_until_kst") or payload.get("valid_until"))
+    reference_now = _status_reference_datetime(status)
+    if expiry and expiry <= reference_now:
+        errors.append("intent_expired")
     risk = evaluatePaperRiskOverlay(payload, status=status)
     errors.extend(risk.get("errors") or [])
     idempotency_key = str(payload.get("idempotency_key") or payload.get("intent_id") or "").strip()
+    if not idempotency_key:
+        errors.append("idempotency_key_required")
     if idempotency_key and idempotency_key in _CONSUMED_INTENT_KEYS:
         errors.append("duplicate_intent_idempotency_key")
     return {
@@ -255,8 +280,16 @@ def runContinuousPaperTick(
 ) -> Dict[str, Any]:
     source = env if env is not None else os.environ
     config = loadContinuousPaperRunnerConfig(source)
-    status = base_runner.get_runner_status(at_kst)
+    status = _status_with_env_overrides(base_runner.get_runner_status(at_kst), source, at_kst=at_kst)
     now = _now_kst()
+    reference_now = _parse_optional_kst_timestamp(at_kst) or now
+    data_root = Path(config["data_root"])
+    local_state = _load_runner_state(config, data_root=data_root)
+    intent_source = "explicit_argument" if intent else "none"
+    if intent is None:
+        loaded = _load_latest_intent_from_queue(data_root=data_root, at=reference_now, state=local_state)
+        intent = loaded.get("intent")
+        intent_source = str(loaded.get("source") or "none")
     result: Dict[str, Any] = {
         "event": "kis_paper_continuous_tick",
         "timestamp_kst": now.isoformat(),
@@ -274,6 +307,8 @@ def runContinuousPaperTick(
         "credential_values_printed": False,
         "raw_responses_stored": False,
         "status": "pending",
+        "intent_source": intent_source,
+        "intent_loaded": bool(intent),
         "base_runner_order_gate": status["orderGate"],
         "steps": [],
         "observationWindow": ledger.buildObservationWindowManifest(
@@ -295,7 +330,7 @@ def runContinuousPaperTick(
         result["steps"].append({"step": "config", "status": "blocked_missing_env", "missing_env_keys": missing})
         return result
 
-    token_result, token = adapter.issueTokenWithValue()
+    token_result, token, token_cache_managed = loadKisPaperAccessToken(adapter, env=source, now=now)
     result["steps"].append(token_result)
     if not token_result.get("token_present") or not token:
         result["status"] = "blocked_token_missing"
@@ -303,12 +338,17 @@ def runContinuousPaperTick(
 
     sample_symbol = str(source.get("HWISTOCK_KIS_HEALTH_SYMBOL", "005930")).strip() or "005930"
     result["steps"].append(adapter.inquirePrice(token, sample_symbol))
+    _sleepForKisCallGap(config)
     result["steps"].append(adapter.inquireBalance(token))
+    _sleepForKisCallGap(config)
     result["steps"].append(adapter.inquireBuyable(token, sample_symbol))
+    _sleepForKisCallGap(config)
     result["steps"].append(adapter.dailyOrderFillLookup(token, date_yyyymmdd=now.strftime("%Y%m%d")))
+    _sleepForKisCallGap(config)
 
     if intent:
-        preflight = evaluateIntentExecutionPreflight(intent, status=status)
+        local_order_state = _order_state_snapshot_from_runner_state(local_state, now=now)
+        preflight = evaluateIntentExecutionPreflight(intent, order_state_snapshot=local_order_state, status=status)
         result["executionPreflight"] = preflight
         result["riskOverlay"] = preflight.get("riskOverlay")
         if not preflight["ok"]:
@@ -323,11 +363,34 @@ def runContinuousPaperTick(
                 }
             )
         else:
-            result["steps"].append(adapter.placeCashOrder(token, intent))
-            markIntentConsumed(str(intent.get("idempotency_key") or intent.get("intent_id") or ""))
+            cash_order = adapter.placeCashOrder(token, intent)
+            result["steps"].append(cash_order)
+            if _broker_step_passed(cash_order):
+                key = str(intent.get("idempotency_key") or intent.get("intent_id") or "")
+                markIntentConsumed(key)
+                _mark_runner_state_submitted(local_state, intent, cash_order, now=now)
+                _write_runner_state(local_state, config, data_root=data_root)
+            else:
+                result["steps"].append(
+                    {
+                        "step": "local_state",
+                        "status": "not_marked_consumed",
+                        "reason": "cash_order_not_passed",
+                        "broker_status": cash_order.get("status"),
+                    }
+                )
 
-    result["steps"].append(adapter.revokeToken(token))
-    result["status"] = "ok" if not any(step.get("status") in {"fail"} for step in result["steps"]) else "fail"
+    if token_cache_managed:
+        result["steps"].append(tokenCacheRevokeSkippedStep())
+    else:
+        result["steps"].append(adapter.revokeToken(token))
+    step_statuses = {str(step.get("status") or "") for step in result["steps"]}
+    if "fail" in step_statuses:
+        result["status"] = "fail"
+    elif "warn" in step_statuses or "not_marked_consumed" in step_statuses:
+        result["status"] = "warn"
+    else:
+        result["status"] = "ok"
     return result
 
 
@@ -358,9 +421,235 @@ def _load_intent_file(path: str) -> Optional[Dict[str, Any]]:
     text = p.read_text(encoding="utf-8").strip()
     if not text:
         return None
-    if "\n" in text:
-        text = text.splitlines()[0]
-    return dict(json.loads(text))
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, Mapping):
+            return dict(parsed)
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(parsed, Mapping):
+        return dict(parsed)
+    if isinstance(parsed, list):
+        for item in parsed:
+            if isinstance(item, Mapping):
+                return dict(item)
+    return None
+
+
+def _load_latest_intent_from_queue(
+    *,
+    data_root: Path,
+    at: datetime,
+    state: Mapping[str, Any],
+) -> Dict[str, Any]:
+    path = data_root / "intents" / at.date().isoformat() / "paper-order-intents-latest.jsonl"
+    if not path.is_file():
+        return {"intent": None, "source": "latest_intent_queue_missing", "path": str(path)}
+    consumed = {
+        str(item or "").strip()
+        for item in (state.get("consumed_intent_keys") or [])
+        if str(item or "").strip()
+    }
+    rows: list[Dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, Mapping):
+            rows.append(dict(parsed))
+    for row in rows:
+        key = str(row.get("idempotency_key") or row.get("intent_id") or "").strip()
+        if key and key in consumed:
+            continue
+        expiry = _parse_optional_kst_timestamp(row.get("valid_until_kst") or row.get("valid_until"))
+        if expiry and expiry <= at:
+            continue
+        return {"intent": row, "source": "latest_intent_queue", "path": str(path)}
+    return {"intent": None, "source": "latest_intent_queue_empty_or_expired", "path": str(path)}
+
+
+def _runner_state_path(config: Mapping[str, Any], *, data_root: Path) -> Path:
+    override = str(config.get("state_file") or "").strip()
+    if override:
+        path = Path(override)
+        return path if path.is_absolute() else data_root / override
+    return data_root / "state" / "kis-paper-runner-state.json"
+
+
+def _load_runner_state(config: Mapping[str, Any], *, data_root: Path) -> Dict[str, Any]:
+    path = _runner_state_path(config, data_root=data_root)
+    if not path.is_file():
+        return {
+            "schema_version": "kis_paper_runner_state/v0",
+            "consumed_intent_keys": [],
+            "consumed_trade_document_ids": [],
+            "pending_orders": [],
+            "last_updated_kst": None,
+        }
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        parsed = {}
+    state = dict(parsed) if isinstance(parsed, Mapping) else {}
+    state.setdefault("schema_version", "kis_paper_runner_state/v0")
+    state.setdefault("consumed_intent_keys", [])
+    state.setdefault("consumed_trade_document_ids", [])
+    state.setdefault("pending_orders", [])
+    return state
+
+
+def _write_runner_state(state: Mapping[str, Any], config: Mapping[str, Any], *, data_root: Path) -> None:
+    path = _runner_state_path(config, data_root=data_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(dict(state), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
+
+def _order_state_snapshot_from_runner_state(state: Mapping[str, Any], *, now: datetime) -> Dict[str, Any]:
+    return {
+        "schema_version": "order_state_snapshot/v0",
+        "artifact_id": f"art_order_state_runner_{now.strftime('%Y%m%d_%H%M%S')}",
+        "snapshot_id": f"order_state_runner_{now.strftime('%Y%m%d_%H%M%S')}",
+        "produced_at_kst": now.isoformat(),
+        "pending_orders": [
+            dict(row)
+            for row in (state.get("pending_orders") or [])
+            if isinstance(row, Mapping)
+        ],
+        "active_exits": [],
+        "cooldowns": [],
+        "consumed_trade_document_ids": [
+            str(item)
+            for item in (state.get("consumed_trade_document_ids") or [])
+            if str(item).strip()
+        ],
+    }
+
+
+def _mark_runner_state_submitted(
+    state: Dict[str, Any],
+    intent: Mapping[str, Any],
+    cash_order: Mapping[str, Any],
+    *,
+    now: datetime,
+) -> None:
+    key = str(intent.get("idempotency_key") or intent.get("intent_id") or "").strip()
+    doc_ref = str(intent.get("flash_trade_document_ref") or "").strip()
+    symbol = str(intent.get("symbol") or intent.get("ticker") or "").strip()
+    if key:
+        state["consumed_intent_keys"] = sorted(set([*(state.get("consumed_intent_keys") or []), key]))
+    if doc_ref:
+        state["consumed_trade_document_ids"] = sorted(set([*(state.get("consumed_trade_document_ids") or []), doc_ref]))
+    pending = [
+        dict(row)
+        for row in (state.get("pending_orders") or [])
+        if isinstance(row, Mapping) and str(row.get("symbol") or row.get("ticker") or "").strip() != symbol
+    ]
+    pending.append(
+        {
+            "symbol": symbol,
+            "ticker": symbol,
+            "side": str(intent.get("side") or ""),
+            "quantity": intent.get("quantity"),
+            "order_price": intent.get("order_price") or intent.get("price"),
+            "idempotency_key": key,
+            "flash_trade_document_ref": doc_ref,
+            "submitted_at_kst": now.isoformat(),
+            "broker_status": cash_order.get("status"),
+            "broker_endpoint_called": bool(cash_order.get("broker_endpoint_called")),
+        }
+    )
+    state["pending_orders"] = pending
+    state["last_updated_kst"] = now.isoformat()
+
+
+def _broker_step_passed(step: Mapping[str, Any]) -> bool:
+    return step.get("status") == "pass" and bool(step.get("broker_endpoint_called"))
+
+
+def _parse_optional_kst_timestamp(value: Any) -> Optional[datetime]:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=KST)
+    return parsed.astimezone(KST)
+
+
+def _status_reference_datetime(status: Optional[Mapping[str, Any]]) -> datetime:
+    routing = (status or {}).get("routing") if isinstance(status, Mapping) else {}
+    if isinstance(routing, Mapping):
+        parsed = _parse_optional_kst_timestamp(routing.get("atKst"))
+        if parsed:
+            return parsed
+    return _now_kst()
+
+
+def _status_with_env_overrides(
+    status: Mapping[str, Any],
+    env: Mapping[str, str],
+    *,
+    at_kst: Optional[str],
+) -> Dict[str, Any]:
+    payload = json.loads(json.dumps(dict(status), ensure_ascii=False))
+    market_source = str(env.get("HWISTOCK_MARKET_DATA_SOURCE") or "").strip()
+    if market_source:
+        payload["marketData"] = {
+            "state": "source_configured",
+            "source": market_source,
+            "tradingLoopsActive": market_source in {"kis_paper_mock", "kis_paper_read", "kis_market_six_input"},
+            "reason": "runner env market-data source override",
+        }
+
+    if _bool_env(env, "HWISTOCK_ALLOW_WEEKDAY_CALENDAR_FALLBACK", False):
+        calendar = payload.get("calendar") if isinstance(payload.get("calendar"), Mapping) else {}
+        if calendar.get("tradingAllowed") is not True:
+            ref = _parse_optional_kst_timestamp(at_kst) or _now_kst()
+            payload["calendar"] = {
+                **dict(calendar),
+                "state": "calendar_weekday_fallback",
+                "tradingAllowed": ref.weekday() < 5,
+                "fallbackPolicy": "weekday_only_operator_enabled",
+                "dateKst": ref.date().isoformat(),
+            }
+
+    kill_switch = bool((payload.get("killSwitch") or {}).get("active"))
+    calendar_ready = (payload.get("calendar") or {}).get("tradingAllowed") is True
+    source_ready = (payload.get("marketData") or {}).get("state") != "source_unconfigured"
+    route = str((payload.get("routing") or {}).get("venue") or "idle")
+    if kill_switch:
+        payload["orderGate"] = "blocked_kill_switch"
+    elif not calendar_ready:
+        payload["orderGate"] = f"blocked_{(payload.get('calendar') or {}).get('state', 'calendar')}"
+    elif not source_ready:
+        payload["orderGate"] = "blocked_source_unconfigured"
+    elif route == "idle":
+        payload["orderGate"] = "blocked_off_session"
+    else:
+        payload["orderGate"] = "no_order_dry_run_only"
+    return payload
+
+
+def _sleepForKisCallGap(config: Mapping[str, Any]) -> None:
+    gap = float(config.get("min_call_gap_sec") or 0)
+    if gap > 0:
+        time.sleep(gap)
 
 
 def _symbol_set_from_snapshot(snapshot: Mapping[str, Any], key: str) -> set[str]:
@@ -399,6 +688,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         env["HWISTOCK_KIS_PAPER_NETWORK_ENABLED"] = "true"
     if args.allow_paper_orders:
         env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    env["HWISTOCK_DATA_DIR"] = str(args.output_root)
     intent = _load_intent_file(args.intent_file)
     payload = runContinuousPaperTick(intent=intent, env=env)
     if args.write_evidence:

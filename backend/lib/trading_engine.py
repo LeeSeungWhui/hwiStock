@@ -708,6 +708,31 @@ def generatePaperOrderIntentsFromFlashDocument(
             continue
 
         planned_cash = int(action.get("planned_order_cash_krw") or action.get("max_cash_krw") or 100_000)
+        entry_zone = _normalize_entry_zone(action.get("entry_zone"))
+        order_price = _resolve_order_price(action_type, action, entry_zone)
+        if order_price <= 0:
+            rejected.append(
+                {
+                    "index": index,
+                    "ticker": symbol,
+                    "action": action_type,
+                    "reasons": ["order_price_required_for_paper_intent"],
+                    "paper_order_intent_created": False,
+                }
+            )
+            continue
+        quantity = planned_cash // order_price
+        if quantity <= 0:
+            rejected.append(
+                {
+                    "index": index,
+                    "ticker": symbol,
+                    "action": action_type,
+                    "reasons": ["planned_cash_below_one_share"],
+                    "paper_order_intent_created": False,
+                }
+            )
+            continue
         side = "buy" if action_type in {"WAIT_BUY", "BUY_NOW"} else "sell"
         intent = {
             "schema_version": PAPER_ORDER_INTENT_SCHEMA_VERSION,
@@ -732,15 +757,20 @@ def generatePaperOrderIntentsFromFlashDocument(
             "broker_adapter": "kis_paper",
             "base_url_alias": "kis_paper_vts",
             "order_type": "limit",
-            "entry_zone": list(action.get("entry_zone") or []),
+            "order_division": "00",
+            "order_price": order_price,
+            "price": order_price,
+            "quantity": int(quantity),
+            "entry_zone": entry_zone,
             "take_profit": action.get("take_profit"),
             "stop_loss": action.get("stop_loss"),
             "trailing_stop_pct": action.get("trailing_stop_pct"),
             "planned_order_cash_krw": planned_cash,
+            "estimated_order_cash_krw": int(quantity) * int(order_price),
             "available_cash_krw": int(action.get("available_cash_krw") or portfolio.get("available_cash_krw") or 2_000_000),
             "current_holdings_count": int(action.get("current_holdings_count") or len(held)),
             "reservation": {
-                "cash_reserved_krw": planned_cash,
+                "cash_reserved_krw": int(quantity) * int(order_price),
                 "holding_slot_reserved": side == "buy",
                 "minimum_cash_reserve_ratio": 0.25,
             },
@@ -954,6 +984,47 @@ def _symbol_set_from_snapshot(snapshot: Mapping[str, Any], key: str) -> set[str]
         if symbol:
             symbols.add(symbol)
     return symbols
+
+
+def _normalize_entry_zone(value: Any) -> List[int]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        return []
+    prices: List[int] = []
+    for item in value:
+        price = _parse_positive_int(item)
+        if price > 0:
+            prices.append(price)
+    return prices[:2]
+
+
+def _resolve_order_price(action_type: str, action: Mapping[str, Any], entry_zone: Sequence[int]) -> int:
+    explicit = _parse_positive_int(
+        action.get("order_price")
+        or action.get("price")
+        or action.get("entry_price_krw")
+        or action.get("current_price")
+    )
+    if explicit > 0:
+        return explicit
+    if not entry_zone:
+        return 0
+    ordered = sorted(int(item) for item in entry_zone if int(item) > 0)
+    if not ordered:
+        return 0
+    if action_type == "BUY_NOW":
+        return ordered[-1]
+    return ordered[0]
+
+
+def _parse_positive_int(value: Any) -> int:
+    raw = str(value or "").strip().replace(",", "")
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if not digits:
+        return 0
+    try:
+        return int(digits)
+    except ValueError:
+        return 0
 
 
 def _compact_timestamp(value: str) -> str:
