@@ -331,7 +331,9 @@ class KisPaperAdapter:
             f"/uapi/domestic-stock/v1/trading/inquire-balance?{urllib.parse.urlencode(self._accountQuery())}",
             headers=self._authHeaders(token, "VTTC8434R"),
         )
-        return sanitizeKisResponse(response, step="balance_inquire", row_count_key="output1")
+        result = sanitizeKisResponse(response, step="balance_inquire", row_count_key="output1")
+        result["dashboard_account_summary"] = summarizeKisBalancePayload(response)
+        return result
 
     def inquireBuyable(self, token: str, symbol: str, *, order_price: str = "") -> Dict[str, Any]:
         params = {
@@ -348,7 +350,9 @@ class KisPaperAdapter:
             f"/uapi/domestic-stock/v1/trading/inquire-psbl-order?{urllib.parse.urlencode(params)}",
             headers=self._authHeaders(token, "VTTC8908R"),
         )
-        return sanitizeKisResponse(response, step="buyable_inquire_psbl_order")
+        result = sanitizeKisResponse(response, step="buyable_inquire_psbl_order")
+        result["dashboard_buyable_summary"] = summarizeKisBuyablePayload(response)
+        return result
 
     def dailyOrderFillLookup(self, token: str, *, date_yyyymmdd: str, symbol: str = "") -> Dict[str, Any]:
         params = {

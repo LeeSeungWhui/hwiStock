@@ -104,9 +104,140 @@ def formatAccountLabel(accountNo: str, productCode: str) -> str:
     return account or "계좌 설정 없음"
 
 
-def buildDashboardAccountSummary(snapshotAt: datetime) -> Dict[str, Any]:
+def _numericOrNone(value: Any) -> Optional[int]:
+    raw = str(value or "").strip().replace(",", "")
+    if not raw:
+        return None
+    try:
+        return int(float(raw))
+    except ValueError:
+        return None
+
+
+def _writeDashboardAccountSummaryCache(dataRoot: Path, payload: Dict[str, Any]) -> None:
+    cachePath = dataRoot / "account" / "dashboard-account-summary-latest.json"
+    cachePath.parent.mkdir(parents=True, exist_ok=True)
+    safePayload = {
+        **payload,
+        "rawProviderPayloadDisplayed": False,
+        "credentialValuesPrinted": False,
+    }
+    cachePath.write_text(json.dumps(safePayload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _summaryFromPayload(
+    payload: Dict[str, Any],
+    *,
+    accountNo: str,
+    productCode: str,
+    reserveFloor: int,
+    source: str,
+) -> Optional[Dict[str, Any]]:
+    cash = _numericOrNone(payload.get("cash_balance_krw"))
+    if cash is None:
+        cash = _numericOrNone(payload.get("buyable_cash_krw"))
+    if cash is None:
+        cash = _numericOrNone(payload.get("cashBalance"))
+    pnl = _numericOrNone(payload.get("today_pnl_krw"))
+    if pnl is None:
+        pnl = _numericOrNone(payload.get("todayPnl"))
+    positions = _numericOrNone(payload.get("positions_count")) or 0
+    if positions == 0:
+        positions = _numericOrNone(payload.get("openPositions")) or 0
+    if cash is None and pnl is None:
+        return None
+    return {
+        "schema_version": "dashboard_account_summary/v0",
+        "accountId": formatAccountLabel(accountNo, productCode),
+        "cashBalance": cash if cash is not None else "잔고 조회 실패",
+        "reserveBalance": reserveFloor,
+        "todayPnl": pnl if pnl is not None else "손익 조회 실패",
+        "openPositions": positions,
+        "status": payload.get("status") or "cached",
+        "balanceStatus": payload.get("balance_status"),
+        "buyableStatus": payload.get("buyable_status"),
+        "source": source,
+        "accountDisplayed": bool(accountNo),
+        "rawProviderPayloadDisplayed": False,
+        "credentialValuesPrinted": False,
+    }
+
+
+def _readDashboardAccountSummaryFromRunnerEvidence(
+    *,
+    dataRoot: Path,
+    dayKey: str,
+    accountNo: str,
+    productCode: str,
+    reserveFloor: int,
+) -> Optional[Dict[str, Any]]:
+    evidencePath = dataRoot / "evidence" / dayKey / "kis-paper-continuous-latest.json"
+    try:
+        evidence = json.loads(evidencePath.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    balanceSummary: Dict[str, Any] = {}
+    buyableSummary: Dict[str, Any] = {}
+    balanceStatus = None
+    buyableStatus = None
+    for step in evidence.get("steps") or []:
+        if not isinstance(step, dict):
+            continue
+        if step.get("step") == "balance_inquire":
+            balanceStatus = step.get("status")
+            if isinstance(step.get("dashboard_account_summary"), dict):
+                balanceSummary = dict(step["dashboard_account_summary"])
+        if step.get("step") == "buyable_inquire_psbl_order":
+            buyableStatus = step.get("status")
+            if isinstance(step.get("dashboard_buyable_summary"), dict):
+                buyableSummary = dict(step["dashboard_buyable_summary"])
+    merged = {
+        **balanceSummary,
+        **buyableSummary,
+        "status": "cached_pass" if balanceStatus == "pass" or buyableStatus == "pass" else "cached_warn",
+        "balance_status": balanceStatus,
+        "buyable_status": buyableStatus,
+    }
+    return _summaryFromPayload(
+        merged,
+        accountNo=accountNo,
+        productCode=productCode,
+        reserveFloor=reserveFloor,
+        source="kis-paper-runner-evidence",
+    )
+
+
+def _readDashboardAccountSummaryCache(
+    *,
+    dataRoot: Path,
+    accountNo: str,
+    productCode: str,
+    reserveFloor: int,
+) -> Optional[Dict[str, Any]]:
+    cachePath = dataRoot / "account" / "dashboard-account-summary-latest.json"
+    try:
+        cached = json.loads(cachePath.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return _summaryFromPayload(
+        cached,
+        accountNo=accountNo,
+        productCode=productCode,
+        reserveFloor=reserveFloor,
+        source="dashboard-account-cache",
+    )
+
+
+def buildDashboardAccountSummary(
+    snapshotAt: datetime,
+    *,
+    dataRoot: Optional[Path] = None,
+    dayKey: Optional[str] = None,
+) -> Dict[str, Any]:
     accountNo = str(os.getenv("KIS_PAPER_ACCOUNT_NO") or "").strip()
     productCode = str(os.getenv("KIS_PAPER_ACCOUNT_PRODUCT_CODE") or "").strip()
+    runtimeRoot = dataRoot or DEFAULT_DATA_ROOT
+    evidenceDayKey = dayKey or snapshotAt.astimezone(KST).date().isoformat()
     reserveFloor = int(baseRunner.LIVE_CAPITAL_BASELINE_KRW * 0.25)
     fallback = {
         "schema_version": "dashboard_account_summary/v0",
@@ -120,6 +251,23 @@ def buildDashboardAccountSummary(snapshotAt: datetime) -> Dict[str, Any]:
         "rawProviderPayloadDisplayed": False,
         "credentialValuesPrinted": False,
     }
+    evidenceSummary = _readDashboardAccountSummaryFromRunnerEvidence(
+        dataRoot=runtimeRoot,
+        dayKey=evidenceDayKey,
+        accountNo=accountNo,
+        productCode=productCode,
+        reserveFloor=reserveFloor,
+    )
+    if evidenceSummary:
+        return evidenceSummary
+    cachedSummary = _readDashboardAccountSummaryCache(
+        dataRoot=runtimeRoot,
+        accountNo=accountNo,
+        productCode=productCode,
+        reserveFloor=reserveFloor,
+    )
+    if cachedSummary:
+        return cachedSummary
     if not boolEnv("HWISTOCK_DASHBOARD_ACCOUNT_READ_ENABLED", True):
         return {
             **fallback,
@@ -162,7 +310,18 @@ def buildDashboardAccountSummary(snapshotAt: datetime) -> Dict[str, Any]:
             "errorType": type(exc).__name__,
         }
 
-    return {
+    summary = _summaryFromPayload(
+        {
+            **accountSummary,
+            "status": accountSummary.get("status") or "unknown",
+            "balance_status": accountSummary.get("balance_status"),
+            "buyable_status": accountSummary.get("buyable_status"),
+        },
+        accountNo=accountNo,
+        productCode=productCode,
+        reserveFloor=reserveFloor,
+        source="kis-live-read",
+    ) or {
         **fallback,
         "accountId": accountSummary.get("account_label") or fallback["accountId"],
         "cashBalance": accountSummary.get("cash_balance_krw")
@@ -178,6 +337,8 @@ def buildDashboardAccountSummary(snapshotAt: datetime) -> Dict[str, Any]:
         "buyableStatus": accountSummary.get("buyable_status"),
         "accountDisplayed": bool(accountSummary.get("account_label")),
     }
+    _writeDashboardAccountSummaryCache(runtimeRoot, summary)
+    return summary
 
 
 def formatKstMinute(value: Optional[str], fallback: Optional[datetime] = None) -> str:
@@ -541,7 +702,7 @@ def buildOperatorConsoleSnapshot(
     latestArtifactPaths = latestRuntimePaths(runtimeRoot, dayKey)
     runtimeArtifacts = loadRuntimeArtifacts(latestArtifactPaths)
     servicePolicy = inspectKisPaperRunnerServicePolicy(serviceUnitPaths)
-    accountSummary = buildDashboardAccountSummary(snapshotAt)
+    accountSummary = buildDashboardAccountSummary(snapshotAt, dataRoot=runtimeRoot, dayKey=dayKey)
     readiness = runnerStatus["readiness"]
     paperNetworkEnabled = bool(servicePolicy["paperNetworkEnabledByService"])
     paperOrderEnabled = bool(servicePolicy["paperOrderEnabledByService"])
