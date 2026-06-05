@@ -5,7 +5,6 @@
  * 설명: hwiStock 읽기 전용 운영 콘솔 뷰
  */
 
-import { useMemo } from "react";
 import { usePageData } from "@/app/lib/hooks/usePageData";
 import Badge from "@/app/lib/component/Badge";
 import Card from "@/app/lib/component/Card";
@@ -62,7 +61,7 @@ const OperatorConsoleView = ({
 
   /* 2. 데이터 ======================================================================================================================= */
   const endpoints = PAGE_CONFIG.API || {};
-  const hasEndpoint = Boolean(endpoints.stats && endpoints.list);
+  const hasEndpoint = Boolean(endpoints.operator || (endpoints.stats && endpoints.list));
 
   const { dataObj, errorObj, isLoading } = usePageData({
     pageConfig: PAGE_CONFIG,
@@ -78,10 +77,10 @@ const OperatorConsoleView = ({
 
   const pageModeText = String(PAGE_CONFIG.MODE || "").toUpperCase();
   const hasLoadedSnapshot =
-    Object.prototype.hasOwnProperty.call(dataObj || {}, "stats")
+    Object.prototype.hasOwnProperty.call(dataObj || {}, "operator")
+    || Object.prototype.hasOwnProperty.call(dataObj || {}, "stats")
     || Object.prototype.hasOwnProperty.call(dataObj || {}, "list")
-    || Object.prototype.hasOwnProperty.call(dataObj || {}, "operator")
-    || Boolean(errorObj?.stats || errorObj?.list);
+    || Boolean(errorObj?.operator || errorObj?.stats || errorObj?.list);
   const shouldForceCsrLoading =
     pageModeText === "CSR"
     && !isLoading
@@ -89,10 +88,10 @@ const OperatorConsoleView = ({
     && !hasLoadedSnapshot;
 
   const loading = isLoading || shouldForceCsrLoading;
-  const { snapshot, dataSource, usesFallback } = useMemo(
-    () => normalizeOperatorSnapshot({ dataObj, hasEndpoint }),
-    [dataObj, hasEndpoint],
-  );
+  const { snapshot, dataSource, usesFallback } = normalizeOperatorSnapshot({
+    dataObj,
+    hasEndpoint,
+  });
 
   /* 3. UI ========================================================================================================================= */
   let errorText = null;

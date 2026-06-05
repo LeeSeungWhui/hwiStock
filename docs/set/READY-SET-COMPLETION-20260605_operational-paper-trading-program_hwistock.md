@@ -1,7 +1,7 @@
 ---
 schema_version: hwi.ready-set-completion/v0
 stage: ready-set
-status: operational_paper_trading_program_contract_hardened_set_complete
+status: operational_paper_trading_program_local_go_check_passed_with_side_effect_rows_blocked
 project_root: /data/workspace/My/hwiStock
 docs_base: docs
 profile_id: PROFILE-HWISTOCK
@@ -22,6 +22,7 @@ owner_rebaseline_evidence_ref: docs/evidence/RUN-20260605_owner-runtime-architec
 gpt_pro_review_ref: docs/evidence/RUN-20260605_gpt-pro-operational-ready-set-review.md
 contract_hardening_unit_ref: docs/units/HWISTOCK-UNIT-016_runtime-contract-hardening.md
 contract_hardening_evidence_ref: docs/evidence/RUN-20260605_unit-016-runtime-contract-hardening-set.md
+operational_go_check_evidence_ref: docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
 ---
 
 # Ready-Set Completion Gate — Operational Paper Trading Program
@@ -38,9 +39,10 @@ This is the Ready-Set that matches the owner requirement: make the stock trading
 program actually runnable in paper/mock mode. It supersedes the narrower
 continuous-runner Ready-Set for operational completion claims.
 
-This report does not claim the program is already running, paper-run-ready, or
-live-ready. It only means the contract-hardened Go-Check rows may now start
-one row at a time.
+This report does not claim the program is already paper-run-ready or live-ready.
+UNIT-012 through UNIT-015 now have local no-network Go-Check evidence, but
+provider, KIS paper-read/order, browser/tunnel, and operator observation-window
+side-effect rows remain blocked until explicitly scoped.
 
 ## 2. Core Correction
 
@@ -106,10 +108,10 @@ only under the contract refs and preflight gates recorded here.
 | --- | --- | --- | --- |
 | 1 | HWISTOCK-UNIT-011 | go_started_check_pending | Install/sync user systemd runtime supervisor, start non-order local-only services/timers, and prove restart/status evidence. Evidence: `docs/evidence/RUN-20260605_unit-011-runtime-start-go.md`. |
 | 2 | HWISTOCK-UNIT-016 | set_complete | Runtime data/execution contracts, schema catalog, valid/invalid fixtures, and local validator are defined and validated. Evidence: `docs/evidence/RUN-20260605_unit-016-runtime-contract-hardening-set.md`. |
-| 3 | HWISTOCK-UNIT-012 | ready_for_go_check | Make DeepSeek Pro hourly aggregate/market-regime analysis and DeepSeek Flash 10-minute action-document generation real, current, validated, portfolio-aware, constrained to deterministic `compiled_watch/v0` candidates, and unable to place orders. |
-| 4 | HWISTOCK-UNIT-013 | ready_for_go_check | Build UNIT-013-scoped NAVER/OpenDART source grounding plus exactly six KIS paper-read signal inputs: KRX realtime trade price, KRX realtime orderbook, volume rank, execution-strength/volume-power rank, fluctuation rank, and program-trading aggregate status where paper-supported. Produce disabled/fallback evidence for unsupported NXT/SOR branches, and source-grounded trade-document action to `paper_order_intent/v0` pipeline with final source/KIS-market/portfolio/order refs plus deterministic schema/freshness/session/risk/reservation/conflict gates. UNIT-013 must not call KIS order/cancel/modify endpoints. |
-| 5 | HWISTOCK-UNIT-014 | ready_for_go_check | Consume approved intents, cancel superseded WAIT_BUY orders, execute only KIS KRX paper orders, monitor stop/take-profit/trailing exits in realtime, reconcile state, survive ambiguous submit/restart paths, and prove idempotency/no-fake-broker behavior. |
-| 6 | HWISTOCK-UNIT-015 | ready_for_go_check | Expose read-only operator dashboard/API and observation-window reports for Prove after the order-producing contracts are closed. |
+| 3 | HWISTOCK-UNIT-012 | go_check_passed_local_no_network_provider_smoke_blocked | DeepSeek Pro/Flash artifact generation, schema validation, `NO_TRADE` safe-blocks, five-symbol action cap, deterministic universe rejection, and no-order boundary passed locally. Provider smoke remains blocked. |
+| 4 | HWISTOCK-UNIT-013 | go_check_passed_local_no_network_kis_paper_read_blocked | NAVER/OpenDART source grounding, exactly six KIS paper-read signal inputs, endpoint safe-blocks, and Flash trade-document to `paper_order_intent/v0` bridge passed locally. KIS paper-read transport smoke remains blocked. |
+| 5 | HWISTOCK-UNIT-014 | go_check_passed_local_no_network_order_smoke_blocked | Intent preflight, idempotency, duplicate-consumption block, realtime stop/take-profit/trailing exit decision, and no-fake-broker behavior passed locally. KIS paper order/reconciliation smoke remains blocked. |
+| 6 | HWISTOCK-UNIT-015 | go_check_passed_local_api_frontend_browser_prove_blocked | Read-only operator API, dashboard data normalization, masked values, and operator-window report generation passed local API/frontend tests. Browser/tunnel Prove remains blocked. |
 
 ## 5. External Reference Check
 

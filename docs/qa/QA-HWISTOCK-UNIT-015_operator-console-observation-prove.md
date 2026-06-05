@@ -12,9 +12,11 @@ module_refs:
   - HWISTOCK-MOD-008
 profile_refs:
   - PROFILE-HWISTOCK
-status: set
+status: go_check_local_passed_browser_prove_blocked
 owner: hwi
 updated_at: 2026-06-05
+evidence_refs:
+  - docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
 ---
 
 # Operator Console And Observation Prove QA

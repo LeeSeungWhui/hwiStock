@@ -18,24 +18,18 @@ export const OPERATOR_FALLBACK_FIXTURE = {
     dataSourceHealth: "fixture",
   },
   summary: {
-    cashBalance: "12845000",
-    reserveBalance: "2500000",
-    todayPnl: "-84200",
-    openPositions: 4,
-    riskRejects: 1,
-    aiJobStatus: "idle",
-    reportStatus: "07:00 대기 · 20:00 예정",
-    accountId: "50123456789012",
+    cashBalance: "masked",
+    reserveBalance: "masked",
+    todayPnl: "system_report_only",
+    openPositions: 0,
+    riskRejects: 0,
+    aiJobStatus: "missing_or_safe_blocked",
+    reportStatus: "operator_window_required",
+    accountId: "paper_account_alias:masked",
+    operationalTradingReadiness: false,
   },
-  holdings: [
-    { symbol: "005930", name: "삼성전자", qty: 120, pnl: "-12400", weight: "18.2%" },
-    { symbol: "000660", name: "SK하이닉스", qty: 45, pnl: "38200", weight: "14.1%" },
-    { symbol: "035420", name: "NAVER", qty: 30, pnl: "-5100", weight: "9.4%" },
-  ],
-  candidates: [
-    { symbol: "068270", name: "셀트리온", signal: "watch", risk: "low" },
-    { symbol: "051910", name: "LG화학", signal: "review", risk: "medium" },
-  ],
+  holdings: [],
+  candidates: [],
   intelligence: [
     { at: "09:05", source: "disclosure", title: "실적 공시 요약 반영" },
     { at: "08:42", source: "news", title: "반도체 수급 이슈 모니터링" },
@@ -45,13 +39,13 @@ export const OPERATOR_FALLBACK_FIXTURE = {
       at: "07:02",
       role: "report",
       subject: "장전 브리핑",
-      body: "보유 종목 변동성은 중간 수준입니다. 신규 진입은 리스크 한도 내에서만 검토하세요.",
+      body: "분석/매매문서 artifact는 주문 실행 UI가 아니며, 실행 전 deterministic risk gate를 통과해야 합니다.",
     },
     {
       at: "08:55",
       role: "assistant",
       subject: "상태 질의",
-      body: "오늘 PnL과 리스크 거절 1건을 요약했습니다. 주문 실행 UI는 제공하지 않습니다.",
+      body: "운영 콘솔은 읽기 전용입니다. 매수/매도/라이브 전환 버튼은 제공하지 않습니다.",
     },
   ],
   auditLog: [
@@ -63,6 +57,13 @@ export const OPERATOR_FALLBACK_FIXTURE = {
 const hasOperatorApiShape = (dataObj) => {
   const operator = dataObj?.operator?.result;
   return Boolean(operator && typeof operator === "object");
+};
+
+const toPlainRecord = (value) => {
+  if (value && typeof value.toJSON === "function") {
+    return value.toJSON();
+  }
+  return value || {};
 };
 
 const mapLegacyStatsToSummary = (statList = []) => {
@@ -124,11 +125,16 @@ export const resolveErrorState = ({
     return { key: DASHBOARD_ERROR_KEYS.INIT_FETCH_FAILED };
   };
 
+  const currentErrorObj = toPlainRecord(errorObj);
+  const initialErrorRecord = toPlainRecord(initialErrorObj);
+
   return (
-    pickError(errorObj.stats)
-    || pickError(errorObj.list)
-    || pickError(initialErrorObj.stats)
-    || pickError(initialErrorObj.list)
+    pickError(currentErrorObj.operator)
+    || pickError(currentErrorObj.stats)
+    || pickError(currentErrorObj.list)
+    || pickError(initialErrorRecord.operator)
+    || pickError(initialErrorRecord.stats)
+    || pickError(initialErrorRecord.list)
     || null
   );
 };
@@ -148,8 +154,10 @@ export const normalizeOperatorSnapshot = ({
     };
   }
 
-  if (hasOperatorApiShape(dataObj)) {
-    const operatorResult = dataObj.operator.result;
+  const sourceDataObj = toPlainRecord(dataObj);
+
+  if (hasOperatorApiShape(sourceDataObj)) {
+    const operatorResult = sourceDataObj.operator.result;
     return {
       snapshot: {
         status: { ...OPERATOR_FALLBACK_FIXTURE.status, ...operatorResult.status },
@@ -165,8 +173,8 @@ export const normalizeOperatorSnapshot = ({
     };
   }
 
-  const statList = dataObj?.stats?.result?.statusSummaryList || [];
-  const dataList = dataObj?.list?.result?.dataTemplateList || [];
+  const statList = sourceDataObj?.stats?.result?.statusSummaryList || [];
+  const dataList = sourceDataObj?.list?.result?.dataTemplateList || [];
   const hasLegacyPayload = statList.length > 0 || dataList.length > 0;
 
   if (!hasLegacyPayload) {
@@ -183,7 +191,7 @@ export const normalizeOperatorSnapshot = ({
       summary: mapLegacyStatsToSummary(statList),
       holdings: mapLegacyListToHoldings(dataList),
     },
-    dataSource: "legacy-normalized",
+    dataSource: "legacyNormalized",
     usesFallback: false,
   };
 };

@@ -16,11 +16,11 @@ describe("dashboard data strategy", () => {
     expect(isSsrMode("")).toBe(false);
   });
 
-  it("대시보드 PAGE_CONFIG는 stats/list API 엔트리를 가진다", () => {
+  it("대시보드 PAGE_CONFIG는 operator API 엔트리를 가진다", () => {
     const apiEntryList = listPageApiEntries(DASHBOARD_PAGE_CONFIG);
     const keyList = apiEntryList.map(([apiKey]) => apiKey);
 
-    expect(keyList).toEqual(["stats", "list"]);
+    expect(keyList).toEqual(["operator"]);
   });
 
   it("CSR 모드면 서버 초기 조회를 건너뛴다", async () => {
@@ -29,8 +29,7 @@ describe("dashboard data strategy", () => {
       pageConfig: {
         MODE: "CSR",
         API: {
-          stats: "/api/v1/dashboard/stats",
-          list: "/api/v1/dashboard",
+          operator: "/api/v1/hwistock/runner/operator-snapshot",
         },
       },
       fetcher,
@@ -45,15 +44,14 @@ describe("dashboard data strategy", () => {
     });
   });
 
-  it("SSR 모드면 stats/list를 함께 조회해 초기 데이터를 만든다", async () => {
+  it("SSR 모드면 operator snapshot을 조회해 초기 데이터를 만든다", async () => {
     const fetcher = vi
       .fn()
       .mockResolvedValueOnce({
-        result: { statusSummaryList: [{ status: "ready", count: 2, amountSum: 12000 }] },
-      })
-      .mockResolvedValueOnce({
         result: {
-          dataTemplateList: [{ id: 11, title: "테스트 업무", status: "ready", amount: 12000 }],
+          schema_version: "operator_console_snapshot/v0",
+          status: { mode: "paper_sandbox" },
+          summary: { operationalTradingReadiness: false },
         },
       });
 
@@ -62,19 +60,15 @@ describe("dashboard data strategy", () => {
       fetcher,
     });
 
-    expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher).toHaveBeenNthCalledWith(1, "/api/v1/dashboard/stats", {
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenNthCalledWith(1, "/api/v1/hwistock/runner/operator-snapshot", {
       method: "GET",
     });
-    expect(fetcher).toHaveBeenNthCalledWith(2, "/api/v1/dashboard", {
-      method: "GET",
-    });
-    expect(result.dataObj.stats).toEqual({
-      result: { statusSummaryList: [{ status: "ready", count: 2, amountSum: 12000 }] },
-    });
-    expect(result.dataObj.list).toEqual({
+    expect(result.dataObj.operator).toEqual({
       result: {
-        dataTemplateList: [{ id: 11, title: "테스트 업무", status: "ready", amount: 12000 }],
+        schema_version: "operator_console_snapshot/v0",
+        status: { mode: "paper_sandbox" },
+        summary: { operationalTradingReadiness: false },
       },
     });
     expect(result.errorObj).toEqual({});
@@ -86,26 +80,14 @@ describe("dashboard data strategy", () => {
     fetchError.code = "DASHBOARD_500";
     fetchError.requestId = "rid-dashboard-1";
     fetchError.statusCode = 500;
-    const fetcher = vi
-      .fn()
-      .mockRejectedValueOnce(fetchError)
-      .mockResolvedValueOnce({
-        result: {
-          dataTemplateList: [{ id: 1, title: "백업", status: "running", amount: 1000 }],
-        },
-      });
+    const fetcher = vi.fn().mockRejectedValueOnce(fetchError);
 
     const result = await loadPageDataObj({
       pageConfig: DASHBOARD_PAGE_CONFIG,
       fetcher,
     });
 
-    expect(result.dataObj.list).toEqual({
-      result: {
-        dataTemplateList: [{ id: 1, title: "백업", status: "running", amount: 1000 }],
-      },
-    });
-    expect(result.errorObj.stats).toMatchObject({
+    expect(result.errorObj.operator).toMatchObject({
       message: "fetch failed",
       code: "DASHBOARD_500",
       requestId: "rid-dashboard-1",

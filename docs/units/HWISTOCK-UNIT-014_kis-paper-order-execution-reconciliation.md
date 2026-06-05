@@ -4,8 +4,8 @@ id: HWISTOCK-UNIT-014
 type: unit
 domain: backend_ops
 name: KIS paper order execution and reconciliation
-status: set
-implementation_status: ready_for_go_check
+status: go_check_local_passed
+implementation_status: go_check_passed_local_no_network_order_smoke_blocked
 priority: P0
 source_of_truth: user_intent
 owner: hwi
@@ -21,6 +21,7 @@ module_ids:
 code_paths:
   include:
     - backend/service/kis_paper_adapter.py
+    - backend/lib/kis_paper_continuous_runtime.py
     - backend/service/kis_paper_continuous_runner.py
     - backend/lib/paper_trading_ledger.py
     - backend/lib/trading_engine.py
@@ -37,6 +38,7 @@ qa_scenario_refs:
 evidence_refs:
   - docs/evidence/RUN-20260605_ready-set-operational-paper-trading-program.md
   - docs/evidence/RUN-20260605_gpt-pro-operational-ready-set-review.md
+  - docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
 ---
 
 # KIS Paper Order Execution And Reconciliation
@@ -48,8 +50,10 @@ that watches approved trade-document-derived `paper_order_intent/v0` records,
 places only KRX paper orders, and reconciles broker-visible paper state.
 
 This unit is the first place where approved KIS paper orders may be placed
-during Go/Prove, after `HWISTOCK-UNIT-016` closed the runtime data/execution
-contracts. It still forbids live trading.
+during an explicitly scoped Go/Prove side-effect run. Local no-network
+preflight/idempotency/realtime-exit Go-Check passed on 2026-06-05, but KIS paper
+order transport and reconciliation smoke remains blocked until approved market
+and account conditions are present. Live trading remains forbidden.
 
 ## 2. Included Scope
 

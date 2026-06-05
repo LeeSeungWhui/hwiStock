@@ -1,0 +1,14 @@
+# hwiStock KIS market-data collector timer.
+
+[Unit]
+Description=hwiStock KIS six-input market-data collector every minute
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=1min
+AccuracySec=15s
+Persistent=true
+Unit=hwistock-kis-market-data.service
+
+[Install]
+WantedBy=timers.target

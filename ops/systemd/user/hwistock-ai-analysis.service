@@ -14,5 +14,5 @@ Environment=HWISTOCK_DEEPSEEK_MODEL=deepseek-v4-pro
 Environment=HWISTOCK_AI_EVENT_LIMIT=12
 Environment=HWISTOCK_AI_MAX_OUTPUT_TOKENS=2000
 Environment=HWISTOCK_AI_REASONING_EFFORT=low
-ExecStart=/usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/ai_analysis_runner.py --once --model "${HWISTOCK_DEEPSEEK_MODEL:-deepseek-v4-pro}"'
+ExecStart=/usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/ai_analysis_runner.py --once --job pro-hourly --model "${HWISTOCK_DEEPSEEK_MODEL:-deepseek-v4-pro}"'
 NoNewPrivileges=true

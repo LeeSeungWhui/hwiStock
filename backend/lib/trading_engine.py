@@ -29,6 +29,7 @@ KST = timezone(timedelta(hours=9))
 
 CONDITION_CARD_SCHEMA_VERSION = "condition_card/v0"
 COMPILED_WATCH_SCHEMA_VERSION = "compiled_watch/v0"
+PAPER_ORDER_INTENT_SCHEMA_VERSION = "paper_order_intent/v0"
 NO_ORDER_DRY_RUN = "no_order_dry_run"
 
 ALLOWED_VENUE_ROUTES = frozenset({"KRX", "NXT", "SOR", "AUTO_SESSION"})
@@ -604,6 +605,202 @@ def representBrokerEventState(event: Optional[Mapping[str, Any]]) -> Dict[str, A
     return representKisPaperEvidenceEvent(event)
 
 
+def generatePaperOrderIntentsFromFlashDocument(
+    flash_document: Optional[Mapping[str, Any]],
+    *,
+    compiled_watch: Optional[Sequence[Mapping[str, Any]]] = None,
+    portfolio_snapshot: Optional[Mapping[str, Any]] = None,
+    order_state_snapshot: Optional[Mapping[str, Any]] = None,
+    existing_intents: Optional[Sequence[Mapping[str, Any]]] = None,
+    now_kst: Optional[str] = None,
+) -> Dict[str, Any]:
+    document = deepcopy(dict(flash_document or {}))
+    watch_rows = [deepcopy(dict(row)) for row in (compiled_watch or [])]
+    portfolio = deepcopy(dict(portfolio_snapshot or {}))
+    order_state = deepcopy(dict(order_state_snapshot or {}))
+    existing = [deepcopy(dict(row)) for row in (existing_intents or [])]
+    produced_at = now_kst or document.get("produced_at_kst") or _current_kst_timestamp()
+    universe = {
+        str(row.get("symbol") or row.get("ticker") or "").strip()
+        for row in watch_rows
+        if str(row.get("symbol") or row.get("ticker") or "").strip()
+    }
+    active_keys = {
+        str(row.get("idempotency_key") or row.get("intent_id") or "").strip()
+        for row in existing
+        if str(row.get("idempotency_key") or row.get("intent_id") or "").strip()
+    }
+    held = _symbol_set_from_snapshot(portfolio, "holdings")
+    pending = _symbol_set_from_snapshot(order_state, "pending_orders")
+    exiting = _symbol_set_from_snapshot(order_state, "active_exits")
+    cooldowns = _symbol_set_from_snapshot(order_state, "cooldowns")
+
+    accepted: List[Dict[str, Any]] = []
+    rejected: List[Dict[str, Any]] = []
+
+    if document.get("schema_version") != "flash_trade_document/v0":
+        return {
+            "schema_version": "paper_intent_pipeline_result/v0",
+            "ok": False,
+            "accepted_intents": [],
+            "rejected_actions": [{"reason": "flash_trade_document_schema_invalid"}],
+            "order_cancel_modify_called": False,
+        }
+    if document.get("document_kind") == "NO_TRADE":
+        return {
+            "schema_version": "paper_intent_pipeline_result/v0",
+            "ok": True,
+            "accepted_intents": [],
+            "rejected_actions": [{"reason": "flash_no_trade_sentinel", "no_trade_reason": document.get("no_trade_reason")}],
+            "order_cancel_modify_called": False,
+        }
+
+    for index, action in enumerate(document.get("actions") or []):
+        if not isinstance(action, Mapping):
+            rejected.append({"index": index, "reason": "action_not_object"})
+            continue
+        symbol = str(action.get("ticker") or action.get("symbol") or "").strip()
+        action_type = str(action.get("action") or "").strip()
+        reasons: List[str] = []
+        if not symbol:
+            reasons.append("ticker_required")
+        elif universe and symbol not in universe:
+            reasons.append("off_universe_ticker")
+        if action_type not in {"WAIT_BUY", "BUY_NOW", "HOLD", "SELL", "NO_TRADE"}:
+            reasons.append("action_type_invalid")
+        if action_type in {"HOLD", "NO_TRADE"}:
+            reasons.append("non_entry_action_watch_only")
+        if action_type == "SELL":
+            reasons.append("sell_exit_intent_deferred_to_unit_014_realtime_exit")
+        if action_type in {"WAIT_BUY", "BUY_NOW"}:
+            if not action.get("source_refs"):
+                reasons.append("source_refs_required")
+            if not action.get("market_data_refs"):
+                reasons.append("market_data_refs_required")
+            if not action.get("portfolio_state_refs"):
+                reasons.append("portfolio_state_refs_required")
+            conflict = action.get("portfolio_conflict") if isinstance(action.get("portfolio_conflict"), Mapping) else {}
+            if conflict.get("has_conflict") is True:
+                reasons.extend(str(reason) for reason in conflict.get("reasons") or ["portfolio_conflict"])
+            if symbol in held:
+                reasons.append("already_holding_symbol")
+            if symbol in pending:
+                reasons.append("pending_order_exists")
+            if symbol in exiting:
+                reasons.append("active_exit_order_exists")
+            if symbol in cooldowns:
+                reasons.append("cooldown_active")
+
+        idempotency_key = f"{document.get('artifact_id') or 'flash'}:{document.get('bucket_id') or ''}:{symbol}:{action_type}"
+        if idempotency_key in active_keys:
+            reasons.append("duplicate_active_intent")
+
+        if reasons:
+            rejected.append(
+                {
+                    "index": index,
+                    "ticker": symbol,
+                    "action": action_type,
+                    "reasons": sorted(set(reasons)),
+                    "paper_order_intent_created": False,
+                }
+            )
+            continue
+
+        planned_cash = int(action.get("planned_order_cash_krw") or action.get("max_cash_krw") or 100_000)
+        side = "buy" if action_type in {"WAIT_BUY", "BUY_NOW"} else "sell"
+        intent = {
+            "schema_version": PAPER_ORDER_INTENT_SCHEMA_VERSION,
+            "artifact_id": f"art_intent_{_compact_timestamp(produced_at)}_{symbol}_{len(accepted)+1}",
+            "artifact_type": "paper_order_intent",
+            "intent_id": idempotency_key,
+            "idempotency_key": idempotency_key,
+            "producer": "trade_document_intent_pipeline",
+            "created_at_kst": produced_at,
+            "valid_until_kst": action.get("cancel_if_not_filled_until") or document.get("valid_until") or produced_at,
+            "flash_trade_document_ref": document.get("artifact_id"),
+            "source_refs": list(action.get("source_refs") or document.get("source_refs") or []),
+            "market_data_refs": list(action.get("market_data_refs") or document.get("market_data_refs") or []),
+            "portfolio_snapshot_ref": (document.get("portfolio_snapshot_ref") or "art_portfolio_fixture"),
+            "order_state_snapshot_ref": (document.get("order_state_snapshot_ref") or "art_order_state_fixture"),
+            "authoritative_refs_verified_at_kst": produced_at,
+            "symbol": symbol,
+            "ticker": symbol,
+            "side": side,
+            "action": action_type,
+            "venue_route": "KRX",
+            "broker_adapter": "kis_paper",
+            "base_url_alias": "kis_paper_vts",
+            "order_type": "limit",
+            "entry_zone": list(action.get("entry_zone") or []),
+            "take_profit": action.get("take_profit"),
+            "stop_loss": action.get("stop_loss"),
+            "trailing_stop_pct": action.get("trailing_stop_pct"),
+            "planned_order_cash_krw": planned_cash,
+            "available_cash_krw": int(action.get("available_cash_krw") or portfolio.get("available_cash_krw") or 2_000_000),
+            "current_holdings_count": int(action.get("current_holdings_count") or len(held)),
+            "reservation": {
+                "cash_reserved_krw": planned_cash,
+                "holding_slot_reserved": side == "buy",
+                "minimum_cash_reserve_ratio": 0.25,
+            },
+            "risk_gate_status": "passed",
+            "paper_only": True,
+            "no_live_order": True,
+            "broker_endpoint_called": False,
+            "order_cancel_modify_called": False,
+        }
+        accepted.append(intent)
+        active_keys.add(idempotency_key)
+
+    return {
+        "schema_version": "paper_intent_pipeline_result/v0",
+        "ok": bool(accepted) or bool(rejected),
+        "accepted_intents": accepted,
+        "rejected_actions": rejected,
+        "accepted_count": len(accepted),
+        "rejected_count": len(rejected),
+        "order_cancel_modify_called": False,
+    }
+
+
+def planSupersededWaitBuyCancellations(
+    previous_waits: Optional[Sequence[Mapping[str, Any]]],
+    new_trade_document: Optional[Mapping[str, Any]],
+) -> Dict[str, Any]:
+    waits = [deepcopy(dict(row)) for row in (previous_waits or [])]
+    doc = deepcopy(dict(new_trade_document or {}))
+    renewed_symbols = {
+        str(action.get("ticker") or action.get("symbol") or "").strip()
+        for action in (doc.get("actions") or [])
+        if isinstance(action, Mapping) and str(action.get("action") or "").strip() == "WAIT_BUY"
+    }
+    cancellations = []
+    for wait in waits:
+        symbol = str(wait.get("symbol") or wait.get("ticker") or "").strip()
+        state = str(wait.get("state") or wait.get("order_state") or "WAIT_BUY_PENDING").strip()
+        if state not in {"WAIT_BUY_PENDING", "SUBMITTED", "ACCEPTED"}:
+            continue
+        if symbol and symbol in renewed_symbols and wait.get("renewed_by_trade_document") is True:
+            continue
+        cancellations.append(
+            {
+                "symbol": symbol,
+                "previous_intent_id": wait.get("intent_id") or wait.get("idempotency_key"),
+                "cancel_reason": "superseded_by_new_trade_document",
+                "broker_cancel_required": bool(wait.get("broker_order_alias")),
+                "broker_endpoint_called": False,
+            }
+        )
+    return {
+        "schema_version": "superseded_wait_buy_cancellation_plan/v0",
+        "trade_document_ref": doc.get("artifact_id"),
+        "cancellations": cancellations,
+        "cancel_count": len(cancellations),
+        "order_cancel_modify_called": False,
+    }
+
+
 def representKisPaperEvidenceEvent(event: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
     payload = deepcopy(dict(event or {}))
     event_kind = str(payload.get("event_kind") or payload.get("kind") or "").strip().lower()
@@ -738,6 +935,35 @@ def _allowed_mapped_states_for_event_kind(event_kind: str) -> frozenset[str]:
     if event_kind == "cancel":
         return frozenset({"cancel_requested", "cancelled", "rejected", "failed"})
     return REPRESENTABLE_EVENT_ORDER_STATES
+
+
+def _symbol_set_from_snapshot(snapshot: Mapping[str, Any], key: str) -> set[str]:
+    rows = snapshot.get(key)
+    symbols: set[str] = set()
+    if isinstance(rows, Mapping):
+        iterable = rows.values()
+    elif isinstance(rows, Sequence) and not isinstance(rows, (str, bytes)):
+        iterable = rows
+    else:
+        iterable = []
+    for row in iterable:
+        if isinstance(row, Mapping):
+            symbol = str(row.get("symbol") or row.get("ticker") or "").strip()
+        else:
+            symbol = str(row or "").strip()
+        if symbol:
+            symbols.add(symbol)
+    return symbols
+
+
+def _compact_timestamp(value: str) -> str:
+    return (
+        str(value or _current_kst_timestamp())
+        .replace("-", "")
+        .replace(":", "")
+        .replace("+09:00", "")
+        .replace("T", "_")
+    )
 
 
 def _contains_vague_condition_text(condition: Mapping[str, Any]) -> bool:

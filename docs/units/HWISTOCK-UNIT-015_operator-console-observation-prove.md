@@ -4,8 +4,8 @@ id: HWISTOCK-UNIT-015
 type: unit
 domain: frontend_backend_ops
 name: Operator console and observation Prove
-status: set
-implementation_status: not_started
+status: go_check_local_passed
+implementation_status: go_check_passed_local_api_frontend_browser_prove_blocked
 priority: P0
 source_of_truth: user_intent
 owner: hwi
@@ -20,6 +20,7 @@ module_ids:
 code_paths:
   include:
     - backend/router/HwiStockRunnerRouter.py
+    - backend/lib/operator_console_runtime.py
     - backend/service/HwiStockRunnerService.py
     - frontend-web/app/dashboard/**
     - frontend-web/app/portfolio/**
@@ -33,6 +34,7 @@ qa_scenario_refs:
   - docs/qa/QA-HWISTOCK-UNIT-015_operator-console-observation-prove.md
 evidence_refs:
   - docs/evidence/RUN-20260605_ready-set-operational-paper-trading-program.md
+  - docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
 ---
 
 # Operator Console And Observation Prove
@@ -42,8 +44,10 @@ evidence_refs:
 Make the owner able to tell whether the paper program is actually running,
 blocked, trading, reconciling, or safe-stopped.
 
-This unit is read-only from the dashboard perspective. It can display state and
-evidence, but it must not expose direct buy/sell controls.
+This unit is read-only from the dashboard perspective. Local API/frontend
+Go-Check passed on 2026-06-05. Browser/tunnel Prove remains blocked until a
+separate browser-side evidence run is scoped. The dashboard can display state
+and evidence, but it must not expose direct buy/sell controls.
 
 ## 2. Included Scope
 

@@ -4,8 +4,8 @@ id: HWISTOCK-UNIT-013
 type: unit
 domain: backend
 name: Signal to paper intent pipeline
-status: set
-implementation_status: ready_for_go_check
+status: go_check_local_passed
+implementation_status: go_check_passed_local_no_network_kis_paper_read_blocked
 priority: P0
 source_of_truth: user_intent
 owner: hwi
@@ -22,9 +22,11 @@ module_ids:
 code_paths:
   include:
     - backend/lib/market_intelligence.py
+    - backend/lib/market_intelligence_ingestion_runtime.py
     - backend/lib/ai_orchestration.py
     - backend/lib/strategy_risk.py
     - backend/lib/trading_engine.py
+    - backend/lib/kis_market_data_runtime.py
     - backend/service/market_intelligence_ingestion.py
     - backend/service/kis_market_data_collector.py
     - backend/service/ai_analysis_runner.py
@@ -40,6 +42,8 @@ qa_scenario_refs:
 evidence_refs:
   - docs/evidence/RUN-20260605_ready-set-operational-paper-trading-program.md
   - docs/evidence/RUN-20260605_gpt-pro-operational-ready-set-review.md
+  - docs/evidence/RUN-20260605_owner-selected-naver-kis6-scope.md
+  - docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
 ---
 
 # Signal To Paper Intent Pipeline
@@ -49,10 +53,9 @@ evidence_refs:
 Create the missing bridge between real-time source collection, KIS intraday
 market data, DeepSeek Flash trade documents, and the KIS paper runner.
 
-Current Go status: ready for Go-Check after `HWISTOCK-UNIT-016` closed the
-runtime data/execution contracts for schemas, artifact manifests, idempotency
-keys, freshness TTLs, reservation accounting, and portfolio/order-state conflict
-reject codes.
+Current Go status: local no-network Go-Check passed on 2026-06-05 for the
+owner-selected NAVER/OpenDART + KIS six-input scope. KIS paper-read network
+transport smoke remains blocked until explicitly scoped and approved.
 
 The program must be able to generate paper order intents from newly written
 trade documents without relying on a human-written intent file for every test.

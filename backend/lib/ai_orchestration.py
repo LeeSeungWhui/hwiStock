@@ -21,7 +21,12 @@ except ImportError:  # pragma: no cover - package-style imports
 KST = timezone(timedelta(hours=9))
 
 AI_RECOMMENDATION_SCHEMA = "ai_recommendation/v0"
+PRO_HOURLY_SCHEMA = "pro_hourly_market_analysis/v0"
+FLASH_TRADE_DOCUMENT_SCHEMA = "flash_trade_document/v0"
+COMPILED_WATCH_SCHEMA = "compiled_watch/v0"
 NO_ORDER_DRY_RUN = "no_order_dry_run"
+DEEPSEEK_PRO_MODEL = "deepseek-v4-pro"
+DEEPSEEK_FLASH_MODEL = "deepseek-v4-flash"
 
 ALLOWED_ACTIONS = frozenset(
     {"watch", "reject", "consider_entry", "hold_review", "exit_review"}
@@ -33,29 +38,26 @@ ALLOWED_ORDER_SIDES = frozenset({"buy", "sell"})
 ALLOWED_PRICE_TYPES = frozenset({"limit", "market"})
 
 JOB_REGISTRY: Dict[str, Dict[str, Any]] = {
-    "deepseek_pro_news_hourly": {
-        "schedule": "hourly, 24h",
+    "deepseek_pro_hourly": {
+        "schedule": "top-of-hour, 24h",
         "model_role": "deepseek_pro",
+        "model_name": DEEPSEEK_PRO_MODEL,
         "input_schema": "intel_delta_bundle/v0",
-        "output_schema": "hourly_intel_analysis/v0",
+        "output_schema": PRO_HOURLY_SCHEMA,
+        "includes_market_regime": True,
         "soft_latency_seconds": 600,
         "hard_latency_seconds": 1200,
         "tool_use_enabled": False,
     },
-    "deepseek_pro_market_regime": {
-        "schedule": "hourly, 08:00-19:00 KST",
-        "model_role": "deepseek_pro",
-        "input_schema": "market_regime_bundle/v0",
-        "output_schema": "market_regime_report/v0",
-        "soft_latency_seconds": 600,
-        "hard_latency_seconds": 1200,
-        "tool_use_enabled": False,
-    },
-    "deepseek_flash_intraday_label": {
-        "schedule": "event-triggered, 08:00-20:00 KST",
+    "deepseek_flash_trade_document_10m": {
+        "schedule": "every 10 minutes, market hours",
         "model_role": "deepseek_flash",
+        "model_name": DEEPSEEK_FLASH_MODEL,
         "input_schema": "candidate_context_bundle/v0",
-        "output_schema": "intraday_candidate_label/v0",
+        "output_schema": FLASH_TRADE_DOCUMENT_SCHEMA,
+        "max_action_symbols": 5,
+        "requires_compiled_watch": True,
+        "requires_portfolio_or_order_state": True,
         "soft_latency_seconds": 15,
         "hard_latency_seconds": 30,
         "tool_use_enabled": False,
@@ -168,6 +170,8 @@ def loadAiOrchestrationConfig() -> Dict[str, Any]:
         "DEEPSEEK_FLASH_ENABLED": False,
         "CHATGPT_PRO_BROWSER_REVIEW_ENABLED": False,
         "GPT_PRO_MORNING_REVIEW_CUTOFF_KST": "07:20",
+        "DEEPSEEK_PRO_MODEL": DEEPSEEK_PRO_MODEL,
+        "DEEPSEEK_FLASH_MODEL": DEEPSEEK_FLASH_MODEL,
         "AI_TOOL_USE_ENABLED": False,
         "execution_mode": NO_ORDER_DRY_RUN,
         "broker_adapter": NO_ORDER_DRY_RUN,
@@ -204,6 +208,18 @@ def validateAiOrchestrationConfig(
         errors.append("chatgpt_pro_browser_review_must_be_disabled_by_default")
     if payload.get("GPT_PRO_MORNING_REVIEW_CUTOFF_KST") != "07:20":
         errors.append("gpt_pro_morning_review_cutoff_must_be_0720")
+    if payload.get("DEEPSEEK_PRO_MODEL") != DEEPSEEK_PRO_MODEL:
+        errors.append("deepseek_pro_model_must_be_deepseek_v4_pro")
+    if payload.get("DEEPSEEK_FLASH_MODEL") != DEEPSEEK_FLASH_MODEL:
+        errors.append("deepseek_flash_model_must_be_deepseek_v4_flash")
+    serialized_models = _serialize_for_policy_scan(
+        {
+            "DEEPSEEK_PRO_MODEL": payload.get("DEEPSEEK_PRO_MODEL"),
+            "DEEPSEEK_FLASH_MODEL": payload.get("DEEPSEEK_FLASH_MODEL"),
+        }
+    )
+    if "moonbridge" in serialized_models or "deepseek-chat" in serialized_models:
+        errors.append("deprecated_or_router_model_alias_forbidden")
     if payload.get("AI_TOOL_USE_ENABLED") is not False:
         errors.append("ai_tool_use_must_be_disabled_by_default")
     if payload.get("execution_mode") != NO_ORDER_DRY_RUN:
@@ -232,6 +248,297 @@ def validateAiOrchestrationConfig(
 
 def getAiJobRegistry() -> Dict[str, Dict[str, Any]]:
     return deepcopy(JOB_REGISTRY)
+
+
+def getOfficialDeepSeekModels() -> Dict[str, str]:
+    return {
+        "deepseek_pro": DEEPSEEK_PRO_MODEL,
+        "deepseek_flash": DEEPSEEK_FLASH_MODEL,
+    }
+
+
+def buildProHourlyMarketAnalysis(
+    *,
+    events: Optional[Sequence[Mapping[str, Any]]] = None,
+    kis_market_snapshots: Optional[Sequence[Mapping[str, Any]]] = None,
+    produced_at_kst: Optional[str] = None,
+    provider_status: str = "safe_block_no_provider_network",
+) -> Dict[str, Any]:
+    produced_at = produced_at_kst or _default_now_kst()
+    event_rows = [deepcopy(dict(event)) for event in (events or [])]
+    kis_rows = [deepcopy(dict(row)) for row in (kis_market_snapshots or [])]
+    source_refs = [
+        str(event.get("source_event_id") or event.get("event_id") or event.get("source_id") or "").strip()
+        for event in event_rows
+        if str(event.get("source_event_id") or event.get("event_id") or event.get("source_id") or "").strip()
+    ]
+    market_refs = [
+        str(row.get("artifact_id") or row.get("snapshot_id") or row.get("source_id") or "").strip()
+        for row in kis_rows
+        if str(row.get("artifact_id") or row.get("snapshot_id") or row.get("source_id") or "").strip()
+    ]
+    safe_block = not event_rows and not kis_rows
+    return {
+        "schema_version": PRO_HOURLY_SCHEMA,
+        "artifact_id": f"art_pro_hourly_{_compact_timestamp(produced_at)}",
+        "artifact_type": "pro_hourly_market_analysis",
+        "job_id": "deepseek_pro_hourly",
+        "model_role": "deepseek_pro",
+        "model_name": DEEPSEEK_PRO_MODEL,
+        "prompt_schema_version": "pro_hourly_prompt/v0",
+        "produced_at_kst": produced_at,
+        "provider_status": provider_status,
+        "validation_status": "safe_block" if safe_block else "accepted",
+        "document_kind": "NO_TRADE" if safe_block else "MARKET_ANALYSIS",
+        "source_refs": source_refs,
+        "market_data_refs": market_refs,
+        "source_event_count": len(event_rows),
+        "kis_market_snapshot_count": len(kis_rows),
+        "market_regime": {
+            "included_in_pro_artifact": True,
+            "session_analysis": "insufficient_inputs" if safe_block else "source_and_kis_context_available",
+            "market_mode": "NO_TRADE" if safe_block else "RISK_CHECK_REQUIRED",
+        },
+        "summary": "NO_TRADE: source and KIS context unavailable" if safe_block else "Pro hourly analysis artifact built from grounded inputs",
+        "order_safety": "no_order",
+        "no_broker_call": True,
+        "no_order_submission": True,
+        "ai_direct_order_allowed": False,
+        "redaction_status": "sanitized",
+    }
+
+
+def buildNoTradeSentinel(
+    *,
+    job_id: str,
+    reason: str,
+    schema_version: str = FLASH_TRADE_DOCUMENT_SCHEMA,
+    produced_at_kst: Optional[str] = None,
+    bucket_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    produced_at = produced_at_kst or _default_now_kst()
+    return {
+        "schema_version": schema_version,
+        "artifact_id": f"art_no_trade_{_compact_timestamp(produced_at)}",
+        "artifact_type": "flash_trade_document" if schema_version == FLASH_TRADE_DOCUMENT_SCHEMA else "safe_block",
+        "job_id": job_id,
+        "model_role": "deepseek_flash" if "flash" in job_id else "deepseek_pro",
+        "model_name": DEEPSEEK_FLASH_MODEL if "flash" in job_id else DEEPSEEK_PRO_MODEL,
+        "prompt_schema_version": "safe_block/v0",
+        "produced_at_kst": produced_at,
+        "bucket_id": bucket_id or _ten_minute_bucket_id(produced_at),
+        "document_kind": "NO_TRADE",
+        "no_trade_reason": str(reason or "safe_block"),
+        "actions": [],
+        "validation_status": "safe_block",
+        "entry_unlocked": False,
+        "no_broker_call": True,
+        "no_order_submission": True,
+        "ai_direct_order_allowed": False,
+        "redaction_status": "sanitized",
+    }
+
+
+def buildFlashTradeDocument(
+    *,
+    pro_artifact: Optional[Mapping[str, Any]],
+    recent_events: Optional[Sequence[Mapping[str, Any]]],
+    kis_market_snapshots: Optional[Sequence[Mapping[str, Any]]],
+    compiled_watch: Optional[Sequence[Mapping[str, Any]]],
+    portfolio_snapshot: Optional[Mapping[str, Any]] = None,
+    order_state_snapshot: Optional[Mapping[str, Any]] = None,
+    previous_trade_documents: Optional[Sequence[Mapping[str, Any]]] = None,
+    produced_at_kst: Optional[str] = None,
+) -> Dict[str, Any]:
+    produced_at = produced_at_kst or _default_now_kst()
+    watch_rows = [deepcopy(dict(row)) for row in (compiled_watch or [])]
+    event_rows = [deepcopy(dict(event)) for event in (recent_events or [])]
+    market_rows = [deepcopy(dict(row)) for row in (kis_market_snapshots or [])]
+    portfolio = deepcopy(dict(portfolio_snapshot or {}))
+    order_state = deepcopy(dict(order_state_snapshot or {}))
+    previous_docs = [deepcopy(dict(doc)) for doc in (previous_trade_documents or [])]
+
+    if not pro_artifact:
+        return buildNoTradeSentinel(
+            job_id="deepseek_flash_trade_document_10m",
+            reason="missing_pro_hourly_artifact",
+            produced_at_kst=produced_at,
+        )
+    if not watch_rows:
+        return buildNoTradeSentinel(
+            job_id="deepseek_flash_trade_document_10m",
+            reason="missing_compiled_watch_candidate_universe",
+            produced_at_kst=produced_at,
+        )
+    if not portfolio and not order_state and not previous_docs:
+        return buildNoTradeSentinel(
+            job_id="deepseek_flash_trade_document_10m",
+            reason="missing_portfolio_or_order_state_context",
+            produced_at_kst=produced_at,
+        )
+
+    held_symbols = _symbol_set_from_snapshot(portfolio, "holdings")
+    pending_symbols = _symbol_set_from_snapshot(order_state, "pending_orders")
+    active_prior_symbols = _active_symbols_from_trade_documents(previous_docs)
+    market_refs = [
+        str(row.get("artifact_id") or row.get("snapshot_id") or "").strip()
+        for row in market_rows
+        if str(row.get("artifact_id") or row.get("snapshot_id") or "").strip()
+    ]
+    source_refs = [
+        str(event.get("source_event_id") or event.get("event_id") or event.get("source_id") or "").strip()
+        for event in event_rows
+        if str(event.get("source_event_id") or event.get("event_id") or event.get("source_id") or "").strip()
+    ]
+    portfolio_ref = str(portfolio.get("artifact_id") or portfolio.get("snapshot_id") or "art_portfolio_fixture").strip()
+    order_state_ref = str(order_state.get("artifact_id") or order_state.get("snapshot_id") or "art_order_state_fixture").strip()
+
+    actions: List[Dict[str, Any]] = []
+    for row in watch_rows[:5]:
+        symbol = str(row.get("symbol") or row.get("ticker") or "").strip()
+        if not symbol:
+            continue
+        conflict_reasons: List[str] = []
+        if symbol in held_symbols:
+            conflict_reasons.append("already_holding_symbol")
+        if symbol in pending_symbols:
+            conflict_reasons.append("pending_order_exists")
+        if symbol in active_prior_symbols:
+            conflict_reasons.append("prior_trade_document_still_valid")
+        entry_intent = row.get("entry_intent") if isinstance(row.get("entry_intent"), Mapping) else {}
+        exit_plan = row.get("exit_plan") if isinstance(row.get("exit_plan"), Mapping) else {}
+        action = "NO_TRADE" if conflict_reasons else "WAIT_BUY"
+        actions.append(
+            {
+                "ticker": symbol,
+                "name": str(row.get("name") or row.get("symbol_name") or symbol),
+                "action": action,
+                "entry_zone": list(entry_intent.get("entry_zone") or entry_intent.get("entryZone") or []),
+                "take_profit": entry_intent.get("take_profit") or exit_plan.get("take_profit"),
+                "stop_loss": entry_intent.get("stop_loss") or exit_plan.get("stop_loss"),
+                "trailing_stop_pct": entry_intent.get("trailing_stop_pct") or exit_plan.get("trailing_stop_pct"),
+                "cancel_if_not_filled_until": entry_intent.get("cancel_if_not_filled_until")
+                or row.get("valid_until_kst"),
+                "position_size_pct": entry_intent.get("position_size_pct"),
+                "source_refs": source_refs or list(row.get("source_ids") or []),
+                "market_data_refs": market_refs,
+                "portfolio_state_refs": [portfolio_ref, order_state_ref],
+                "portfolio_conflict": {
+                    "has_conflict": bool(conflict_reasons),
+                    "reasons": conflict_reasons,
+                },
+                "reason": "portfolio/order conflict" if conflict_reasons else "compiled watch candidate with source/KIS context",
+                "paper_only": True,
+                "no_live_order": True,
+            }
+        )
+
+    if not actions:
+        return buildNoTradeSentinel(
+            job_id="deepseek_flash_trade_document_10m",
+            reason="no_valid_compiled_watch_symbols",
+            produced_at_kst=produced_at,
+        )
+
+    return {
+        "schema_version": FLASH_TRADE_DOCUMENT_SCHEMA,
+        "artifact_id": f"art_flash_tdoc_{_compact_timestamp(produced_at)}",
+        "artifact_type": "flash_trade_document",
+        "job_id": "deepseek_flash_trade_document_10m",
+        "model_role": "deepseek_flash",
+        "model_name": DEEPSEEK_FLASH_MODEL,
+        "prompt_schema_version": "flash_trade_document_prompt/v0",
+        "produced_at_kst": produced_at,
+        "bucket_id": _ten_minute_bucket_id(produced_at),
+        "document_kind": "TRADE_ACTIONS",
+        "pro_hourly_ref": str(dict(pro_artifact).get("artifact_id") or ""),
+        "source_refs": source_refs,
+        "market_data_refs": market_refs,
+        "compiled_watch_refs": [
+            str(row.get("artifact_id") or row.get("condition_card_id") or row.get("candidate_id") or "")
+            for row in watch_rows
+        ],
+        "candidate_universe_symbols": [str(row.get("symbol") or row.get("ticker") or "").strip() for row in watch_rows],
+        "portfolio_snapshot_ref": portfolio_ref,
+        "order_state_snapshot_ref": order_state_ref,
+        "previous_trade_document_refs": [
+            str(doc.get("artifact_id") or doc.get("document_id") or "") for doc in previous_docs
+        ],
+        "actions": actions,
+        "validation_status": "pending",
+        "entry_unlocked": False,
+        "no_broker_call": True,
+        "no_order_submission": True,
+        "ai_direct_order_allowed": False,
+        "redaction_status": "sanitized",
+    }
+
+
+def validateFlashTradeDocument(
+    document: Optional[Mapping[str, Any]],
+    *,
+    compiled_watch: Optional[Sequence[Mapping[str, Any]]] = None,
+) -> Dict[str, Any]:
+    payload = deepcopy(dict(document or {}))
+    errors: List[str] = []
+
+    if payload.get("schema_version") != FLASH_TRADE_DOCUMENT_SCHEMA:
+        errors.append("schema_version_must_be_flash_trade_document_v0")
+    if payload.get("model_name") != DEEPSEEK_FLASH_MODEL:
+        errors.append("flash_model_must_be_deepseek_v4_flash")
+    if payload.get("no_broker_call") is not True or payload.get("no_order_submission") is not True:
+        errors.append("flash_document_must_be_non_executable")
+    if payload.get("ai_direct_order_allowed") is not False:
+        errors.append("ai_direct_order_must_be_false")
+
+    actions = payload.get("actions")
+    if not isinstance(actions, list):
+        errors.append("actions_must_be_list")
+        actions = []
+    if len(actions) > 5:
+        errors.append("actions_max_five_symbols")
+
+    universe = {
+        str(row.get("symbol") or row.get("ticker") or "").strip()
+        for row in (compiled_watch or [])
+        if str(row.get("symbol") or row.get("ticker") or "").strip()
+    }
+    if not universe:
+        universe = {
+            str(item or "").strip()
+            for item in (payload.get("candidate_universe_symbols") or [])
+            if str(item or "").strip()
+        }
+    for index, action in enumerate(actions):
+        if not isinstance(action, Mapping):
+            errors.append(f"actions_item_{index}_must_be_object")
+            continue
+        symbol = str(action.get("ticker") or action.get("symbol") or "").strip()
+        if not symbol:
+            errors.append(f"actions_item_{index}_ticker_required")
+        elif universe and symbol not in universe:
+            errors.append(f"actions_item_{index}_off_universe_ticker")
+        action_type = str(action.get("action") or "").strip()
+        if action_type not in {"WAIT_BUY", "BUY_NOW", "HOLD", "SELL", "NO_TRADE"}:
+            errors.append(f"actions_item_{index}_action_invalid")
+        if action_type in {"WAIT_BUY", "BUY_NOW"}:
+            if not action.get("source_refs"):
+                errors.append(f"actions_item_{index}_source_refs_required")
+            if not action.get("market_data_refs"):
+                errors.append(f"actions_item_{index}_market_data_refs_required")
+            if not action.get("portfolio_state_refs"):
+                errors.append(f"actions_item_{index}_portfolio_state_refs_required")
+            if action.get("paper_only") is not True or action.get("no_live_order") is not True:
+                errors.append(f"actions_item_{index}_paper_only_required")
+    if payload.get("document_kind") == "NO_TRADE" and actions:
+        errors.append("no_trade_document_must_have_empty_actions")
+    if payload.get("document_kind") == "NO_TRADE" and not payload.get("no_trade_reason"):
+        errors.append("no_trade_reason_required")
+
+    payload["validation_status"] = "rejected" if errors else (
+        "safe_block" if payload.get("document_kind") == "NO_TRADE" else "accepted"
+    )
+    return {"ok": not errors, "errors": errors, "document": payload}
 
 
 def reviewAiRequestPayload(payload: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
@@ -748,6 +1055,60 @@ def _validate_common_output_envelope(
     _parse_kst_timestamp(payload.get("produced_at_kst"), "produced_at_kst", errors)
     if now_kst:
         _parse_kst_timestamp(now_kst, "now_kst", [])
+
+
+def _compact_timestamp(value: str) -> str:
+    raw = str(value or _default_now_kst()).strip()
+    return (
+        raw.replace("-", "")
+        .replace(":", "")
+        .replace("+0900", "")
+        .replace("+09:00", "")
+        .replace("T", "_")
+    )
+
+
+def _ten_minute_bucket_id(value: str) -> str:
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    local = parsed.astimezone(KST)
+    bucket_minute = (local.minute // 10) * 10
+    bucket = local.replace(minute=bucket_minute, second=0, microsecond=0)
+    return f"flash_10m_{bucket.strftime('%Y%m%d_%H%M')}"
+
+
+def _symbol_set_from_snapshot(snapshot: Mapping[str, Any], key: str) -> Set[str]:
+    rows = snapshot.get(key)
+    symbols: Set[str] = set()
+    if isinstance(rows, Mapping):
+        iterable = rows.values()
+    elif isinstance(rows, Sequence) and not isinstance(rows, (str, bytes)):
+        iterable = rows
+    else:
+        iterable = []
+    for row in iterable:
+        if isinstance(row, Mapping):
+            symbol = str(row.get("symbol") or row.get("ticker") or "").strip()
+        else:
+            symbol = str(row or "").strip()
+        if symbol:
+            symbols.add(symbol)
+    return symbols
+
+
+def _active_symbols_from_trade_documents(documents: Sequence[Mapping[str, Any]]) -> Set[str]:
+    symbols: Set[str] = set()
+    for document in documents:
+        valid_state = str(document.get("document_state") or document.get("status") or "active").lower()
+        if valid_state in {"expired", "cancelled", "closed"}:
+            continue
+        for action in document.get("actions") or []:
+            if not isinstance(action, Mapping):
+                continue
+            if str(action.get("action") or "").strip() in {"WAIT_BUY", "BUY_NOW", "HOLD"}:
+                symbol = str(action.get("ticker") or action.get("symbol") or "").strip()
+                if symbol:
+                    symbols.add(symbol)
+    return symbols
 
 
 def _parse_kst_timestamp(value: Any, label: str, errors: List[str]) -> Optional[datetime]:

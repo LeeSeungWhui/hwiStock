@@ -80,7 +80,7 @@ class MarketIntelligenceIngestionTests(unittest.TestCase):
         reg = mi.loadSourceRegistryConfig()
         self.assertEqual(
             reg["approved_first_go_source_ids"],
-            ["dart_openapi_disclosures", "krx_nxt_market_calendar_cache", "public_news_rss_search"],
+            ["dart_openapi_disclosures", "krx_nxt_market_calendar_cache", "naver_search_news_api"],
         )
         required_keys = {
             "source_status",
@@ -102,6 +102,7 @@ class MarketIntelligenceIngestionTests(unittest.TestCase):
                         mi.SOURCE_STATUS_CONDITIONAL_AFTER_KEY,
                         mi.SOURCE_STATUS_CONDITIONAL_AFTER_TERMS,
                         mi.SOURCE_STATUS_DEFERRED,
+                        mi.SOURCE_STATUS_FALLBACK_ONLY,
                         mi.SOURCE_STATUS_FORBIDDEN_DEFAULT,
                     },
                 )
@@ -193,7 +194,7 @@ class MarketIntelligenceIngestionTests(unittest.TestCase):
             {"source_id": "general_media_html_scrape", "source_event_id": "x1", "title": "t"},
             {"source_id": "unofficial_finance_apis", "source_event_id": "x2", "title": "t"},
             {"source_id": "kis_market_or_realtime_data", "source_event_id": "x3", "title": "t"},
-            {"source_id": "naver_search_news_api", "source_event_id": "x4", "title": "t"},
+            {"source_id": "public_news_rss_search", "source_event_id": "x4", "title": "t"},
         ]
         result = ingestion.ingestFixtureRows(
             blocked_rows,
@@ -207,7 +208,7 @@ class MarketIntelligenceIngestionTests(unittest.TestCase):
                 "general_media_html_scrape",
                 "unofficial_finance_apis",
                 "kis_market_or_realtime_data",
-                "naver_search_news_api",
+                "public_news_rss_search",
             }.issubset(blocked)
         )
 
@@ -296,7 +297,7 @@ class MarketIntelligenceIngestionTests(unittest.TestCase):
             health = result["health"]
             self.assertEqual(health["source_results"][0]["status"], "skipped_network_disabled")
             self.assertEqual(health["source_results"][1]["status"], "skipped_network_disabled")
-            self.assertEqual(health["source_results"][2]["status"], "skipped_network_disabled")
+            self.assertEqual([row["source_id"] for row in health["source_results"]], ["dart_openapi_disclosures", "naver_search_news_api"])
             self.assertTrue((Path(tmp) / "evidence" / "2026-06-05" / "market-intel-collector-health.json").is_file())
 
     def testPublicRssRowsCanNormalizeWithoutApiKeys(self):

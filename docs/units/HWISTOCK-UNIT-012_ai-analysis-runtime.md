@@ -4,8 +4,8 @@ id: HWISTOCK-UNIT-012
 type: unit
 domain: backend
 name: AI analysis runtime
-status: set
-implementation_status: ready_for_go_check
+status: go_check_local_passed
+implementation_status: go_check_passed_local_no_network_provider_smoke_blocked
 priority: P0
 source_of_truth: user_intent
 owner: hwi
@@ -20,7 +20,9 @@ module_ids:
 code_paths:
   include:
     - backend/lib/ai_orchestration.py
+    - backend/lib/ai_analysis_runtime.py
     - backend/service/ai_analysis_runner.py
+    - backend/lib/market_intelligence_ingestion_runtime.py
     - backend/service/market_intelligence_ingestion.py
     - backend/tests/test_ai_orchestration_layer.py
     - ops/systemd/user/hwistock-ai-analysis.service
@@ -34,6 +36,7 @@ qa_scenario_refs:
 evidence_refs:
   - docs/evidence/RUN-20260605_ready-set-operational-paper-trading-program.md
   - docs/evidence/RUN-20260605_gpt-pro-operational-ready-set-review.md
+  - docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
 external_refs:
   - https://api-docs.deepseek.com/
   - https://api-docs.deepseek.com/api/list-models
@@ -46,10 +49,9 @@ external_refs:
 Make the AI layer an actual scheduled analysis pipeline for the paper program,
 not a vague description and not a fake order brain.
 
-Current Go status: ready for Go-Check only after `HWISTOCK-UNIT-016` closed the
-runtime data/execution contracts for schemas, atomic publication, idempotency,
-freshness TTLs, `NO_TRADE` sentinels, and portfolio/order-state conflict
-semantics.
+Current Go status: local no-network Go-Check passed on 2026-06-05. Provider
+network smoke remains blocked until explicitly scoped and approved. This does
+not make the whole paper program paper-run-ready.
 
 The current contract is:
 

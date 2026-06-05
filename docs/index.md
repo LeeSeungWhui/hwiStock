@@ -136,18 +136,28 @@ Current 2026-06-05 operational paper-trading authority:
 - Runtime contract documents:
   - `docs/contracts/HWISTOCK-RUNTIME-DATA-EXECUTION-CONTRACTS.md`
   - `docs/contracts/hwistock-runtime-contracts.schema.json`
+- Operational UNIT-012 through UNIT-015 local Go-Check evidence:
+  `docs/evidence/RUN-20260605_operational-go-check-units-012-015.md`
+
+Latest operational Go-Check update: UNIT-012 through UNIT-015 now pass local
+no-network Go-Check for the owner-selected NAVER/OpenDART + KIS six-input
+scope. Provider network smoke, KIS paper-read transport, KIS KRX paper
+order/reconciliation smoke, browser/tunnel Prove, and final operator
+observation-window acceptance remain blocked until explicitly scoped. Therefore
+`paper_run_ready: false`, `continuous_runner_ready: false`, and
+`operational_trading_readiness: false` remain current.
 
 Correction: `HWISTOCK-UNIT-010` is a KIS paper runner foundation and local
 no-network implementation proof, not the whole stock-trading program. The
 current operational architecture queue for an actually runnable paper trading
 program is UNIT-011, UNIT-016, and UNIT-012 through UNIT-015. UNIT-016 has now
-  closed the blocking contract-hardening Set gate with schema catalog, fixtures,
-  and validator evidence. UNIT-012/013 are responsible for the Pro-hourly,
-  Flash-10-minute, KIS-market-data, and trade-document bridge. Current status is
-`implementation_ready: true` only for the contract-hardened Go-Check queue.
-Until order-producing rows pass Go/Check/Prove, `paper_run_ready: false`,
-`continuous_runner_ready: false`, and `operational_trading_readiness: false`
-remain the correct status.
+closed the blocking contract-hardening Set gate with schema catalog, fixtures,
+and validator evidence. UNIT-012/013 are responsible for the Pro-hourly,
+Flash-10-minute, KIS-market-data, and trade-document bridge. Current status is
+`go_check_passed_local_no_network_with_side_effect_rows_blocked` only for the
+contract-hardened Go-Check queue. Until the side-effect rows pass Go/Check/Prove,
+`paper_run_ready: false`, `continuous_runner_ready: false`, and
+`operational_trading_readiness: false` remain the correct status.
 
 GPT Pro review correction: the 2026-06-05 external review classified the
 architecture as solid in intent but not implementation-ready until runtime
@@ -500,18 +510,22 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
   local-only service startup, timer health, and runtime evidence
   (`docs/evidence/RUN-20260605_unit-011-runtime-start-go.md`).
 - `docs/units/HWISTOCK-UNIT-012_ai-analysis-runtime.md`:
-  set contract for current DeepSeek Pro/Flash scheduled analysis runtime with
-  no-order AI boundaries.
+  local no-network Go-Check passed for current DeepSeek Pro/Flash scheduled
+  analysis runtime with no-order AI boundaries; provider smoke remains blocked
+  (`docs/evidence/RUN-20260605_operational-go-check-units-012-015.md`).
 - `docs/units/HWISTOCK-UNIT-013_signal-to-intent-pipeline.md`:
-  set contract for source-grounded candidates, symbol resolution,
-  chart/session-confirmed condition cards, deterministic risk gates, and
-  `paper_order_intent/v0` queue generation.
+  local no-network Go-Check passed for NAVER/OpenDART source-grounded
+  candidates, the KIS six-input collector boundary, deterministic risk gates,
+  and `paper_order_intent/v0` queue generation; KIS paper-read transport smoke
+  remains blocked (`docs/evidence/RUN-20260605_operational-go-check-units-012-015.md`).
 - `docs/units/HWISTOCK-UNIT-014_kis-paper-order-execution-reconciliation.md`:
-  set contract for KIS KRX paper order execution, cancellation/fill lookup,
-  balance/buyable reconciliation, idempotency, and no-fake-broker evidence.
+  local no-network Go-Check passed for preflight/idempotency/realtime-exit
+  behavior; KIS KRX paper order/reconciliation smoke remains blocked
+  (`docs/evidence/RUN-20260605_operational-go-check-units-012-015.md`).
 - `docs/units/HWISTOCK-UNIT-015_operator-console-observation-prove.md`:
-  set contract for read-only operator dashboard/API status, observation-window
-  reports, and browser/tunnel Prove.
+  local API/frontend Go-Check passed for read-only operator dashboard/API
+  status and observation-window reports; browser/tunnel Prove remains blocked
+  (`docs/evidence/RUN-20260605_operational-go-check-units-012-015.md`).
 
 ## QA Scenarios
 
@@ -561,17 +575,21 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
 - `docs/qa/QA-HWISTOCK-UNIT-011_operational-runtime-supervisor.md`:
   set QA for user systemd install/start/restart/local-only supervision.
 - `docs/qa/QA-HWISTOCK-UNIT-012_ai-analysis-runtime.md`:
-  set QA for DeepSeek Pro/Flash model config, schedule, schema validation,
-  redaction, and no-order boundaries.
+  local no-network Go-Check QA passed for DeepSeek Pro/Flash model config,
+  schedule, schema validation, redaction, and no-order boundaries; provider
+  smoke remains blocked.
 - `docs/qa/QA-HWISTOCK-UNIT-013_signal-to-intent-pipeline.md`:
-  set QA for source-grounded candidate generation and deterministic
-  `paper_order_intent/v0` gating.
+  local no-network Go-Check QA passed for source-grounded candidate generation,
+  KIS six-input boundary, and deterministic `paper_order_intent/v0` gating; KIS
+  paper-read transport smoke remains blocked.
 - `docs/qa/QA-HWISTOCK-UNIT-014_kis-paper-order-execution-reconciliation.md`:
-  set QA for KIS paper domain, order execution, reconciliation, restart
-  idempotency, and no-fake-broker behavior.
+  local no-network Go-Check QA passed for KIS paper domain guard, preflight,
+  restart idempotency, realtime exit checks, and no-fake-broker behavior; order
+  smoke remains blocked.
 - `docs/qa/QA-HWISTOCK-UNIT-015_operator-console-observation-prove.md`:
-  set QA for read-only operator status, masking, readiness separation, and
-  observation-window reporting.
+  local API/frontend Go-Check QA passed for read-only operator status, masking,
+  readiness separation, and observation-window reporting; browser/tunnel Prove
+  remains blocked.
 
 ## Evidence
 

@@ -109,9 +109,9 @@ def _draft_order_intent(**overrides):
 def _ai_recommendation(**overrides):
     payload = {
         "schema_version": "ai_recommendation/v0",
-        "job_id": "deepseek_flash_intraday_label",
-        "model_role": "deepseek_flash",
-        "model_name": "deepseek-flash-local-fixture",
+            "job_id": "deepseek_flash_trade_document_10m",
+            "model_role": "deepseek_flash",
+            "model_name": "deepseek-v4-flash",
         "prompt_schema_version": "intraday_candidate_label/v0",
         "input_bundle_ids": ["bundle-001"],
         "produced_at_kst": NOW_KST,
@@ -142,6 +142,8 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         self.assertFalse(cfg["DEEPSEEK_FLASH_ENABLED"])
         self.assertFalse(cfg["CHATGPT_PRO_BROWSER_REVIEW_ENABLED"])
         self.assertEqual(cfg["GPT_PRO_MORNING_REVIEW_CUTOFF_KST"], "07:20")
+        self.assertEqual(cfg["DEEPSEEK_PRO_MODEL"], "deepseek-v4-pro")
+        self.assertEqual(cfg["DEEPSEEK_FLASH_MODEL"], "deepseek-v4-flash")
         self.assertTrue(ao.validateAiOrchestrationConfig(cfg)["ok"])
 
     def testQa012JobRegistrySeparatesScheduledRoles(self):
@@ -149,22 +151,20 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         self.assertEqual(
             set(registry.keys()),
             {
-                "deepseek_pro_news_hourly",
-                "deepseek_pro_market_regime",
-                "deepseek_flash_intraday_label",
+                "deepseek_pro_hourly",
+                "deepseek_flash_trade_document_10m",
                 "gpt_prompt_0650",
                 "chatgpt_pro_morning_review",
                 "daily_close_2000",
             },
         )
         self.assertEqual(
-            registry["deepseek_pro_news_hourly"]["output_schema"],
-            "hourly_intel_analysis/v0",
+            registry["deepseek_pro_hourly"]["output_schema"],
+            "pro_hourly_market_analysis/v0",
         )
-        self.assertEqual(
-            registry["deepseek_pro_market_regime"]["output_schema"],
-            "market_regime_report/v0",
-        )
+        self.assertTrue(registry["deepseek_pro_hourly"]["includes_market_regime"])
+        self.assertEqual(registry["deepseek_flash_trade_document_10m"]["model_name"], "deepseek-v4-flash")
+        self.assertEqual(registry["deepseek_flash_trade_document_10m"]["max_action_symbols"], 5)
         self.assertEqual(
             registry["chatgpt_pro_morning_review"]["output_schema"],
             "morning_review_report/v0",
@@ -247,7 +247,7 @@ class AiOrchestrationLayerTests(unittest.TestCase):
             now_kst=NOW_KST,
         )
         audit = ao.buildAiAuditRecord(
-            "deepseek_flash_intraday_label",
+            "deepseek_flash_trade_document_10m",
             output,
             validation,
             latency_ms=42,
@@ -379,6 +379,58 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         self.assertEqual(report["alternate_job_id"], "gpt_prompt_0650")
         self.assertEqual(report["morning_review_mode"], "deepseek_only")
         self.assertFalse(report["entry_unlocked"])
+
+    def testQa012FlashTradeDocumentCapsActionsAndRequiresCompiledWatch(self):
+        compiled_watch = [
+            {
+                "schema_version": "compiled_watch/v0",
+                "candidate_id": f"candidate-{index}",
+                "symbol": f"00593{index}",
+                "source_ids": KNOWN_SOURCE_IDS,
+                "entry_intent": {
+                    "entry_zone": [10000, 10100],
+                    "take_profit": 10500,
+                    "stop_loss": 9800,
+                    "trailing_stop_pct": 1.2,
+                    "position_size_pct": 20,
+                },
+                "valid_until_kst": "2026-06-04T09:20:00+09:00",
+            }
+            for index in range(7)
+        ]
+        doc = ao.buildFlashTradeDocument(
+            pro_artifact={"artifact_id": "art_pro_hourly_20260604_0900"},
+            recent_events=[{"source_event_id": KNOWN_SOURCE_IDS[0]}],
+            kis_market_snapshots=[{"artifact_id": "art_kis_snapshot_20260604_0905"}],
+            compiled_watch=compiled_watch,
+            portfolio_snapshot={"artifact_id": "art_portfolio_20260604_0905", "holdings": []},
+            order_state_snapshot={"artifact_id": "art_order_state_20260604_0905", "pending_orders": []},
+            produced_at_kst=NOW_KST,
+        )
+        self.assertEqual(doc["schema_version"], "flash_trade_document/v0")
+        self.assertEqual(doc["model_name"], "deepseek-v4-flash")
+        self.assertLessEqual(len(doc["actions"]), 5)
+        validation = ao.validateFlashTradeDocument(doc, compiled_watch=compiled_watch)
+        self.assertTrue(validation["ok"], msg=validation["errors"])
+        self.assertFalse(doc["no_broker_call"] is False)
+
+    def testQa012OffUniverseFlashActionIsRejected(self):
+        doc = ao.buildFlashTradeDocument(
+            pro_artifact={"artifact_id": "art_pro_hourly_20260604_0900"},
+            recent_events=[{"source_event_id": KNOWN_SOURCE_IDS[0]}],
+            kis_market_snapshots=[{"artifact_id": "art_kis_snapshot_20260604_0905"}],
+            compiled_watch=[{"schema_version": "compiled_watch/v0", "symbol": "005930", "source_ids": KNOWN_SOURCE_IDS}],
+            portfolio_snapshot={"artifact_id": "art_portfolio_20260604_0905", "holdings": []},
+            order_state_snapshot={"artifact_id": "art_order_state_20260604_0905", "pending_orders": []},
+            produced_at_kst=NOW_KST,
+        )
+        doc["actions"][0]["ticker"] = "999999"
+        validation = ao.validateFlashTradeDocument(
+            doc,
+            compiled_watch=[{"schema_version": "compiled_watch/v0", "symbol": "005930"}],
+        )
+        self.assertFalse(validation["ok"])
+        self.assertIn("actions_item_0_off_universe_ticker", validation["errors"])
 
     def testQa014DailyCloseReportRequiresSystemCalculatedPnL(self):
         invalid = ao.validateDailyCloseReport(

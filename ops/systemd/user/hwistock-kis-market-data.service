@@ -1,0 +1,15 @@
+# hwiStock UNIT-013 KIS six-input market-data collector tick.
+# Paper-read only; no KIS order/cancel/modify transport.
+
+[Unit]
+Description=hwiStock KIS six-input market-data collector tick
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/data/workspace/My/hwiStock
+EnvironmentFile=-/home/hwi/.config/hwistock/hwistockApi.env
+Environment=HWISTOCK_KIS_SIGNAL_INPUTS=krx_realtime_trade_price_ws,krx_realtime_orderbook_ws,rest_volume_rank,rest_volume_power_rank,rest_fluctuation_rank,rest_program_trading_aggregate
+ExecStart=/usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/kis_market_data_collector.py --once --write-evidence'
+NoNewPrivileges=true

@@ -17,6 +17,7 @@ SOURCE_STATUS_APPROVED_FIRST_GO = "approved_first_go"
 SOURCE_STATUS_CONDITIONAL_AFTER_KEY = "conditional_after_key"
 SOURCE_STATUS_CONDITIONAL_AFTER_TERMS = "conditional_after_terms_check"
 SOURCE_STATUS_DEFERRED = "deferred"
+SOURCE_STATUS_FALLBACK_ONLY = "fallback_only"
 SOURCE_STATUS_FORBIDDEN_DEFAULT = "forbidden_default"
 
 FOUNDATION_INGESTIBLE_STATUSES = frozenset({SOURCE_STATUS_APPROVED_FIRST_GO})
@@ -128,9 +129,9 @@ def _build_registry_sources() -> Dict[str, Dict[str, Any]]:
         ),
         "naver_search_news_api": _source_entry(
             "naver_search_news_api",
-            SOURCE_STATUS_CONDITIONAL_AFTER_KEY,
+            SOURCE_STATUS_APPROVED_FIRST_GO,
             collection_method="official_api",
-            credential_policy="NAVER_CLIENT_ID and NAVER_CLIENT_SECRET required after approval",
+            credential_policy="NAVER_CLIENT_ID and NAVER_CLIENT_SECRET required; missing config safe-blocks",
             storage_policy="title, links, excerpt, timestamps, query metadata",
             rate_limit_policy="daily cap and query list required after approval",
             terms_notes="NAVER Developers Search API terms",
@@ -140,7 +141,7 @@ def _build_registry_sources() -> Dict[str, Dict[str, Any]]:
         ),
         "public_news_rss_search": _source_entry(
             "public_news_rss_search",
-            SOURCE_STATUS_APPROVED_FIRST_GO,
+            SOURCE_STATUS_FALLBACK_ONLY,
             collection_method="public_rss",
             credential_policy="none",
             storage_policy="title, link, source, published timestamp, and RSS summary only",
@@ -148,7 +149,7 @@ def _build_registry_sources() -> Dict[str, Dict[str, Any]]:
             terms_notes="public RSS/search feed metadata only; no paywall/login/HTML article scraping",
             retention_notes="metadata and permitted RSS summaries only",
             body_storage_policy="excerpt_allowed",
-            live_enabled=True,
+            live_enabled=False,
         ),
         "kind_krx_disclosure_portal": _source_entry(
             "kind_krx_disclosure_portal",

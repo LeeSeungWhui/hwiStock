@@ -8,11 +8,9 @@
 export const PAGE_CONFIG = {
   MODE: "SSR",
   INIT_API: {
-    stats: "/api/v1/dashboard/stats",
-    list: "/api/v1/dashboard",
+    operator: "/api/v1/hwistock/runner/operator-snapshot",
   },
   API: {
-    stats: "/api/v1/dashboard/stats",
-    list: "/api/v1/dashboard",
+    operator: "/api/v1/hwistock/runner/operator-snapshot",
   },
 };

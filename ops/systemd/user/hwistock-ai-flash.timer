@@ -1,0 +1,14 @@
+# hwiStock DeepSeek Flash 10-minute trade-document timer.
+
+[Unit]
+Description=hwiStock DeepSeek Flash trade document every 10 minutes
+
+[Timer]
+OnBootSec=3min
+OnCalendar=*:0/10
+AccuracySec=30s
+Persistent=true
+Unit=hwistock-ai-flash.service
+
+[Install]
+WantedBy=timers.target

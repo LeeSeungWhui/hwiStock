@@ -8,6 +8,7 @@ from fastapi import APIRouter, Body
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from lib import operator_console_runtime as operatorConsoleRuntime
 from lib.Response import successResponse
 from service import HwiStockRunnerService
 
@@ -22,40 +23,63 @@ class NoOrderIntentBody(BaseModel):
     note: Optional[str] = None
 
 
-def _json_ok(result: Any, status_code: int = 200) -> JSONResponse:
-    resp = successResponse(result=result)
-    r = JSONResponse(content=resp, status_code=status_code)
-    r.headers["Cache-Control"] = "no-store"
-    return r
+class ObservationReportBody(BaseModel):
+    startedAtKst: str
+    endedAtKst: Optional[str] = None
+    operatorNote: Optional[str] = None
+
+
+def hwiStockJsonResponse(result: Any, statusCode: int = 200) -> JSONResponse:
+    return JSONResponse(
+        content=successResponse(result=result),
+        status_code=statusCode,
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/status")
-async def runner_status(atKst: Optional[str] = None):
+async def runnerStatus(atKst: Optional[str] = None):
     result = HwiStockRunnerService.get_runner_status(at_kst=atKst)
-    return _json_ok(result)
+    return hwiStockJsonResponse(result)
 
 
 @router.get("/kis-paper-continuous-status")
-async def kis_paper_continuous_status(atKst: Optional[str] = None):
+async def kisPaperContinuousStatus(atKst: Optional[str] = None):
     from service import kis_paper_continuous_runner
 
     result = kis_paper_continuous_runner.evaluateContinuousPaperRunnerStatus(at_kst=atKst)
-    return _json_ok(result)
+    return hwiStockJsonResponse(result)
+
+
+@router.get("/operator-snapshot")
+async def operatorSnapshot(atKst: Optional[str] = None):
+    result = operatorConsoleRuntime.buildOperatorConsoleSnapshot(atKst=atKst)
+    return hwiStockJsonResponse(result)
 
 
 @router.get("/route-preview")
-async def route_preview(atKst: str):
+async def routePreview(atKst: str):
     result = HwiStockRunnerService.preview_route(atKst)
-    return _json_ok(result)
+    return hwiStockJsonResponse(result)
 
 
 @router.get("/daily-close-template")
-async def daily_close_template():
+async def dailyCloseTemplate():
     result = HwiStockRunnerService.daily_close_template()
-    return _json_ok(result)
+    return hwiStockJsonResponse(result)
+
+
+@router.post("/observation-report")
+async def observationReport(body: ObservationReportBody = Body(...)):
+    result = operatorConsoleRuntime.writeObservationReport(
+        startedAtKst=body.startedAtKst,
+        endedAtKst=body.endedAtKst,
+        operatorNote=body.operatorNote,
+    )
+    return hwiStockJsonResponse(result, statusCode=201)
 
 
 @router.post("/no-order-intent-record")
-async def no_order_intent_record(body: NoOrderIntentBody = Body(...)):
+async def noOrderIntentRecord(body: NoOrderIntentBody = Body(...)):
     result = HwiStockRunnerService.record_no_order_intent(body.model_dump())
-    return _json_ok(result)
+    return hwiStockJsonResponse(result)

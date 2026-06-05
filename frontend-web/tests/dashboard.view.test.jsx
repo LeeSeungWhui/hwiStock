@@ -45,6 +45,7 @@ describe("hwiStock operator console view", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    apiJSON.mockReset();
     consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     PAGE_CONFIG.MODE = originalMode;
   });
@@ -152,19 +153,12 @@ describe("hwiStock operator console view", () => {
 
   test("CSR fetch 지연 중 스켈레톤 후 콘솔 스냅샷을 렌더링한다", async () => {
     PAGE_CONFIG.MODE = "CSR";
-    let resolveStats;
-    let resolveList;
+    let resolveOperator;
     apiJSON
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {
-            resolveStats = resolve;
-          }),
-      )
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            resolveList = resolve;
+            resolveOperator = resolve;
           }),
       );
 
@@ -176,19 +170,13 @@ describe("hwiStock operator console view", () => {
     );
 
     await act(async () => {
-      resolveStats({
-        result: { statusSummaryList: [{ status: "running", count: 2, amountSum: 5000 }] },
-      });
-      resolveList({
+      resolveOperator({
         result: {
-          dataTemplateList: [
-            {
-              id: 5930,
-              title: "삼성전자",
-              status: "running",
-              amount: 120,
-              createdAt: "2026-02-23T00:00:00.000Z",
-            },
+          schema_version: "operator_console_snapshot/v0",
+          status: { mode: "paper_sandbox", serviceHealth: "observable" },
+          summary: { accountId: "paper_account_alias:masked", operationalTradingReadiness: false },
+          holdings: [
+            { symbol: "005930", name: "삼성전자", qty: 0, pnl: "system", weight: "0%" },
           ],
         },
       });
