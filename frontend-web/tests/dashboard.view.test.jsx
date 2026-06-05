@@ -9,7 +9,6 @@ import { vi } from "vitest";
 import { apiJSON } from "@/app/lib/runtime/api";
 import { PAGE_CONFIG } from "@/app/dashboard/initData";
 import DashboardView from "@/app/dashboard/view";
-import { OPERATOR_FALLBACK_FIXTURE } from "@/app/dashboard/operatorData";
 
 vi.mock("@/app/lib/runtime/api", () => ({
   apiJSON: vi.fn(),
@@ -28,7 +27,12 @@ describe("hwiStock operator console view", () => {
         orderGate: "blocked_calendar_unconfigured",
       },
       summary: {
-        accountId: "paper_account_alias:masked",
+        accountId: "12345678-01",
+        cashBalance: 2000000,
+        reserveBalance: 500000,
+        todayPnl: -84200,
+        aiJobStatus: "pro:present / flash:missing_or_safe_blocked",
+        reportStatus: "continuous_tick:warn",
         paperNetworkEnabled: false,
         paperOrderEnabled: false,
         paperOrdersSubmitted: false,
@@ -97,9 +101,10 @@ describe("hwiStock operator console view", () => {
     expect(screen.getByText("hwiStock 운영 콘솔")).toBeInTheDocument();
     expect(screen.queryByText("업무 바로가기")).not.toBeInTheDocument();
     expect(screen.queryByText("MyWebTemplate")).not.toBeInTheDocument();
-    expect(screen.getByText("모의매매 관찰 준비 아님")).toBeInTheDocument();
-    expect(screen.getByText("NOT_READY_FOR_PAPER_TRADING")).toBeInTheDocument();
-    expect(screen.getByText(/Runner 주문 허용/)).toBeInTheDocument();
+    expect(screen.getByText("자동매매 준비 전")).toBeInTheDocument();
+    expect(screen.getByText("준비 전")).toBeInTheDocument();
+    expect(screen.getByText(/주문 실행 허용/)).toBeInTheDocument();
+    expect(screen.getAllByText("시장 시간표 설정 필요").length).toBeGreaterThan(0);
   });
 
   test("매수/매도/주문 실행 버튼이 없다", () => {
@@ -116,7 +121,7 @@ describe("hwiStock operator console view", () => {
     });
   });
 
-  test("계좌 식별자와 잔고류 값은 마스킹된다", () => {
+  test("요약 패널은 계좌와 금액을 숨기지 않고 운영자가 읽을 포맷으로 렌더링한다", () => {
     render(
       <DashboardView
         initialDataObj={buildSsrInitialDataObj()}
@@ -124,9 +129,63 @@ describe("hwiStock operator console view", () => {
       />,
     );
 
-    const rawAccountId = OPERATOR_FALLBACK_FIXTURE.summary.accountId;
-    expect(screen.queryByText(rawAccountId)).not.toBeInTheDocument();
-    expect(screen.getAllByTitle(/masked/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/sked/)).not.toBeInTheDocument();
+    expect(screen.queryByText("system_report_only")).not.toBeInTheDocument();
+    expect(screen.queryByText("continuous_tick:warn")).not.toBeInTheDocument();
+    expect(screen.getByText("12345678-01")).toBeInTheDocument();
+    expect(screen.getByText("2,000,000원")).toBeInTheDocument();
+    expect(screen.getByText("500,000원")).toBeInTheDocument();
+    expect(screen.getByText("-84,200원")).toBeInTheDocument();
+    expect(screen.getByText("Pro 분석 있음 · Flash 문서 대기/안전 차단")).toBeInTheDocument();
+    expect(screen.getByText("자동 점검: 주의")).toBeInTheDocument();
+  });
+
+  test("legacy placeholder가 들어와도 sked 같은 잘린 문자열 대신 안내 문구를 렌더링한다", () => {
+    render(
+      <DashboardView
+        initialDataObj={buildSsrInitialDataObj({
+          operatorSnapshot: {
+            schema_version: "operator_console_snapshot/v0",
+            status: {
+              mode: "paper_sandbox",
+              serviceHealth: "observable",
+              orderGate: "blocked_calendar_unconfigured",
+            },
+            summary: {
+              accountId: "paper_account_alias:masked",
+              cashBalance: "masked",
+              reserveBalance: "masked",
+              todayPnl: "system_report_only",
+              aiJobStatus: "pro:present / flash:present",
+              reportStatus: "continuous_tick:ok",
+            },
+            readinessTruth: {
+              headline: "NOT_READY_FOR_PAPER_TRADING",
+              operatorMessage: "서비스가 떠 있어도 모의매매 준비 완료가 아닙니다.",
+              blockers: ["blocked_calendar_unconfigured"],
+              paperNetworkEnabled: false,
+              paperOrderEnabled: false,
+              paperOrdersSubmitted: false,
+              paperObservationAccepted: false,
+              operationalTradingReadiness: false,
+              orderGate: "blocked_calendar_unconfigured",
+              serviceVisibilityIsNotReadiness: true,
+            },
+            holdings: [],
+            candidates: [],
+            intelligence: [],
+            aiThread: [],
+            auditLog: [],
+          },
+        })}
+        initialErrorObj={{}}
+      />,
+    );
+
+    expect(screen.queryByText(/sked/)).not.toBeInTheDocument();
+    expect(screen.getByText("계좌 조회 미연동")).toBeInTheDocument();
+    expect(screen.getAllByText("조회 미연동").length).toBeGreaterThan(0);
+    expect(screen.getByText("손익 집계 대기")).toBeInTheDocument();
   });
 
   test("에러는 code/requestId만 노출하고 raw JSON 페이로드는 렌더하지 않는다", () => {
@@ -198,11 +257,16 @@ describe("hwiStock operator console view", () => {
         result: {
           schema_version: "operator_console_snapshot/v0",
           status: { mode: "paper_sandbox", serviceHealth: "observable", orderGate: "blocked_calendar_unconfigured" },
-          summary: {
-            accountId: "paper_account_alias:masked",
-            paperNetworkEnabled: false,
-            paperOrderEnabled: false,
-            paperOrdersSubmitted: false,
+            summary: {
+              accountId: "12345678-01",
+              cashBalance: 2000000,
+              reserveBalance: 500000,
+              todayPnl: 0,
+              aiJobStatus: "pro:present / flash:present",
+              reportStatus: "continuous_tick:ok",
+              paperNetworkEnabled: false,
+              paperOrderEnabled: false,
+              paperOrdersSubmitted: false,
             paperObservationAccepted: false,
             operationalTradingReadiness: false,
           },
@@ -230,6 +294,7 @@ describe("hwiStock operator console view", () => {
       expect(screen.getByText("ORDER_GATE")).toBeInTheDocument();
     });
     expect(screen.getByTestId("operator-ai-thread")).toBeInTheDocument();
-    expect(screen.getAllByText("blocked_calendar_unconfigured").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("시장 시간표 설정 필요").length).toBeGreaterThan(0);
+    expect(screen.queryByText("blocked_calendar_unconfigured")).not.toBeInTheDocument();
   });
 });

@@ -262,7 +262,14 @@ def test_unit014_execution_preflight_idempotency_and_realtime_exit():
     assert exit_decision["depends_on_next_flash_tick"] is False
 
 
-def test_unit015_operator_snapshot_is_read_only_and_masks_readiness(tmp_path: Path):
+def _disable_dashboard_account_network(monkeypatch):
+    monkeypatch.setenv("HWISTOCK_DASHBOARD_ACCOUNT_READ_ENABLED", "false")
+    monkeypatch.setenv("KIS_PAPER_ACCOUNT_NO", "12345678")
+    monkeypatch.setenv("KIS_PAPER_ACCOUNT_PRODUCT_CODE", "01")
+
+
+def test_unit015_operator_snapshot_is_read_only_and_exposes_local_account_summary(tmp_path: Path, monkeypatch):
+    _disable_dashboard_account_network(monkeypatch)
     safe_unit = tmp_path / "hwistock-kis-paper-runner.service"
     safe_unit.write_text(
         "\n".join(
@@ -282,9 +289,11 @@ def test_unit015_operator_snapshot_is_read_only_and_masks_readiness(tmp_path: Pa
     assert snapshot["schema_version"] == "operator_console_snapshot/v0"
     assert snapshot["safety"]["readOnlyDashboard"] is True
     assert snapshot["safety"]["buySellControlsExposed"] is False
-    assert snapshot["safety"]["rawAccountDisplayed"] is False
+    assert snapshot["safety"]["rawAccountDisplayed"] is True
     assert snapshot["readiness"]["operationalTradingReadiness"] is False
-    assert snapshot["summary"]["accountId"] == "paper_account_alias:masked"
+    assert snapshot["summary"]["accountId"] == "12345678-01"
+    assert snapshot["summary"]["cashBalance"] == "잔고 조회 비활성"
+    assert snapshot["summary"]["reserveBalance"] == 500_000
     assert snapshot["readinessTruth"]["headline"] == "NOT_READY_FOR_PAPER_TRADING"
     assert snapshot["readinessTruth"]["serviceVisibilityIsNotReadiness"] is True
     assert snapshot["readinessTruth"]["paperNetworkEnabled"] is True
@@ -307,7 +316,8 @@ def test_unit015_operator_snapshot_is_read_only_and_masks_readiness(tmp_path: Pa
     assert Path(report["reportPath"]).is_file()
 
 
-def test_unit015_operator_snapshot_detects_order_enabled_service_contradiction(tmp_path: Path):
+def test_unit015_operator_snapshot_detects_order_enabled_service_contradiction(tmp_path: Path, monkeypatch):
+    _disable_dashboard_account_network(monkeypatch)
     risky_unit = tmp_path / "hwistock-kis-paper-runner.service"
     risky_unit.write_text(
         "\n".join(
@@ -330,7 +340,8 @@ def test_unit015_operator_snapshot_detects_order_enabled_service_contradiction(t
     assert any(entry["code"] == "SYSTEMD_ORDER_FLAG" and entry["message"] == "enabled" for entry in snapshot["auditLog"])
 
 
-def test_unit015_operator_snapshot_maps_runtime_artifacts_to_dashboard_rows(tmp_path: Path):
+def test_unit015_operator_snapshot_maps_runtime_artifacts_to_dashboard_rows(tmp_path: Path, monkeypatch):
+    _disable_dashboard_account_network(monkeypatch)
     (tmp_path / "normalized" / "2026-06-05").mkdir(parents=True)
     (tmp_path / "compiled-watch" / "2026-06-05").mkdir(parents=True)
     (tmp_path / "ai" / "2026-06-05").mkdir(parents=True)

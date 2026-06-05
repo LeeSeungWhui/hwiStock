@@ -9,7 +9,6 @@ import { usePageData } from "@/app/lib/hooks/usePageData";
 import Badge from "@/app/lib/component/Badge";
 import Card from "@/app/lib/component/Card";
 import Skeleton from "@/app/lib/component/Skeleton";
-import MaskedValue from "./components/MaskedValue";
 import { PAGE_CONFIG } from "./initData";
 import LANG_KO from "./lang.ko";
 import {
@@ -29,12 +28,153 @@ const healthVariantMap = {
   fixture: "outline",
 };
 
+const readinessHeadlineLabelMap = {
+  NOT_READY: "준비 전",
+  NOT_READY_FOR_PAPER_TRADING: "준비 전",
+  READY: "준비 완료",
+};
+
+const readinessBlockerLabelMap = {
+  artifact_missing_or_safe_blocked: "운영 산출물 없음/안전 차단",
+  blocked_calendar_stale: "시장 시간표 갱신 필요",
+  blocked_calendar_unconfigured: "시장 시간표 설정 필요",
+  blocked_kill_switch: "킬스위치 작동 중",
+  blocked_source_unconfigured: "시세 데이터 소스 설정 필요",
+  fallback_snapshot: "폴백 스냅샷 표시 중",
+  missing_or_safe_blocked: "없음/안전 차단",
+  operational_readiness_false: "운영 준비 미완료",
+  operational_trading_readiness_false: "운영 준비 미완료",
+  paper_network_disabled: "시세 API 연결 차단",
+  paper_observation_not_accepted: "관찰 승인 필요",
+  paper_orders_not_submitted: "주문 제출 대기",
+  systemd_order_enabled_contradicts_readiness: "서비스 주문 설정과 준비 상태 불일치",
+  unknown: "상태 확인 필요",
+};
+
+const summaryPlaceholderLabelMap = {
+  "account_alias:masked": "계좌 조회 미연동",
+  "paper_account_alias:masked": "계좌 조회 미연동",
+  masked: "조회 미연동",
+  system_report_only: "손익 집계 대기",
+};
+
+const aiJobLabelMap = {
+  present: "있음",
+  missing: "없음",
+  missing_or_safe_blocked: "대기/안전 차단",
+};
+
+const reportStatusLabelMap = {
+  ok: "정상",
+  pass: "정상",
+  warn: "주의",
+  fail: "오류",
+  missing: "리포트 없음",
+  missing_or_safe_blocked: "리포트 없음/안전 차단",
+  operator_window_required: "운영자 확인 필요",
+  safe_block_paper_read_network_disabled: "시세 API 연결 차단",
+};
+
 /* 7. 함수 ======================================================================================================================= */
 const formatSignedNumber = (value, locale = "ko-KR") => {
   const numeric = Number(String(value).replace(/[^\d.-]/g, ""));
   if (Number.isNaN(numeric)) return String(value || "—");
   const prefix = numeric > 0 ? "+" : "";
   return `${prefix}${numeric.toLocaleString(locale)}`;
+};
+
+const normalizeToken = (value) => String(value ?? "").trim();
+
+const normalizedSummaryText = (value, fallback = "—") => {
+  const token = normalizeToken(value);
+  return summaryPlaceholderLabelMap[token] || token || fallback;
+};
+
+const formatKrwValue = (value, { signed = false } = {}) => {
+  const placeholder = summaryPlaceholderLabelMap[normalizeToken(value)];
+  if (placeholder) return placeholder;
+  const numeric = Number(String(value).replace(/[^\d.-]/g, ""));
+  if (Number.isNaN(numeric)) return normalizedSummaryText(value);
+  const prefix = signed && numeric > 0 ? "+" : "";
+  return `${prefix}${numeric.toLocaleString("ko-KR")}원`;
+};
+
+const humanizeStatusToken = (value) => {
+  const token = normalizeToken(value);
+  return readinessBlockerLabelMap[token]
+    || reportStatusLabelMap[token]
+    || aiJobLabelMap[token]
+    || token
+    || "—";
+};
+
+const formatHeadline = (value, ready) => (
+  readinessHeadlineLabelMap[normalizeToken(value)] || (ready ? "준비 완료" : "준비 전")
+);
+
+const formatReadinessState = (key, value) => {
+  const on = Boolean(value);
+  const labelByKey = {
+    paperNetworkEnabled: ["연결 차단", "연결 허용"],
+    paperOrderEnabled: ["주문 차단", "주문 허용"],
+    paperOrdersSubmitted: ["제출 대기", "제출 완료"],
+    paperObservationAccepted: ["미승인", "승인됨"],
+    operationalTradingReadiness: ["준비 전", "준비 완료"],
+  };
+  const pair = labelByKey[key] || ["아니오", "예"];
+  return pair[on ? 1 : 0];
+};
+
+const formatAiJobStatus = (value) => {
+  const text = normalizeToken(value);
+  if (!text) return "AI 산출물 없음";
+  return text
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const [rawName, rawStatus] = part.split(":").map((item) => item.trim());
+      const nameMap = { pro: "Pro 분석", flash: "Flash 문서" };
+      const name = nameMap[rawName] || rawName || "AI 작업";
+      const status = aiJobLabelMap[rawStatus] || humanizeStatusToken(rawStatus);
+      return `${name} ${status}`;
+    })
+    .join(" · ");
+};
+
+const formatReportStatus = (value) => {
+  const text = normalizeToken(value);
+  if (!text) return "리포트 없음";
+  if (text.startsWith("continuous_tick:")) {
+    return `자동 점검: ${humanizeStatusToken(text.slice("continuous_tick:".length))}`;
+  }
+  return humanizeStatusToken(text);
+};
+
+const formatAuditMessage = (value) => {
+  const text = normalizeToken(value);
+  if (!text) return "—";
+  if (text === "dashboard exposes no order controls") {
+    return "대시보드는 주문 실행 버튼을 노출하지 않음";
+  }
+  if (text === "enabled") return "활성";
+  if (text === "disabled") return "비활성";
+  if (text.includes(",")) {
+    return text
+      .split(",")
+      .map((item) => humanizeStatusToken(item))
+      .join(" · ");
+  }
+  return humanizeStatusToken(text);
+};
+
+const formatOperatorMessage = (value) => {
+  const text = normalizeToken(value);
+  if (!text) return LANG_KO.view.readiness.serviceVisibilityWarning;
+  if (text.includes("paper network") || text.includes("order submission")) {
+    return "서비스/타이머/대시보드가 보여도 자동매매 준비 완료가 아닙니다. 시세 API 연결, 주문 제출, 관찰 승인, 시장 시간표를 모두 확인해야 합니다.";
+  }
+  return text;
 };
 
 /* 9. 내부 컴포넌트 ============================================================================================================== */
@@ -53,8 +193,6 @@ const SummaryRow = ({ label, children }) => (
     <div className="text-right">{children}</div>
   </div>
 );
-
-const formatBooleanState = (value) => (value ? "true" : "false");
 
 const ReadinessTruthBanner = ({ readinessTruth, usesFallback }) => {
   const truth = readinessTruth || {};
@@ -84,20 +222,20 @@ const ReadinessTruthBanner = ({ readinessTruth, usesFallback }) => {
             {ready ? LANG_KO.view.readiness.ready : LANG_KO.view.readiness.notReady}
           </h2>
           <p className="mt-1 text-sm">
-            {truth.operatorMessage || LANG_KO.view.readiness.serviceVisibilityWarning}
+            {formatOperatorMessage(truth.operatorMessage)}
           </p>
         </div>
         <Badge variant={ready ? "success" : "danger"} size="md">
-          {truth.headline || (ready ? "READY" : "NOT_READY_FOR_PAPER_TRADING")}
+          {formatHeadline(truth.headline, ready)}
         </Badge>
       </div>
       <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-6">
-        <div><strong>{LANG_KO.view.readiness.paperNetwork}</strong>: {formatBooleanState(truth.paperNetworkEnabled)}</div>
-        <div><strong>{LANG_KO.view.readiness.paperOrderEnabled}</strong>: {formatBooleanState(truth.paperOrderEnabled)}</div>
-        <div><strong>{LANG_KO.view.readiness.paperOrders}</strong>: {formatBooleanState(truth.paperOrdersSubmitted)}</div>
-        <div><strong>{LANG_KO.view.readiness.observation}</strong>: {formatBooleanState(truth.paperObservationAccepted)}</div>
-        <div><strong>{LANG_KO.view.readiness.operational}</strong>: {formatBooleanState(truth.operationalTradingReadiness)}</div>
-        <div><strong>{LANG_KO.view.readiness.orderGate}</strong>: {truth.orderGate || "unknown"}</div>
+        <div><strong>{LANG_KO.view.readiness.paperNetwork}</strong>: {formatReadinessState("paperNetworkEnabled", truth.paperNetworkEnabled)}</div>
+        <div><strong>{LANG_KO.view.readiness.paperOrderEnabled}</strong>: {formatReadinessState("paperOrderEnabled", truth.paperOrderEnabled)}</div>
+        <div><strong>{LANG_KO.view.readiness.paperOrders}</strong>: {formatReadinessState("paperOrdersSubmitted", truth.paperOrdersSubmitted)}</div>
+        <div><strong>{LANG_KO.view.readiness.observation}</strong>: {formatReadinessState("paperObservationAccepted", truth.paperObservationAccepted)}</div>
+        <div><strong>{LANG_KO.view.readiness.operational}</strong>: {formatReadinessState("operationalTradingReadiness", truth.operationalTradingReadiness)}</div>
+        <div><strong>{LANG_KO.view.readiness.orderGate}</strong>: {humanizeStatusToken(truth.orderGate || "unknown")}</div>
       </div>
       {usesFallback ? (
         <p className="mt-2 text-xs font-semibold">{LANG_KO.view.readiness.fallbackWarning}</p>
@@ -105,7 +243,9 @@ const ReadinessTruthBanner = ({ readinessTruth, usesFallback }) => {
       {blockerList.length ? (
         <div className="mt-2 flex flex-wrap gap-1" aria-label={LANG_KO.view.readiness.blockers}>
           {blockerList.map((blocker) => (
-            <Badge key={blocker} variant="danger" size="sm">{blocker}</Badge>
+            <Badge key={blocker} variant="danger" size="sm" title={blocker}>
+              {humanizeStatusToken(blocker)}
+            </Badge>
           ))}
         </div>
       ) : null}
@@ -253,17 +393,23 @@ const OperatorConsoleView = ({
             ) : (
               <div>
                 <SummaryRow label={LANG_KO.view.summary.accountId}>
-                  <MaskedValue value={snapshot.summary.accountId} label={LANG_KO.view.summary.accountId} />
+                  <span className="font-mono text-sm font-semibold text-slate-800">
+                    {normalizedSummaryText(snapshot.summary.accountId)}
+                  </span>
                 </SummaryRow>
                 <SummaryRow label={LANG_KO.view.summary.cash}>
-                  <MaskedValue value={snapshot.summary.cashBalance} label={LANG_KO.view.summary.cash} />
+                  <span className="font-mono text-sm font-semibold text-slate-800">
+                    {formatKrwValue(snapshot.summary.cashBalance)}
+                  </span>
                 </SummaryRow>
                 <SummaryRow label={LANG_KO.view.summary.reserve}>
-                  <MaskedValue value={snapshot.summary.reserveBalance} label={LANG_KO.view.summary.reserve} />
+                  <span className="font-mono text-sm font-semibold text-slate-800">
+                    {formatKrwValue(snapshot.summary.reserveBalance)}
+                  </span>
                 </SummaryRow>
                 <SummaryRow label={LANG_KO.view.summary.todayPnl}>
-                  <span className="font-mono text-sm text-slate-800">
-                    {formatSignedNumber(snapshot.summary.todayPnl)}
+                  <span className="font-mono text-sm font-semibold text-slate-800">
+                    {formatKrwValue(snapshot.summary.todayPnl, { signed: true })}
                   </span>
                 </SummaryRow>
                 <SummaryRow label={LANG_KO.view.summary.openPositions}>
@@ -275,10 +421,10 @@ const OperatorConsoleView = ({
                   </Badge>
                 </SummaryRow>
                 <SummaryRow label={LANG_KO.view.summary.aiJob}>
-                  <span className="text-sm text-slate-700">{snapshot.summary.aiJobStatus}</span>
+                  <span className="text-sm text-slate-700">{formatAiJobStatus(snapshot.summary.aiJobStatus)}</span>
                 </SummaryRow>
                 <SummaryRow label={LANG_KO.view.summary.reports}>
-                  <span className="text-xs text-slate-600">{snapshot.summary.reportStatus}</span>
+                  <span className="text-xs text-slate-600">{formatReportStatus(snapshot.summary.reportStatus)}</span>
                 </SummaryRow>
               </div>
             )}
@@ -429,7 +575,9 @@ const OperatorConsoleView = ({
                         {entry.code}
                       </Badge>
                     </div>
-                    <p className="mt-1 text-sm text-slate-700">{entry.message}</p>
+                    <p className="mt-1 text-sm text-slate-700" title={entry.message}>
+                      {formatAuditMessage(entry.message)}
+                    </p>
                   </li>
                 )) : (
                   <li className="rounded-md border border-slate-100 px-3 py-4 text-sm text-slate-500">

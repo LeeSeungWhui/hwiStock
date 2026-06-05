@@ -14,6 +14,8 @@ from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo
 
 from service import HwiStockRunnerService as baseRunner
+from lib.kis_paper_token_cache import loadKisPaperAccessToken, tokenCacheRevokeSkippedStep
+from service.kis_paper_adapter import KisPaperAdapter, UrllibJsonTransport
 
 KST = ZoneInfo("Asia/Seoul")
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -85,6 +87,97 @@ def cleanDisplayText(value: Any, fallback: str = "-") -> str:
     text = re.sub(r"<[^>]+>", "", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text or fallback
+
+
+def boolEnv(key: str, default: bool = False) -> bool:
+    raw = str(os.getenv(key, "")).strip().lower()
+    if not raw:
+        return default
+    return raw in {"1", "true", "yes", "on"}
+
+
+def formatAccountLabel(accountNo: str, productCode: str) -> str:
+    account = str(accountNo or "").strip()
+    product = str(productCode or "").strip()
+    if account and product:
+        return f"{account}-{product}"
+    return account or "계좌 설정 없음"
+
+
+def buildDashboardAccountSummary(snapshotAt: datetime) -> Dict[str, Any]:
+    accountNo = str(os.getenv("KIS_PAPER_ACCOUNT_NO") or "").strip()
+    productCode = str(os.getenv("KIS_PAPER_ACCOUNT_PRODUCT_CODE") or "").strip()
+    reserveFloor = int(baseRunner.LIVE_CAPITAL_BASELINE_KRW * 0.25)
+    fallback = {
+        "schema_version": "dashboard_account_summary/v0",
+        "accountId": formatAccountLabel(accountNo, productCode),
+        "cashBalance": "잔고 조회 대기",
+        "reserveBalance": reserveFloor,
+        "todayPnl": "손익 조회 대기",
+        "openPositions": 0,
+        "status": "pending",
+        "accountDisplayed": bool(accountNo),
+        "rawProviderPayloadDisplayed": False,
+        "credentialValuesPrinted": False,
+    }
+    if not boolEnv("HWISTOCK_DASHBOARD_ACCOUNT_READ_ENABLED", True):
+        return {
+            **fallback,
+            "cashBalance": "잔고 조회 비활성",
+            "todayPnl": "손익 조회 비활성",
+            "status": "disabled_by_env",
+        }
+
+    sampleSymbol = str(os.getenv("HWISTOCK_KIS_HEALTH_SYMBOL") or "005930").strip() or "005930"
+    adapter = KisPaperAdapter(env=os.environ, transport=UrllibJsonTransport())
+    missing = adapter.missingEnvKeys()
+    if missing:
+        return {
+            **fallback,
+            "cashBalance": "KIS 계좌 설정 필요",
+            "todayPnl": "KIS 계좌 설정 필요",
+            "status": "blocked_missing_env",
+        }
+
+    try:
+        tokenResult, token, tokenCacheManaged = loadKisPaperAccessToken(adapter, env=os.environ, now=snapshotAt)
+        if not tokenResult.get("token_present") or not token:
+            return {
+                **fallback,
+                "cashBalance": "KIS 토큰 발급 실패",
+                "todayPnl": "KIS 토큰 발급 실패",
+                "status": "blocked_token_missing",
+            }
+        accountSummary = adapter.inquireAccountSummaryForDashboard(token, sampleSymbol)
+        if tokenCacheManaged:
+            tokenCacheRevokeSkippedStep()
+        else:
+            adapter.revokeToken(token)
+    except Exception as exc:  # noqa: BLE001 - dashboard must degrade without leaking provider payloads.
+        return {
+            **fallback,
+            "cashBalance": "KIS 잔고 조회 실패",
+            "todayPnl": "KIS 잔고 조회 실패",
+            "status": "warn",
+            "errorType": type(exc).__name__,
+        }
+
+    return {
+        **fallback,
+        "accountId": accountSummary.get("account_label") or fallback["accountId"],
+        "cashBalance": accountSummary.get("cash_balance_krw")
+        if accountSummary.get("cash_balance_krw") is not None
+        else "잔고 조회 실패",
+        "reserveBalance": reserveFloor,
+        "todayPnl": accountSummary.get("today_pnl_krw")
+        if accountSummary.get("today_pnl_krw") is not None
+        else "손익 조회 실패",
+        "openPositions": int(accountSummary.get("positions_count") or 0),
+        "status": accountSummary.get("status") or "unknown",
+        "balanceStatus": accountSummary.get("balance_status"),
+        "buyableStatus": accountSummary.get("buyable_status"),
+        "accountDisplayed": bool(accountSummary.get("account_label")),
+    }
 
 
 def formatKstMinute(value: Optional[str], fallback: Optional[datetime] = None) -> str:
@@ -448,6 +541,7 @@ def buildOperatorConsoleSnapshot(
     latestArtifactPaths = latestRuntimePaths(runtimeRoot, dayKey)
     runtimeArtifacts = loadRuntimeArtifacts(latestArtifactPaths)
     servicePolicy = inspectKisPaperRunnerServicePolicy(serviceUnitPaths)
+    accountSummary = buildDashboardAccountSummary(snapshotAt)
     readiness = runnerStatus["readiness"]
     paperNetworkEnabled = bool(servicePolicy["paperNetworkEnabledByService"])
     paperOrderEnabled = bool(servicePolicy["paperOrderEnabledByService"])
@@ -512,14 +606,15 @@ def buildOperatorConsoleSnapshot(
             "orderGate": runnerStatus["orderGate"],
         },
         "summary": {
-            "accountId": "paper_account_alias:masked",
-            "cashBalance": "masked",
-            "reserveBalance": "masked",
-            "todayPnl": "system_report_only",
-            "openPositions": 0,
+            "accountId": accountSummary["accountId"],
+            "cashBalance": accountSummary["cashBalance"],
+            "reserveBalance": accountSummary["reserveBalance"],
+            "todayPnl": accountSummary["todayPnl"],
+            "openPositions": accountSummary["openPositions"],
             "riskRejects": riskRejects,
             "aiJobStatus": aiJobStatus,
             "reportStatus": reportStatus,
+            "accountReadStatus": accountSummary["status"],
             "paperNetworkEnabled": paperNetworkEnabled,
             "paperOrderEnabled": paperOrderEnabled,
             "paperOrdersSubmitted": paperOrdersSubmitted,
@@ -537,6 +632,13 @@ def buildOperatorConsoleSnapshot(
             ],
             "latestEvidencePaths": latestArtifactPaths,
             "kisPaperRunnerServicePolicy": servicePolicy,
+            "dashboardAccountSummary": {
+                "status": accountSummary["status"],
+                "balanceStatus": accountSummary.get("balanceStatus"),
+                "buyableStatus": accountSummary.get("buyableStatus"),
+                "rawProviderPayloadDisplayed": accountSummary["rawProviderPayloadDisplayed"],
+                "credentialValuesPrinted": accountSummary["credentialValuesPrinted"],
+            },
             "localOnly": True,
             "publicBind": False,
         },
@@ -558,7 +660,7 @@ def buildOperatorConsoleSnapshot(
             "readOnlyDashboard": True,
             "buySellControlsExposed": False,
             "liveToggleExposed": False,
-            "rawAccountDisplayed": False,
+            "rawAccountDisplayed": accountSummary["accountDisplayed"],
             "rawProviderPayloadDisplayed": False,
         },
     }

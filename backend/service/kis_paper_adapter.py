@@ -111,6 +111,104 @@ def sanitizeKisResponse(
     return result
 
 
+def _to_int_or_none(value: Any) -> Optional[int]:
+    raw = str(value or "").strip().replace(",", "")
+    if not raw:
+        return None
+    try:
+        return int(float(raw))
+    except ValueError:
+        return None
+
+
+def _first_mapping(value: Any) -> Dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, list):
+        for item in value:
+            if isinstance(item, Mapping):
+                return dict(item)
+    return {}
+
+
+def _first_int_by_keys(container: Any, keys: tuple[str, ...]) -> Optional[int]:
+    if isinstance(container, Mapping):
+        for key in keys:
+            parsed = _to_int_or_none(container.get(key))
+            if parsed is not None:
+                return parsed
+        for value in container.values():
+            nested = _first_int_by_keys(value, keys)
+            if nested is not None:
+                return nested
+    elif isinstance(container, list):
+        for item in container:
+            nested = _first_int_by_keys(item, keys)
+            if nested is not None:
+                return nested
+    return None
+
+
+def summarizeKisBalancePayload(response: Mapping[str, Any]) -> Dict[str, Any]:
+    payload = response.get("payload") if isinstance(response.get("payload"), Mapping) else {}
+    output1 = payload.get("output1")
+    output2 = _first_mapping(payload.get("output2"))
+    positions = output1 if isinstance(output1, list) else []
+    return {
+        "cash_balance_krw": _first_int_by_keys(
+            output2,
+            (
+                "dnca_tot_amt",
+                "prvs_rcdl_excc_amt",
+                "nxdy_excc_amt",
+                "d2_auto_rdpt_amt",
+                "tot_evlu_amt",
+            ),
+        ),
+        "total_eval_krw": _first_int_by_keys(
+            output2,
+            (
+                "tot_evlu_amt",
+                "tot_asst_amt",
+                "nass_amt",
+                "evlu_amt_smtl_amt",
+            ),
+        ),
+        "stock_eval_krw": _first_int_by_keys(
+            output2,
+            (
+                "scts_evlu_amt",
+                "evlu_amt_smtl_amt",
+            ),
+        ),
+        "today_pnl_krw": _first_int_by_keys(
+            output2,
+            (
+                "evlu_pfls_smtl_amt",
+                "asst_icdc_amt",
+            ),
+        ),
+        "positions_count": len(positions),
+    }
+
+
+def summarizeKisBuyablePayload(response: Mapping[str, Any]) -> Dict[str, Any]:
+    payload = response.get("payload") if isinstance(response.get("payload"), Mapping) else {}
+    output = payload.get("output")
+    return {
+        "buyable_cash_krw": _first_int_by_keys(
+            output,
+            (
+                "ord_psbl_cash",
+                "ord_psbl_sbst",
+                "ruse_psbl_amt",
+                "max_buy_amt",
+                "nrcvb_buy_amt",
+            ),
+        )
+    }
+
+
 class NetworkDisabledTransport:
     def request_json(
         self,
@@ -321,6 +419,61 @@ class KisPaperAdapter:
         result["route"] = "KRX"
         result["side"] = side
         return result
+
+    def inquireAccountSummaryForDashboard(self, token: str, symbol: str) -> Dict[str, Any]:
+        blocked = self._blockedIfMissingEnv("dashboard_account_summary")
+        if blocked:
+            return {
+                **blocked,
+                "account_no": "",
+                "account_product_code": "",
+                "account_label": "",
+                "credential_values_printed": False,
+                "raw_response_stored": False,
+            }
+
+        balance_response = self._request(
+            "GET",
+            f"/uapi/domestic-stock/v1/trading/inquire-balance?{urllib.parse.urlencode(self._accountQuery())}",
+            headers=self._authHeaders(token, "VTTC8434R"),
+        )
+        buyable_params = {
+            "CANO": self._env_value("KIS_PAPER_ACCOUNT_NO"),
+            "ACNT_PRDT_CD": self._env_value("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
+            "PDNO": symbol,
+            "ORD_UNPR": "",
+            "ORD_DVSN": "01",
+            "CMA_EVLU_AMT_ICLD_YN": "Y",
+            "OVRS_ICLD_YN": "Y",
+        }
+        buyable_response = self._request(
+            "GET",
+            f"/uapi/domestic-stock/v1/trading/inquire-psbl-order?{urllib.parse.urlencode(buyable_params)}",
+            headers=self._authHeaders(token, "VTTC8908R"),
+        )
+        balance = sanitizeKisResponse(balance_response, step="dashboard_balance_inquire", row_count_key="output1")
+        buyable = sanitizeKisResponse(buyable_response, step="dashboard_buyable_inquire")
+        balance_summary = summarizeKisBalancePayload(balance_response)
+        buyable_summary = summarizeKisBuyablePayload(buyable_response)
+        cash_balance = buyable_summary.get("buyable_cash_krw")
+        if cash_balance is None:
+            cash_balance = balance_summary.get("cash_balance_krw")
+        return {
+            "step": "dashboard_account_summary",
+            "status": "pass" if balance.get("status") == "pass" and buyable.get("status") == "pass" else "warn",
+            "account_no": self._env_value("KIS_PAPER_ACCOUNT_NO"),
+            "account_product_code": self._env_value("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
+            "account_label": f"{self._env_value('KIS_PAPER_ACCOUNT_NO')}-{self._env_value('KIS_PAPER_ACCOUNT_PRODUCT_CODE')}",
+            "cash_balance_krw": cash_balance,
+            "total_eval_krw": balance_summary.get("total_eval_krw"),
+            "stock_eval_krw": balance_summary.get("stock_eval_krw"),
+            "today_pnl_krw": balance_summary.get("today_pnl_krw"),
+            "positions_count": balance_summary.get("positions_count", 0),
+            "balance_status": balance.get("status"),
+            "buyable_status": buyable.get("status"),
+            "credential_values_printed": False,
+            "raw_response_stored": False,
+        }
 
     def cancelOrder(self, token: str, *, original_order_no: str, quantity: int = 0) -> Dict[str, Any]:
         body = {

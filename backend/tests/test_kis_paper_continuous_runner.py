@@ -39,6 +39,28 @@ class FakeTransport:
         if "/uapi/domestic-stock/v1/trading/order-cash" in url:
             rt_cd = "0" if self.order_status == "pass" else "1"
             return {"http_status": 200, "payload": {"rt_cd": rt_cd, "msg_cd": "ok" if rt_cd == "0" else "reject"}}
+        if "/uapi/domestic-stock/v1/trading/inquire-balance" in url:
+            return {
+                "http_status": 200,
+                "payload": {
+                    "rt_cd": "0",
+                    "msg_cd": "ok",
+                    "output1": [{"pdno": "005930"}, {"pdno": "000660"}],
+                    "output2": [
+                        {
+                            "dnca_tot_amt": "1860000",
+                            "tot_evlu_amt": "2140000",
+                            "scts_evlu_amt": "280000",
+                            "evlu_pfls_smtl_amt": "-84200",
+                        }
+                    ],
+                },
+            }
+        if "/uapi/domestic-stock/v1/trading/inquire-psbl-order" in url:
+            return {
+                "http_status": 200,
+                "payload": {"rt_cd": "0", "msg_cd": "ok", "output": {"ord_psbl_cash": "1720000"}},
+            }
         return {"http_status": 200, "payload": {"rt_cd": "0", "msg_cd": "ok", "output1": [{"row": 1}]}}
 
 
@@ -146,6 +168,25 @@ def test_adapter_allows_only_krx_cash_order_with_fake_transport():
     assert order["broker_endpoint_called"] is True
     assert order["route"] == "KRX"
     assert any("/uapi/domestic-stock/v1/trading/order-cash" in call["url"] for call in transport.calls)
+
+
+def test_adapter_account_summary_for_dashboard_extracts_display_values_without_raw_payload():
+    transport = FakeTransport()
+    adapter = KisPaperAdapter(env=_env(), transport=transport)
+    token_result, token = adapter.issueTokenWithValue()
+    assert token_result["token_present"] is True
+
+    summary = adapter.inquireAccountSummaryForDashboard(token, "005930")
+
+    assert summary["status"] == "pass"
+    assert summary["account_label"] == "12345678-01"
+    assert summary["cash_balance_krw"] == 1_720_000
+    assert summary["total_eval_krw"] == 2_140_000
+    assert summary["stock_eval_krw"] == 280_000
+    assert summary["today_pnl_krw"] == -84_200
+    assert summary["positions_count"] == 2
+    assert summary["credential_values_printed"] is False
+    assert summary["raw_response_stored"] is False
 
 
 def test_observation_manifest_is_operator_controlled_not_fixed_duration():
