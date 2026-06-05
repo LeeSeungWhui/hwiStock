@@ -91,8 +91,9 @@ const ReadinessTruthBanner = ({ readinessTruth, usesFallback }) => {
           {truth.headline || (ready ? "READY" : "NOT_READY_FOR_PAPER_TRADING")}
         </Badge>
       </div>
-      <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-6">
         <div><strong>{LANG_KO.view.readiness.paperNetwork}</strong>: {formatBooleanState(truth.paperNetworkEnabled)}</div>
+        <div><strong>{LANG_KO.view.readiness.paperOrderEnabled}</strong>: {formatBooleanState(truth.paperOrderEnabled)}</div>
         <div><strong>{LANG_KO.view.readiness.paperOrders}</strong>: {formatBooleanState(truth.paperOrdersSubmitted)}</div>
         <div><strong>{LANG_KO.view.readiness.observation}</strong>: {formatBooleanState(truth.paperObservationAccepted)}</div>
         <div><strong>{LANG_KO.view.readiness.operational}</strong>: {formatBooleanState(truth.operationalTradingReadiness)}</div>

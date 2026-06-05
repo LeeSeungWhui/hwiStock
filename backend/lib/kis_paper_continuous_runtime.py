@@ -9,6 +9,7 @@ broker state, AI provider call, or public exposure is performed here.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -73,6 +74,8 @@ def _float_env(env: Mapping[str, str], key: str, default: float) -> float:
 
 def loadContinuousPaperRunnerConfig(env: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
     source = env if env is not None else os.environ
+    paper_order_requested = _bool_env(source, "HWISTOCK_KIS_PAPER_ORDER_ENABLED", False)
+    paper_order_approval = loadPaperOrderApproval(source, requested=paper_order_requested)
     return {
         "runner_id": "hwistock-kis-paper-continuous-runner",
         "schema_version": "kis_paper_continuous_runner_config/v0",
@@ -82,7 +85,9 @@ def loadContinuousPaperRunnerConfig(env: Optional[Mapping[str, str]] = None) -> 
         "auto_pass_on_duration": False,
         "auto_fail_on_duration": False,
         "paper_network_enabled": _bool_env(source, "HWISTOCK_KIS_PAPER_NETWORK_ENABLED", False),
-        "paper_order_enabled": _bool_env(source, "HWISTOCK_KIS_PAPER_ORDER_ENABLED", False),
+        "paper_order_requested": paper_order_requested,
+        "paper_order_enabled": paper_order_requested and paper_order_approval["approved"],
+        "paper_order_approval": paper_order_approval,
         "intent_file": str(source.get("HWISTOCK_KIS_PAPER_INTENT_FILE", "")).strip(),
         "data_root": str(source.get("HWISTOCK_DATA_DIR", str(DEFAULT_DATA_ROOT))).strip(),
         "state_file": str(source.get("HWISTOCK_KIS_PAPER_STATE_FILE", "")).strip(),
@@ -90,6 +95,59 @@ def loadContinuousPaperRunnerConfig(env: Optional[Mapping[str, str]] = None) -> 
         "paper_env": describeKisPaperEnv(source),
         "capabilities": loadKisPaperCapabilityFlags(),
     }
+
+
+def loadPaperOrderApproval(
+    env: Optional[Mapping[str, str]] = None,
+    *,
+    requested: Optional[bool] = None,
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    source = env if env is not None else os.environ
+    request_flag = _bool_env(source, "HWISTOCK_KIS_PAPER_ORDER_ENABLED", False) if requested is None else bool(requested)
+    run_id = str(source.get("HWISTOCK_OPERATOR_APPROVED_ORDER_RUN_ID") or "").strip()
+    approval_file = str(source.get("HWISTOCK_ORDER_APPROVAL_FILE") or "").strip()
+    result = {
+        "requested": request_flag,
+        "approved": False,
+        "runIdPresent": bool(run_id),
+        "approvalFilePresent": False,
+        "approvalFilePathConfigured": bool(approval_file),
+        "reason": "paper_order_not_requested" if not request_flag else "order_approval_missing",
+    }
+    if not request_flag:
+        return result
+    if not run_id:
+        result["reason"] = "HWISTOCK_OPERATOR_APPROVED_ORDER_RUN_ID_missing"
+        return result
+    if not approval_file:
+        result["reason"] = "HWISTOCK_ORDER_APPROVAL_FILE_missing"
+        return result
+    path = Path(approval_file)
+    result["approvalFilePresent"] = path.is_file()
+    if not path.is_file():
+        result["reason"] = "HWISTOCK_ORDER_APPROVAL_FILE_not_found"
+        return result
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        result["reason"] = "order_approval_file_invalid_json"
+        return result
+    payload = dict(parsed) if isinstance(parsed, Mapping) else {}
+    approved_run_id = str(payload.get("approved_order_run_id") or payload.get("run_id") or "").strip()
+    if approved_run_id != run_id:
+        result["reason"] = "order_approval_run_id_mismatch"
+        return result
+    if payload.get("allow_paper_orders") is not True:
+        result["reason"] = "order_approval_allow_paper_orders_not_true"
+        return result
+    valid_until = _parse_optional_kst_timestamp(payload.get("valid_until_kst") or payload.get("valid_until"))
+    if valid_until and valid_until <= (now or _now_kst()):
+        result["reason"] = "order_approval_expired"
+        return result
+    result["approved"] = True
+    result["reason"] = "operator_order_approval_verified"
+    return result
 
 
 def evaluatePaperRiskOverlay(
@@ -173,6 +231,19 @@ def evaluateIntentExecutionPreflight(
         for item in (order_state.get("consumed_trade_document_ids") or [])
         if str(item or "").strip()
     }
+    submitting_keys = {
+        str(item or "").strip()
+        for item in [
+            *(order_state.get("submitting_intent_keys") or []),
+            *(order_state.get("claim_intent_keys") or []),
+        ]
+        if str(item or "").strip()
+    }
+    ambiguous_keys = {
+        str(item or "").strip()
+        for item in (order_state.get("ambiguous_intent_keys") or [])
+        if str(item or "").strip()
+    }
     if symbol and symbol in held and str(payload.get("side") or "buy").lower() == "buy":
         errors.append("already_holding_symbol")
     if symbol and symbol in pending:
@@ -193,6 +264,10 @@ def evaluateIntentExecutionPreflight(
         errors.append("idempotency_key_required")
     if idempotency_key and idempotency_key in _CONSUMED_INTENT_KEYS:
         errors.append("duplicate_intent_idempotency_key")
+    if idempotency_key and idempotency_key in ambiguous_keys:
+        errors.append("ambiguous_submit_requires_reconciliation")
+    if idempotency_key and idempotency_key in submitting_keys:
+        errors.append("intent_submit_claim_in_progress")
     return {
         "ok": not errors,
         "errors": sorted(set(errors)),
@@ -259,7 +334,9 @@ def evaluateContinuousPaperRunnerStatus(
             "autoFailOnDuration": config["auto_fail_on_duration"],
         },
         "paperNetworkEnabled": config["paper_network_enabled"],
+        "paperOrderRequested": config["paper_order_requested"],
         "paperOrderEnabled": config["paper_order_enabled"],
+        "paperOrderApproval": config["paper_order_approval"],
         "paperEnv": config["paper_env"],
         "capabilities": config["capabilities"],
         "baseRunner": {
@@ -298,7 +375,9 @@ def runContinuousPaperTick(
         "duration_policy": "operator_selected",
         "fixed_duration_days": None,
         "paper_network_enabled": config["paper_network_enabled"],
+        "paper_order_requested": config["paper_order_requested"],
         "paper_order_enabled": config["paper_order_enabled"],
+        "paper_order_approval": config["paper_order_approval"],
         "paper_domain_only": True,
         "live_domain_calls_made": False,
         "ai_provider_calls_made": False,
@@ -357,28 +436,71 @@ def runContinuousPaperTick(
             result["steps"].append(
                 {
                     "step": "cash_order",
-                    "status": "blocked_paper_order_disabled",
+                    "status": "blocked_paper_order_disabled"
+                    if not config["paper_order_requested"]
+                    else "blocked_paper_order_approval_missing",
                     "broker_endpoint_called": False,
-                    "reason": "HWISTOCK_KIS_PAPER_ORDER_ENABLED_false",
+                    "reason": "HWISTOCK_KIS_PAPER_ORDER_ENABLED_false"
+                    if not config["paper_order_requested"]
+                    else config["paper_order_approval"]["reason"],
                 }
             )
         else:
-            cash_order = adapter.placeCashOrder(token, intent)
-            result["steps"].append(cash_order)
-            if _broker_step_passed(cash_order):
-                key = str(intent.get("idempotency_key") or intent.get("intent_id") or "")
-                markIntentConsumed(key)
-                _mark_runner_state_submitted(local_state, intent, cash_order, now=now)
-                _write_runner_state(local_state, config, data_root=data_root)
-            else:
+            key = str(intent.get("idempotency_key") or intent.get("intent_id") or "").strip()
+            claim = _acquire_intent_claim(key, data_root=data_root, now=now)
+            result["steps"].append(claim)
+            if claim["status"] != "pass":
                 result["steps"].append(
                     {
-                        "step": "local_state",
-                        "status": "not_marked_consumed",
-                        "reason": "cash_order_not_passed",
-                        "broker_status": cash_order.get("status"),
+                        "step": "cash_order",
+                        "status": "blocked_intent_claim",
+                        "broker_endpoint_called": False,
+                        "reason": claim.get("reason"),
                     }
                 )
+            else:
+                _mark_runner_state_submitting(local_state, intent, now=now)
+                _write_runner_state(local_state, config, data_root=data_root)
+                try:
+                    cash_order = adapter.placeCashOrder(token, intent)
+                except Exception as exc:  # pragma: no cover - defensive network ambiguity boundary
+                    cash_order = {
+                        "step": "cash_order",
+                        "status": "warn",
+                        "broker_endpoint_called": "unknown",
+                        "reason": "cash_order_exception_requires_reconciliation",
+                        "error_type": type(exc).__name__,
+                    }
+                result["steps"].append(cash_order)
+                if _broker_step_passed(cash_order):
+                    markIntentConsumed(key)
+                    _update_intent_claim_status(key, data_root=data_root, status="submitted", now=now)
+                    _mark_runner_state_submitted(local_state, intent, cash_order, now=now)
+                    _write_runner_state(local_state, config, data_root=data_root)
+                elif cash_order.get("broker_endpoint_called") is False:
+                    _release_intent_claim(key, data_root=data_root)
+                    _clear_runner_state_submitting(local_state, key, now=now)
+                    _write_runner_state(local_state, config, data_root=data_root)
+                    result["steps"].append(
+                        {
+                            "step": "local_state",
+                            "status": "not_marked_consumed",
+                            "reason": "cash_order_blocked_before_broker_endpoint",
+                            "broker_status": cash_order.get("status"),
+                        }
+                    )
+                else:
+                    _update_intent_claim_status(key, data_root=data_root, status="ambiguous", now=now)
+                    _mark_runner_state_ambiguous(local_state, intent, cash_order, now=now)
+                    _write_runner_state(local_state, config, data_root=data_root)
+                    result["steps"].append(
+                        {
+                            "step": "local_state",
+                            "status": "ambiguous_submit_requires_reconciliation",
+                            "reason": "cash_order_not_passed_after_claim",
+                            "broker_status": cash_order.get("status"),
+                        }
+                    )
 
     if token_cache_managed:
         result["steps"].append(tokenCacheRevokeSkippedStep())
@@ -387,7 +509,12 @@ def runContinuousPaperTick(
     step_statuses = {str(step.get("status") or "") for step in result["steps"]}
     if "fail" in step_statuses:
         result["status"] = "fail"
-    elif "warn" in step_statuses or "not_marked_consumed" in step_statuses:
+    elif (
+        "warn" in step_statuses
+        or "not_marked_consumed" in step_statuses
+        or "ambiguous_submit_requires_reconciliation" in step_statuses
+        or "blocked_intent_claim" in step_statuses
+    ):
         result["status"] = "warn"
     else:
         result["status"] = "ok"
@@ -457,6 +584,15 @@ def _load_latest_intent_from_queue(
         for item in (state.get("consumed_intent_keys") or [])
         if str(item or "").strip()
     }
+    locked = {
+        str(item or "").strip()
+        for item in [
+            *(state.get("submitting_intent_keys") or []),
+            *(state.get("ambiguous_intent_keys") or []),
+            *(state.get("claim_intent_keys") or []),
+        ]
+        if str(item or "").strip()
+    }
     rows: list[Dict[str, Any]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
@@ -470,6 +606,8 @@ def _load_latest_intent_from_queue(
     for row in rows:
         key = str(row.get("idempotency_key") or row.get("intent_id") or "").strip()
         if key and key in consumed:
+            continue
+        if key and key in locked:
             continue
         expiry = _parse_optional_kst_timestamp(row.get("valid_until_kst") or row.get("valid_until"))
         if expiry and expiry <= at:
@@ -489,13 +627,18 @@ def _runner_state_path(config: Mapping[str, Any], *, data_root: Path) -> Path:
 def _load_runner_state(config: Mapping[str, Any], *, data_root: Path) -> Dict[str, Any]:
     path = _runner_state_path(config, data_root=data_root)
     if not path.is_file():
-        return {
+        state = {
             "schema_version": "kis_paper_runner_state/v0",
             "consumed_intent_keys": [],
             "consumed_trade_document_ids": [],
+            "submitting_intent_keys": [],
+            "ambiguous_intent_keys": [],
+            "ambiguous_submits": [],
             "pending_orders": [],
             "last_updated_kst": None,
         }
+        state["claim_intent_keys"] = sorted(_claim_keys_from_dir(data_root=data_root))
+        return state
     try:
         parsed = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -504,7 +647,11 @@ def _load_runner_state(config: Mapping[str, Any], *, data_root: Path) -> Dict[st
     state.setdefault("schema_version", "kis_paper_runner_state/v0")
     state.setdefault("consumed_intent_keys", [])
     state.setdefault("consumed_trade_document_ids", [])
+    state.setdefault("submitting_intent_keys", [])
+    state.setdefault("ambiguous_intent_keys", [])
+    state.setdefault("ambiguous_submits", [])
     state.setdefault("pending_orders", [])
+    state["claim_intent_keys"] = sorted(_claim_keys_from_dir(data_root=data_root))
     return state
 
 
@@ -515,6 +662,106 @@ def _write_runner_state(state: Mapping[str, Any], config: Mapping[str, Any], *, 
     tmp = path.with_suffix(".tmp")
     tmp.write_text(text, encoding="utf-8")
     tmp.replace(path)
+
+
+def _claim_dir(data_root: Path) -> Path:
+    return data_root / "state" / "kis-paper-runner-claims"
+
+
+def _claim_path(key: str, *, data_root: Path) -> Path:
+    digest = hashlib.sha256(str(key).encode("utf-8")).hexdigest()
+    return _claim_dir(data_root) / f"{digest}.json"
+
+
+def _claim_keys_from_dir(*, data_root: Path) -> set[str]:
+    root = _claim_dir(data_root)
+    if not root.is_dir():
+        return set()
+    keys: set[str] = set()
+    for path in root.glob("*.json"):
+        try:
+            parsed = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(parsed, Mapping):
+            key = str(parsed.get("idempotency_key") or "").strip()
+            if key:
+                keys.add(key)
+    return keys
+
+
+def _acquire_intent_claim(key: str, *, data_root: Path, now: datetime) -> Dict[str, Any]:
+    idempotency_key = str(key or "").strip()
+    if not idempotency_key:
+        return {
+            "step": "intent_claim",
+            "status": "blocked",
+            "reason": "idempotency_key_required",
+            "broker_endpoint_called": False,
+        }
+    root = _claim_dir(data_root)
+    root.mkdir(parents=True, exist_ok=True)
+    path = _claim_path(idempotency_key, data_root=data_root)
+    payload = {
+        "schema_version": "kis_paper_intent_claim/v0",
+        "idempotency_key": idempotency_key,
+        "claimed_at_kst": now.isoformat(),
+        "status": "submitting",
+        "requires_reconciliation_before_retry": True,
+    }
+    try:
+        fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
+        return {
+            "step": "intent_claim",
+            "status": "blocked",
+            "reason": "intent_claim_already_exists",
+            "idempotency_key": idempotency_key,
+            "broker_endpoint_called": False,
+        }
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    return {
+        "step": "intent_claim",
+        "status": "pass",
+        "idempotency_key": idempotency_key,
+        "claim_path": str(path),
+        "broker_endpoint_called": False,
+    }
+
+
+def _release_intent_claim(key: str, *, data_root: Path) -> None:
+    idempotency_key = str(key or "").strip()
+    if not idempotency_key:
+        return
+    path = _claim_path(idempotency_key, data_root=data_root)
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _update_intent_claim_status(key: str, *, data_root: Path, status: str, now: datetime) -> None:
+    idempotency_key = str(key or "").strip()
+    if not idempotency_key:
+        return
+    path = _claim_path(idempotency_key, data_root=data_root)
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        parsed = {}
+    payload = dict(parsed) if isinstance(parsed, Mapping) else {}
+    payload.update(
+        {
+            "schema_version": "kis_paper_intent_claim/v0",
+            "idempotency_key": idempotency_key,
+            "status": status,
+            "updated_at_kst": now.isoformat(),
+            "requires_reconciliation_before_retry": status != "submitted",
+        }
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _order_state_snapshot_from_runner_state(state: Mapping[str, Any], *, now: datetime) -> Dict[str, Any]:
@@ -535,7 +782,75 @@ def _order_state_snapshot_from_runner_state(state: Mapping[str, Any], *, now: da
             for item in (state.get("consumed_trade_document_ids") or [])
             if str(item).strip()
         ],
+        "submitting_intent_keys": [
+            str(item)
+            for item in (state.get("submitting_intent_keys") or [])
+            if str(item).strip()
+        ],
+        "claim_intent_keys": [
+            str(item)
+            for item in (state.get("claim_intent_keys") or [])
+            if str(item).strip()
+        ],
+        "ambiguous_intent_keys": [
+            str(item)
+            for item in (state.get("ambiguous_intent_keys") or [])
+            if str(item).strip()
+        ],
     }
+
+
+def _mark_runner_state_submitting(
+    state: Dict[str, Any],
+    intent: Mapping[str, Any],
+    *,
+    now: datetime,
+) -> None:
+    key = str(intent.get("idempotency_key") or intent.get("intent_id") or "").strip()
+    if key:
+        state["submitting_intent_keys"] = sorted(set([*(state.get("submitting_intent_keys") or []), key]))
+    state["last_updated_kst"] = now.isoformat()
+
+
+def _clear_runner_state_submitting(state: Dict[str, Any], key: str, *, now: datetime) -> None:
+    idempotency_key = str(key or "").strip()
+    state["submitting_intent_keys"] = [
+        str(item)
+        for item in (state.get("submitting_intent_keys") or [])
+        if str(item).strip() and str(item).strip() != idempotency_key
+    ]
+    state["last_updated_kst"] = now.isoformat()
+
+
+def _mark_runner_state_ambiguous(
+    state: Dict[str, Any],
+    intent: Mapping[str, Any],
+    cash_order: Mapping[str, Any],
+    *,
+    now: datetime,
+) -> None:
+    key = str(intent.get("idempotency_key") or intent.get("intent_id") or "").strip()
+    symbol = str(intent.get("symbol") or intent.get("ticker") or "").strip()
+    _clear_runner_state_submitting(state, key, now=now)
+    if key:
+        state["ambiguous_intent_keys"] = sorted(set([*(state.get("ambiguous_intent_keys") or []), key]))
+        ambiguous_rows = [
+            dict(row)
+            for row in (state.get("ambiguous_submits") or [])
+            if isinstance(row, Mapping) and str(row.get("idempotency_key") or "").strip() != key
+        ]
+        ambiguous_rows.append(
+            {
+                "idempotency_key": key,
+                "symbol": symbol,
+                "broker_status": cash_order.get("status"),
+                "broker_endpoint_called": cash_order.get("broker_endpoint_called"),
+                "recorded_at_kst": now.isoformat(),
+                "requires_reconciliation_before_retry": True,
+            }
+        )
+        state["ambiguous_submits"] = ambiguous_rows
+    state["last_updated_kst"] = now.isoformat()
 
 
 def _mark_runner_state_submitted(
@@ -550,6 +865,21 @@ def _mark_runner_state_submitted(
     symbol = str(intent.get("symbol") or intent.get("ticker") or "").strip()
     if key:
         state["consumed_intent_keys"] = sorted(set([*(state.get("consumed_intent_keys") or []), key]))
+        state["submitting_intent_keys"] = [
+            str(item)
+            for item in (state.get("submitting_intent_keys") or [])
+            if str(item).strip() and str(item).strip() != key
+        ]
+        state["ambiguous_intent_keys"] = [
+            str(item)
+            for item in (state.get("ambiguous_intent_keys") or [])
+            if str(item).strip() and str(item).strip() != key
+        ]
+        state["ambiguous_submits"] = [
+            dict(row)
+            for row in (state.get("ambiguous_submits") or [])
+            if isinstance(row, Mapping) and str(row.get("idempotency_key") or "").strip() != key
+        ]
     if doc_ref:
         state["consumed_trade_document_ids"] = sorted(set([*(state.get("consumed_trade_document_ids") or []), doc_ref]))
     pending = [

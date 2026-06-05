@@ -140,6 +140,8 @@ Current 2026-06-05 operational automated-trading authority:
   `docs/evidence/RUN-20260605_operational-go-check-units-012-015.md`
 - Post-Pro corrective UNIT-011/015 Go-Check evidence:
   `docs/evidence/RUN-20260605_post-pro-corrective-go-check-unit-011-015.md`
+- Pro runtime safety remediation evidence:
+  `docs/evidence/RUN-20260605_pro-runtime-safety-remediation.md`
 
 Post-Pro reinforcement: this existing operational Ready-Set remains the current
 authority; it is not replaced by a parallel Ready-Set. The Pro critique is
@@ -215,8 +217,13 @@ bundle. API and frontend are running on loopback ports 5001 and 5000. Five
 hwiStock timers are active/waiting: market intelligence, DeepSeek analysis,
 runner evidence, KIS broker adapter health, and KIS broker adapter continuous runner. DeepSeek Pro
 analysis and KIS broker adapter read/reconciliation ticks produced successful sanitized
-evidence. KIS broker adapter cash order submission remains disabled, and the order gate
-remains blocked by missing calendar/source configuration.
+evidence. DeepSeek timer activity means the local analysis job/timer is installed
+and produces sanitized runtime evidence when provider/config prerequisites are
+available; it does not imply order readiness. KIS broker adapter cash order
+submission remains disabled by the default user systemd runner and additionally
+requires an operator approval file plus matching approved order run id before
+the runner can submit any cash order. The order gate remains blocked by missing
+calendar/source configuration.
 
 Current 2026-06-05 correction authority:
 
@@ -366,7 +373,11 @@ minutes. A no-key `public_news_rss_search` source now collects public RSS news
 metadata: the 2026-06-05 runtime proof recorded 150 normalized news events, 150
 unique event ids, and 0 duplicate JSONL rows. OpenDART/Naver API rows still
 skip until `DART_API_KEY` and/or Naver API credentials are added to the local
-secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
+secret store. Historical UNIT-003 hotfix evidence did not start DeepSeek, but a
+later UNIT-011/DeepSeek timer pass did install the hwiStock DeepSeek Pro
+top-of-hour job/timer. Treat those as separate evidence rows: UNIT-003 proves
+collector correction only; UNIT-011/DeepSeek timer evidence proves analysis
+timer installation, while operational readiness remains false.
 
 ## Source Of Truth
 

@@ -28,6 +28,7 @@ export const OPERATOR_FALLBACK_FIXTURE = {
     reportStatus: "operator_window_required",
     accountId: "paper_account_alias:masked",
     paperNetworkEnabled: false,
+    paperOrderEnabled: false,
     paperOrdersSubmitted: false,
     paperObservationAccepted: false,
     operationalTradingReadiness: false,
@@ -44,6 +45,7 @@ export const OPERATOR_FALLBACK_FIXTURE = {
       "operational_trading_readiness_false",
     ],
     paperNetworkEnabled: false,
+    paperOrderEnabled: false,
     paperOrdersSubmitted: false,
     paperObservationAccepted: false,
     operationalTradingReadiness: false,
@@ -56,6 +58,14 @@ export const OPERATOR_FALLBACK_FIXTURE = {
   intelligence: [],
   aiThread: [],
   auditLog: [],
+  runtime: {
+    kisPaperRunnerServicePolicy: {
+      paperNetworkEnabledByService: false,
+      paperOrderEnabledByService: false,
+      orderFlagContradictsReadiness: false,
+      serviceFiles: [],
+    },
+  },
 };
 
 const hasOperatorApiShape = (dataObj) => {
@@ -141,6 +151,7 @@ export const normalizeOperatorSnapshot = ({
         intelligence: operatorResult.intelligence || OPERATOR_FALLBACK_FIXTURE.intelligence,
         aiThread: operatorResult.aiThread || OPERATOR_FALLBACK_FIXTURE.aiThread,
         auditLog: operatorResult.auditLog || OPERATOR_FALLBACK_FIXTURE.auditLog,
+        runtime: { ...OPERATOR_FALLBACK_FIXTURE.runtime, ...operatorResult.runtime },
       },
       dataSource: "api",
       usesFallback: false,

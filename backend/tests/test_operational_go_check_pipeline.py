@@ -262,7 +262,22 @@ def test_unit014_execution_preflight_idempotency_and_realtime_exit():
 
 
 def test_unit015_operator_snapshot_is_read_only_and_masks_readiness(tmp_path: Path):
-    snapshot = operator_console.buildOperatorConsoleSnapshot("2026-06-05T09:40:00", dataRoot=tmp_path)
+    safe_unit = tmp_path / "hwistock-kis-paper-runner.service"
+    safe_unit.write_text(
+        "\n".join(
+            [
+                "[Service]",
+                "Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=false",
+                "ExecStart=python backend/service/kis_paper_continuous_runner.py --once --write-evidence --allow-paper-network",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    snapshot = operator_console.buildOperatorConsoleSnapshot(
+        "2026-06-05T09:40:00",
+        dataRoot=tmp_path,
+        serviceUnitPaths=[safe_unit],
+    )
     assert snapshot["schema_version"] == "operator_console_snapshot/v0"
     assert snapshot["safety"]["readOnlyDashboard"] is True
     assert snapshot["safety"]["buySellControlsExposed"] is False
@@ -271,7 +286,8 @@ def test_unit015_operator_snapshot_is_read_only_and_masks_readiness(tmp_path: Pa
     assert snapshot["summary"]["accountId"] == "paper_account_alias:masked"
     assert snapshot["readinessTruth"]["headline"] == "NOT_READY_FOR_PAPER_TRADING"
     assert snapshot["readinessTruth"]["serviceVisibilityIsNotReadiness"] is True
-    assert snapshot["readinessTruth"]["paperNetworkEnabled"] is False
+    assert snapshot["readinessTruth"]["paperNetworkEnabled"] is True
+    assert snapshot["readinessTruth"]["paperOrderEnabled"] is False
     assert snapshot["readinessTruth"]["paperOrdersSubmitted"] is False
     assert snapshot["readinessTruth"]["paperObservationAccepted"] is False
     assert snapshot["readinessTruth"]["operationalTradingReadiness"] is False
@@ -282,8 +298,32 @@ def test_unit015_operator_snapshot_is_read_only_and_masks_readiness(tmp_path: Pa
         endedAtKst="2026-06-05T10:00:00+09:00",
         operatorNote="focused unit test",
         dataRoot=tmp_path,
+        serviceUnitPaths=[safe_unit],
     )
     assert report["durationPolicy"] == "operator_selected"
     assert report["fixedDurationDays"] is None
     assert report["readiness"]["operationalTradingReadiness"] is False
     assert Path(report["reportPath"]).is_file()
+
+
+def test_unit015_operator_snapshot_detects_order_enabled_service_contradiction(tmp_path: Path):
+    risky_unit = tmp_path / "hwistock-kis-paper-runner.service"
+    risky_unit.write_text(
+        "\n".join(
+            [
+                "[Service]",
+                "Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=true",
+                "ExecStart=python backend/service/kis_paper_continuous_runner.py --once --allow-paper-network --allow-paper-orders",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    snapshot = operator_console.buildOperatorConsoleSnapshot(
+        "2026-06-05T09:40:00",
+        dataRoot=tmp_path,
+        serviceUnitPaths=[risky_unit],
+    )
+    assert snapshot["readinessTruth"]["paperOrderEnabled"] is True
+    assert snapshot["runtime"]["kisPaperRunnerServicePolicy"]["paperOrderEnabledByService"] is True
+    assert "systemd_order_enabled_contradicts_readiness" in snapshot["readinessTruth"]["blockers"]
+    assert any(entry["code"] == "SYSTEMD_ORDER_FLAG" and entry["message"] == "enabled" for entry in snapshot["auditLog"])

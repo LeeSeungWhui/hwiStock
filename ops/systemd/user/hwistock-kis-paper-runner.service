@@ -14,7 +14,7 @@ EnvironmentFile=-/home/hwi/.config/hwistock/hwistockApi.env
 Environment=HWISTOCK_BIND_HOST=127.0.0.1
 Environment=HWISTOCK_MARKET_DATA_SOURCE=kis_paper_mock
 Environment=HWISTOCK_ALLOW_WEEKDAY_CALENDAR_FALLBACK=true
-Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=true
+Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=false
 Environment=HWISTOCK_KIS_MIN_CALL_GAP_SEC=1.35
-ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-kis-paper-runner -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/kis_paper_continuous_runner.py --once --write-evidence --allow-paper-network --allow-paper-orders'
+ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-kis-paper-runner -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/kis_paper_continuous_runner.py --once --write-evidence --allow-paper-network'
 NoNewPrivileges=true

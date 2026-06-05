@@ -37,6 +37,7 @@ export const LANG_KO = {
       notReady: "모의매매 관찰 준비 아님",
       ready: "모의매매 관찰 준비",
       paperNetwork: "Paper 네트워크",
+      paperOrderEnabled: "Runner 주문 허용",
       paperOrders: "Paper 주문 제출",
       observation: "관찰 승인",
       operational: "운영 준비",

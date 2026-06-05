@@ -28,7 +28,8 @@ bounded runtime smoke checks.
 This pass also added a safety guard so the KIS broker-adapter runner can run read-health
 and reconciliation ticks while broker cash order submission remains disabled
 unless a later explicit order unit enables `HWISTOCK_KIS_PAPER_ORDER_ENABLED`
-or passes `--allow-paper-orders`.
+and also provides a matching operator approval file/run id. Passing
+`--allow-paper-orders` alone is not sufficient.
 
 Explicit scope exception: although UNIT-011 was primarily a local runtime
 supervisor/startup pass, the owner approved starting the KIS adapter
@@ -70,9 +71,15 @@ Changed runtime safety/config files:
   - Blocks `cash_order` with `blocked_paper_order_disabled` when an intent is
     present but broker order submission is not explicitly enabled.
   - Preserves risk-overlay block reasons before the order-disabled block.
+  - Requires `HWISTOCK_ORDER_APPROVAL_FILE` plus
+    `HWISTOCK_OPERATOR_APPROVED_ORDER_RUN_ID` before an order-enabled run can
+    reach broker order submission.
+  - Claims an idempotency key before broker submission and locks ambiguous
+    submit outcomes until reconciliation.
 - `ops/systemd/user/hwistock-kis-paper-runner.service`
   - Sets `HWISTOCK_KIS_PAPER_ORDER_ENABLED=false`.
   - Keeps `--allow-paper-network` so read-health/reconciliation can run.
+  - Does not pass `--allow-paper-orders`.
 - `ops/systemd/user/hwistock-ai-analysis.service`
   - Replaced stale `moonbridge` default with `deepseek-v4-pro`.
 - `backend/service/kis_paper_health.py`

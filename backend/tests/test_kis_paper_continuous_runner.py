@@ -54,6 +54,8 @@ def reset_env(monkeypatch):
         "HWISTOCK_KILL_SWITCH",
         "HWISTOCK_DATA_DIR",
         "HWISTOCK_KIS_PAPER_STATE_FILE",
+        "HWISTOCK_OPERATOR_APPROVED_ORDER_RUN_ID",
+        "HWISTOCK_ORDER_APPROVAL_FILE",
     ):
         monkeypatch.delenv(key, raising=False)
     yield
@@ -79,6 +81,32 @@ def _calendar(tmp_path: Path, monkeypatch):
     path.write_text(json.dumps({"validUntil": "2099-12-31T23:59:59+09:00"}), encoding="utf-8")
     monkeypatch.setenv("HWISTOCK_CALENDAR_PATH", str(path))
     return path
+
+
+def _order_approval(tmp_path: Path, env: dict, *, run_id: str = "approved-order-run-1") -> Path:
+    path = tmp_path / f"{run_id}.approval.json"
+    path.write_text(
+        json.dumps(
+            {
+                "approved_order_run_id": run_id,
+                "allow_paper_orders": True,
+                "valid_until_kst": "2099-12-31T23:59:59+09:00",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    env["HWISTOCK_OPERATOR_APPROVED_ORDER_RUN_ID"] = run_id
+    env["HWISTOCK_ORDER_APPROVAL_FILE"] = str(path)
+    return path
+
+
+def test_default_systemd_runner_does_not_enable_orders():
+    service_path = Path(__file__).resolve().parents[2] / "ops" / "systemd" / "user" / "hwistock-kis-paper-runner.service"
+    service_text = service_path.read_text(encoding="utf-8")
+    assert "--allow-paper-orders" not in service_text
+    assert "Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=true" not in service_text
+    assert "Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=false" in service_text
 
 
 def test_paper_domain_guard_rejects_live_domain():
@@ -158,6 +186,25 @@ def test_continuous_status_exposes_false_readiness():
     assert status["paperOrderEnabled"] is False
 
 
+def test_order_flag_requires_operator_approval_file(tmp_path):
+    env = {"HWISTOCK_KIS_PAPER_ORDER_ENABLED": "true"}
+    status = continuous.evaluateContinuousPaperRunnerStatus(env=env)
+    assert status["paperOrderRequested"] is True
+    assert status["paperOrderEnabled"] is False
+    assert status["paperOrderApproval"]["reason"] == "HWISTOCK_OPERATOR_APPROVED_ORDER_RUN_ID_missing"
+
+    env["HWISTOCK_OPERATOR_APPROVED_ORDER_RUN_ID"] = "approved-order-run-1"
+    env["HWISTOCK_ORDER_APPROVAL_FILE"] = str(tmp_path / "missing.approval.json")
+    status = continuous.evaluateContinuousPaperRunnerStatus(env=env)
+    assert status["paperOrderEnabled"] is False
+    assert status["paperOrderApproval"]["reason"] == "HWISTOCK_ORDER_APPROVAL_FILE_not_found"
+
+    _order_approval(tmp_path, env)
+    status = continuous.evaluateContinuousPaperRunnerStatus(env=env)
+    assert status["paperOrderEnabled"] is True
+    assert status["paperOrderApproval"]["reason"] == "operator_order_approval_verified"
+
+
 def test_tick_stays_idle_when_paper_network_disabled():
     payload = continuous.runContinuousPaperTick(env={})
     assert payload["status"] == "idle_paper_network_disabled"
@@ -200,6 +247,7 @@ def test_tick_with_fake_transport_processes_safe_krx_paper_intent_when_order_ena
     _calendar(tmp_path, monkeypatch)
     env = _env()
     env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _order_approval(tmp_path, env)
     env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
     env["HWISTOCK_DATA_DIR"] = str(tmp_path / "data")
     transport = FakeTransport()
@@ -262,6 +310,7 @@ def test_tick_blocks_paper_order_outside_krx_regular_session(tmp_path, monkeypat
     _calendar(tmp_path, monkeypatch)
     env = _env()
     env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _order_approval(tmp_path, env)
     env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
     env["HWISTOCK_DATA_DIR"] = str(tmp_path / "data")
     transport = FakeTransport()
@@ -315,6 +364,7 @@ def test_tick_auto_loads_latest_intent_queue_and_persists_only_passed_order(tmp_
 
     env = _env()
     env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _order_approval(tmp_path, env)
     env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
     env["HWISTOCK_DATA_DIR"] = str(data_root)
     transport = FakeTransport()
@@ -337,6 +387,7 @@ def test_tick_does_not_mark_intent_consumed_when_broker_warns(tmp_path, monkeypa
     data_root = tmp_path / "data"
     env = _env()
     env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _order_approval(tmp_path, env)
     env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
     env["HWISTOCK_DATA_DIR"] = str(data_root)
     transport = FakeTransport(order_status="warn")
@@ -360,5 +411,35 @@ def test_tick_does_not_mark_intent_consumed_when_broker_warns(tmp_path, monkeypa
         },
     )
     assert any(step.get("step") == "cash_order" and step.get("status") == "warn" for step in payload["steps"])
-    assert any(step.get("step") == "local_state" and step.get("status") == "not_marked_consumed" for step in payload["steps"])
-    assert not (data_root / "state" / "kis-paper-runner-state.json").exists()
+    assert any(
+        step.get("step") == "local_state" and step.get("status") == "ambiguous_submit_requires_reconciliation"
+        for step in payload["steps"]
+    )
+    state_path = data_root / "state" / "kis-paper-runner-state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert "intent-warn-1" not in state["consumed_intent_keys"]
+    assert "intent-warn-1" in state["ambiguous_intent_keys"]
+
+    retry_transport = FakeTransport(order_status="pass")
+    retry_adapter = KisPaperAdapter(env=env, transport=retry_transport)
+    retry_payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=retry_adapter,
+        at_kst="2026-06-05T09:31:00",
+        intent={
+            "intent_id": "intent-warn-1",
+            "idempotency_key": "intent-warn-1",
+            "symbol": "005930",
+            "side": "buy",
+            "quantity": 1,
+            "order_price": 70000,
+            "venue_route": "KRX",
+            "available_cash_krw": 2_000_000,
+            "planned_order_cash_krw": 100_000,
+            "current_holdings_count": 0,
+            "paper_only": True,
+        },
+    )
+    assert retry_payload["executionPreflight"]["ok"] is False
+    assert "ambiguous_submit_requires_reconciliation" in retry_payload["executionPreflight"]["errors"]
+    assert not any("/order-cash" in call["url"] for call in retry_transport.calls)

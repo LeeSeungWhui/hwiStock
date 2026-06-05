@@ -30,6 +30,7 @@ describe("hwiStock operator console view", () => {
       summary: {
         accountId: "paper_account_alias:masked",
         paperNetworkEnabled: false,
+        paperOrderEnabled: false,
         paperOrdersSubmitted: false,
         paperObservationAccepted: false,
         operationalTradingReadiness: false,
@@ -39,6 +40,7 @@ describe("hwiStock operator console view", () => {
         operatorMessage: "서비스가 떠 있어도 모의매매 준비 완료가 아닙니다.",
         blockers: ["paper_network_disabled", "blocked_calendar_unconfigured"],
         paperNetworkEnabled: false,
+        paperOrderEnabled: false,
         paperOrdersSubmitted: false,
         paperObservationAccepted: false,
         operationalTradingReadiness: false,
@@ -97,6 +99,7 @@ describe("hwiStock operator console view", () => {
     expect(screen.queryByText("MyWebTemplate")).not.toBeInTheDocument();
     expect(screen.getByText("모의매매 관찰 준비 아님")).toBeInTheDocument();
     expect(screen.getByText("NOT_READY_FOR_PAPER_TRADING")).toBeInTheDocument();
+    expect(screen.getByText(/Runner 주문 허용/)).toBeInTheDocument();
   });
 
   test("매수/매도/주문 실행 버튼이 없다", () => {
@@ -198,6 +201,7 @@ describe("hwiStock operator console view", () => {
           summary: {
             accountId: "paper_account_alias:masked",
             paperNetworkEnabled: false,
+            paperOrderEnabled: false,
             paperOrdersSubmitted: false,
             paperObservationAccepted: false,
             operationalTradingReadiness: false,
@@ -207,6 +211,7 @@ describe("hwiStock operator console view", () => {
             operatorMessage: "서비스가 떠 있어도 모의매매 준비 완료가 아닙니다.",
             blockers: ["paper_network_disabled", "blocked_calendar_unconfigured"],
             paperNetworkEnabled: false,
+            paperOrderEnabled: false,
             paperOrdersSubmitted: false,
             paperObservationAccepted: false,
             operationalTradingReadiness: false,
