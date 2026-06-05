@@ -59,7 +59,7 @@ overlap with MyWebTemplate.
 - 20:00 daily close report.
 - Candidate cards.
 - Order/fill/position/PnL logs.
-- Evidence paths for operator-selected paper observation windows.
+- Evidence paths for operator-selected operation observation windows.
 - Redaction and article-body storage policy.
 - Artifact-link and hash behavior between PostgreSQL rows and files.
 
@@ -67,7 +67,7 @@ overlap with MyWebTemplate.
 
 - Credentials and private account identifiers.
 - Raw copyrighted article bodies unless source terms allow it.
-- Live-readiness claims without evidence.
+- Operation-readiness claims without evidence.
 - Cloud backup or remote replication.
 - Broker network calls or order placement.
 - Dashboard UI implementation.
@@ -81,7 +81,7 @@ overlap with MyWebTemplate.
 | AC-03 | P0 | Storage separates data types | Raw, normalized, AI, candidate, trading, report, and evidence artifacts are type-separated by path | path/schema review | QA-003 |
 | AC-04 | P0 | Common artifact fields are required | Every artifact schema includes ids, dates, environment, source links, redaction status, and hash fields where applicable | schema review | QA-004 |
 | AC-05 | P0 | PnL is system-calculated | 20:00 report references computed PnL fields, not AI-calculated numbers | report review | QA-005 |
-| AC-06 | P0 | Evidence is linkable | Operator-selected paper observation windows can link each day to source, AI, candidate, trading, PnL, and report artifacts | evidence review | QA-006 |
+| AC-06 | P0 | Evidence is linkable | Operator-selected operation observation windows can link each day to source, AI, candidate, trading, PnL, and report artifacts | evidence review | QA-006 |
 | AC-07 | P0 | Secrets and private identifiers are excluded | Credentials, keys, raw account numbers, and private account ids are absent from artifacts | redaction review | QA-007 |
 | AC-08 | P1 | Artifact links are auditable | PostgreSQL rows can be traced to artifact paths and content hashes | smoke/test output | QA-008 |
 | AC-09 | P1 | Copyright-sensitive bodies are controlled | Source artifacts record body storage policy and avoid full article bodies unless allowed | source artifact review | QA-009 |
@@ -100,14 +100,14 @@ Use KST dates.
 | `data/ai/YYYY-MM-DD/deepseek-flash/trade-documents/HHMM.json` | one Flash trade document per market-minute; candidates list max 5 symbols and includes portfolio-conflict status |
 | `data/candidates/YYYY-MM-DD/*.json` | candidate cards compiled from sources and AI outputs |
 | `data/trading/YYYY-MM-DD/orders.jsonl` | order intents and order-state events |
-| `data/trading/YYYY-MM-DD/fills.jsonl` | fill events from later approved KIS paper/live adapters only; no fake broker fills |
+| `data/trading/YYYY-MM-DD/fills.jsonl` | fill events from later approved KIS adapter-mode adapters only; no fake broker fills |
 | `data/trading/YYYY-MM-DD/positions.jsonl` | position snapshots and transitions |
 | `data/trading/YYYY-MM-DD/pnl.json` | system-calculated daily PnL |
 | `data/reports/YYYY-MM-DD/morning-0700.json` | structured morning report |
 | `data/reports/YYYY-MM-DD/morning-0700.md` | human-readable morning report |
 | `data/reports/YYYY-MM-DD/daily-close-2000.json` | structured daily close report |
 | `data/reports/YYYY-MM-DD/daily-close-2000.md` | human-readable daily close report |
-| `data/evidence/YYYY-MM-DD/paper-day.json` | daily paper-run evidence manifest |
+| `data/evidence/YYYY-MM-DD/paper-day.json` | daily operation evidence manifest |
 | PostgreSQL database `hwistock`, schema `hwistock_core` | normalized application store, trading state, PnL, report metadata, and dashboard query surface |
 
 ## 6. Required Schema Contracts
@@ -216,7 +216,7 @@ but SQLite is not part of the first implementation.
 ## 9. Open Questions
 
 - Exact backup destination and encryption policy.
-- Compression/archive timing after paper test evidence is accepted.
+- Compression/archive timing after adapter test evidence is accepted.
 - Decision: migrations use Alembic under `backend/migrations/` after backend
   implementation begins.
 
@@ -226,10 +226,10 @@ UNIT-008 passed current-tree rebaseline Go-Check on 2026-06-04 for the local
 storage skeleton scope.
 The implementation defines typed artifact contracts, deterministic content
 hashing, canonical KST date-scoped artifact paths, DailyPnL system-calculation
-validation, a DB CHECK for system-only daily PnL, paper-day evidence linkage
+validation, a DB CHECK for system-only daily PnL, adapter-day evidence linkage
 validation, Alembic migration skeletons for `hwistock_core`, and focused
-contract tests. No live DB connection, broker/API call, AI provider call,
-dashboard UI, paper order, live order, credential storage, or runtime `data/`
+contract tests. No operational DB connection, broker/API call, AI provider call,
+dashboard UI, broker order, account-affecting order, credential storage, or runtime `data/`
 artifact commit was performed.
 
 Current evidence:

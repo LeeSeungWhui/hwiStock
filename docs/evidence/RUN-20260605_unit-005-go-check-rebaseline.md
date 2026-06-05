@@ -42,7 +42,7 @@ validation, and tool-use-disabled enforcement.
 
 This closure does **not** authorize AI provider calls, ChatGPT browser
 automation, DeepSeek network calls, nonzero AI cost caps, broker/KIS calls,
-paper/live orders, fake fills, fake balances, fake PnL, public dashboard
+adapter/account-affecting orders, fake fills, fake balances, fake PnL, public dashboard
 exposure, server start, DB work, or credential reads.
 
 ## 2. Route
@@ -88,7 +88,7 @@ broker, server, DB, deploy, package install, or git mutation route was used.
     strategy/risk gate handoff and source-grounded recommendation validation.
   - `buildAiNoOrderDryRunDecisionRecord()` and
     `validateAiNoOrderDryRunDecisionRecord()` for no-order-only approved
-    recommendations without broker calls, order submission, paper/live orders,
+    recommendations without broker calls, order submission, adapter/account-affecting orders,
     fake fills, fake balances, or fake PnL.
   - `buildAiAuditRecord()`, `buildAiFallbackReport()`,
     `validateDailyCloseReport()`, and `simulateAiFailure()` for audit/fallback
@@ -101,7 +101,7 @@ broker, server, DB, deploy, package install, or git mutation route was used.
 - The new implementation is stdlib-only except for the existing local
   `strategy_risk` import.
 - No implementation path imports AI SDKs, HTTP/network clients, FastAPI,
-  SQLAlchemy, broker, KIS, router, paper adapter, or live adapter modules.
+  SQLAlchemy, broker, KIS, router, adapter adapter, or operation adapter modules.
 - AI outputs are recommendation-only; `entry_unlocked` remains false even after
   deterministic policy approval.
 - Policy-approved `consider_entry` outputs produce no-order dry-run records
@@ -126,8 +126,8 @@ broker, server, DB, deploy, package install, or git mutation route was used.
 | QA-007 | pass | Audit record captures model role/name, prompt schema, input bundle ids, source ids, latency, validation status, and action. |
 | QA-008 | pass | All-in, credit/margin, stop-bypass, and overnight language are rejected. |
 | QA-009 | pass | Draft order intent rejects missing risk reference, stale source, all-in sizing, credit/margin, and broker endpoint references. |
-| QA-010 | pass | Policy-approved intent is recorded as no-order dry-run only, with no broker endpoint, fake broker, simulated fill, fake balance, paper order, or live order. |
-| QA-011 | pass | KIS/external broker, broker demo/testbed, paper/live endpoint, and credential references are rejected. |
+| QA-010 | pass | Policy-approved intent is recorded as no-order dry-run only, with no broker endpoint, fake broker, simulated fill, fake balance, broker order, or account-affecting order. |
+| QA-011 | pass | KIS/external broker, broker demo/testbed, adapter/unapproved endpoint, and credential references are rejected. |
 | QA-012 | pass | Job registry separates all six planned AI roles and schedules. |
 | QA-013 | pass | ChatGPT Pro late/unavailable fallback uses DeepSeek-only morning mode. |
 | QA-014 | pass | Daily close report requires system-calculated PnL source fields and AI interpretation only. |
@@ -163,14 +163,14 @@ UNIT-005 code findings: 0
 Secret marker scan:
 
 ```text
-known KIS paper credential/account/id markers in UNIT-005 changed code/tests
+known KIS adapter credential/account/id markers in UNIT-005 changed code/tests
 => no matches
 ```
 
 ## 7. Remaining Boundaries / Follow-Up
 
 - Nonzero AI provider use, provider pricing/cost cap changes, DeepSeek API
-  calls, ChatGPT browser review execution, and live model/tool execution remain
+  calls, ChatGPT browser review execution, and operation model/tool execution remain
   future approval scopes.
 - `HWISTOCK-UNIT-007` remains pending Go-Check for dashboard/operator console.
 - The broader imported backend rule-gate baseline still has unrelated findings

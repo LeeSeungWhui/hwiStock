@@ -28,9 +28,9 @@ brainstorming:
 - Deterministic condition compiler, trading engine, and order state machine.
 - 20:00 daily close report using system-calculated PnL plus AI interpretation.
 - Read-only dashboard/operator console, with `agy` + Gemini Pro design route.
-- KIS direction, future official paper/mock-investment API verification, and
-  10,000,000 KRW paper/mock starting budget.
-- Live starting capital remains 2,000,000 KRW cash.
+- KIS direction, future official broker-adapter API verification, and
+  10,000,000 KRW broker-adapter starting budget.
+- Starting capital remains 2,000,000 KRW cash.
 - Minimal first-pass risk policy: minimum cash reserve ratio 0.25, maximum
   simultaneous holdings 5, and AI-assisted per-entry stop price capped by
   deterministic maximum -5% loss rules.
@@ -47,19 +47,19 @@ Updated:
 - `docs/modules/HWISTOCK-MOD-003_strategy-risk-rulebook.md`
 - `docs/modules/HWISTOCK-MOD-004_ai-orchestration-layer.md`
 - `docs/modules/HWISTOCK-MOD-005_trading-engine-order-state.md`
-- `docs/units/HWISTOCK-UNIT-002_home-server-paper-runner.md`
+- `docs/units/HWISTOCK-UNIT-002_home-server-adapter-runner.md`
 - `docs/units/HWISTOCK-UNIT-001_project-bootstrap.md`
 - `docs/units/HWISTOCK-UNIT-004_strategy-risk-rulebook.md`
 - `docs/units/HWISTOCK-UNIT-005_ai-orchestration-layer.md`
 - `docs/units/HWISTOCK-UNIT-006_trading-engine-order-state.md`
-- `docs/qa/QA-HWISTOCK-UNIT-002_home-server-paper-runner.md`
+- `docs/qa/QA-HWISTOCK-UNIT-002_home-server-adapter-runner.md`
 - `docs/qa/QA-HWISTOCK-UNIT-001_project-bootstrap.md`
 - `docs/qa/QA-HWISTOCK-UNIT-004_strategy-risk-rulebook.md`
 - `docs/qa/QA-HWISTOCK-UNIT-005_ai-orchestration-layer.md`
 - `docs/qa/QA-HWISTOCK-UNIT-006_trading-engine-order-state.md`
 - `docs/evidence/RUN-20260602_unit-005-ai-orchestration-layer-set.md`
 - `docs/evidence/RUN-20260602_unit-004-strategy-risk-rulebook-set.md`
-- `docs/evidence/RUN-20260602_unit-002-home-server-paper-runner-set.md`
+- `docs/evidence/RUN-20260602_unit-002-home-server-adapter-runner-set.md`
 - `docs/evidence/RUN-20260602_unit-007-dashboard-operator-console-set.md`
 - `docs/evidence/RUN-20260602_project-bootstrap.md`
 
@@ -117,12 +117,12 @@ matrix is `docs/set/READY-SET-ROW-CLOSURE-20260602_hwistock.md`:
    `docs/evidence/RUN-20260602_unit-008-data-evidence-storage-set.md`.
 3. KIS official portal pass: closed for docs-only Set by
    `docs/evidence/RUN-20260602_unit-009-kis-api-portal-verification-set.md`.
-   KIS domestic order/account/realtime endpoint families, paper/live separation,
+   KIS domestic order/account/realtime endpoint families, adapter-mode separation,
    and NXT/SOR routing fields are documented. Local `apiRefer` files add a KIS
-   API capability matrix showing paper-supported, paper-constrained,
-   paper-unsupported, fallback, and live-verification behavior. Paper balance
+   API capability matrix showing adapter-supported, adapter-constrained,
+   adapter-unsupported, fallback, and runtime-verification behavior. Adapter balance
    and exact current limits remain future broker-network smoke items. NXT/SOR
-   broker behavior cannot be paper-proven by the current KIS references.
+   broker behavior cannot be adapter-proven by the current KIS references.
 4. Minimal risk values: closed for the first docs pass. Maximum simultaneous
    holdings is 5. Position sizing has no fixed per-symbol cap; every order must
    preserve `minimum_cash_reserve_ratio = 0.25` of total capital. Stop policy is
@@ -136,7 +136,7 @@ matrix is `docs/set/READY-SET-ROW-CLOSURE-20260602_hwistock.md`:
    conditional, KRX/KIND conditional, KIS broker data deferred, general HTML
    scraping blocked by default. Long-term retention remains a later storage
    policy question.
-7. Condition schema and KIS paper reconciliation model: closed for first pass by
+7. Condition schema and KIS broker-adapter reconciliation model: closed for first pass by
    `HWISTOCK-UNIT-006` Set. See
    `docs/evidence/RUN-20260602_unit-006-trading-engine-order-state-set.md`.
 8. Dashboard access and first-screen sections: closed by
@@ -145,14 +145,14 @@ matrix is `docs/set/READY-SET-ROW-CLOSURE-20260602_hwistock.md`:
    Chrome Remote Desktop. Public/LAN exposure requires later authenticated Set
    approval. First screen is the operator console, not a landing page.
 9. Home-server process manager: closed by
-   `docs/evidence/RUN-20260602_unit-002-home-server-paper-runner-set.md`.
-   `systemd` is selected for the official one-week paper/sandbox evidence
+   `docs/evidence/RUN-20260602_unit-002-home-server-adapter-runner-set.md`.
+   `systemd` is selected for the official one-week adapter-backed evidence
    runner; tmux/screen/manual shell is early-experiment-only.
-10. Market calendar, alert channel, and one-week paper/sandbox pass criteria:
+10. Market calendar, alert channel, and one-week adapter-backed pass criteria:
     closed by
-    `docs/evidence/RUN-20260602_calendar-alert-paper-gate-set.md`. Runtime uses
+    `docs/evidence/RUN-20260602_calendar-alert-operation-gate-set.md`. Runtime uses
     local cached KRX/NXT calendar from official sources, first-pass alerts are
-    local-only, and the paper gate is safety/evidence based with no profit
+    local-only, and the operation gate is safety/evidence based with no profit
     threshold.
 
 ## 6. External Review Status

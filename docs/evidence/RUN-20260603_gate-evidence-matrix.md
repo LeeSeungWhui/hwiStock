@@ -35,7 +35,7 @@ Ready-Set completion-gate requirement to the current hwiStock evidence.
 - The matrix now also recognizes `PF-12` for Action 4 foundation-only closure,
   so conditional `HWISTOCK-UNIT-006` include/exclude scope must be recorded
   before narrowed row closure can pass.
-- No broker, AI provider, external review, paper order, live order, or Go
+- No broker, AI provider, external review, broker order, account-affecting order, or Go
   implementation action was performed.
 
 ## Verification Intent

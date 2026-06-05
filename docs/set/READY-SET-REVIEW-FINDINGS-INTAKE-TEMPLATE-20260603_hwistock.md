@@ -63,7 +63,7 @@ Every finding must be normalized into this table before row closure changes.
 
 ## 4. Severity Rules
 
-- `P0`: blocks Ready-Set completion, Go, or live/paper safety by default.
+- `P0`: blocks Ready-Set completion, Go, or operation/adapter safety by default.
 - `P1`: blocks Go unless fixed or explicitly accepted as non-blocking with
   owner approval.
 - `P2`: does not block by default, but must be recorded and either fixed,
@@ -130,8 +130,8 @@ The findings intake process never approves:
 
 - broker network calls
 - KIS token/account/balance/order calls
-- paper order placement
-- live order placement
+- broker order placement
+- account-affecting order placement
 - AI provider network calls
 - credential storage
 - dashboard buy/sell controls

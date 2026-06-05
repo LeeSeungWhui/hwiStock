@@ -25,7 +25,7 @@ The storage direction is:
 - PostgreSQL for the queryable application store.
 - hwiStock-specific database/schema isolation from MyWebTemplate.
 - Date-partitioned local artifacts under `data/` for raw source bundles, AI
-  outputs, report snapshots, and paper-run evidence manifests.
+  outputs, report snapshots, and operation evidence manifests.
 - System-calculated PnL only. AI may interpret referenced PnL fields but must
   not calculate profit/loss numbers.
 
@@ -84,7 +84,7 @@ KIS API verification, home-server runner shape, and dashboard access/design.
 - artifact path separation.
 - common artifact fields.
 - system-calculated PnL.
-- one-week paper evidence linkability.
+- one-week adapter evidence linkability.
 - redaction of secrets/private identifiers.
 - artifact-to-DB path/hash traceability.
 - article-body storage policy.

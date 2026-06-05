@@ -37,7 +37,7 @@ GPT Pro reviewed the owner-clarified hwiStock operational architecture and found
 it directionally correct but not implementation-ready until hard runtime
 contracts existed for schemas, idempotency, atomic publication, failure
 sentinels, executor locking, reservation accounting, order state, freshness,
-paper-only guard, and failure-mode QA.
+adapter-bound guard, and failure-mode QA.
 
 ## 2. Artifacts Created
 
@@ -80,7 +80,7 @@ The Set artifacts define:
 - order state machine transitions;
 - ambiguous `SUBMIT_UNKNOWN` submit handling;
 - freshness TTLs; and
-- KIS paper-only broker guard.
+- KIS adapter-bound broker guard.
 
 ## 4. Validation
 
@@ -101,10 +101,10 @@ schema_count=12
 
 The validator uses the standard library only. It checks required fields,
 primitive types, const/enum/pattern/min/max rules, KST timestamps, Flash
-candidate caps, nested Flash action refs, final paper-order intent authoritative
+candidate caps, nested Flash action refs, final adapter-order intent authoritative
 refs, exact deterministic hash id patterns, `NO_TRADE` conditional behavior,
 KIS snapshot/portfolio/order freshness,
-paper-only broker request guards, cancel-target requirements, executor state
+adapter-bound broker request guards, cancel-target requirements, executor state
 transitions, duplicate artifact ids/intent ids, deterministic sizing bounds,
 ambiguous-submit reconciliation, publication-manifest completeness, and obvious
 secret-like key/value leaks.
@@ -116,15 +116,15 @@ The invalid fixture set proves the validator blocks:
 - missing `content_hash`;
 - Flash documents with more than five candidates;
 - Flash artifacts attempting to allow executable intents;
-- live/unknown broker request configuration;
+- unapproved/unknown broker request configuration;
 - illegal order state transition;
 - short `trade_doc_id`, `intent_id`, and `client_order_key` values;
 - invalid Flash action enum and missing authoritative portfolio/order refs;
 - `NO_TRADE` documents with actions or missing reason;
-- final paper-order intents missing source/KIS-market/portfolio/order refs;
+- final adapter-order intents missing source/KIS-market/portfolio/order refs;
 - stale KIS/portfolio/order snapshots;
 - missing source dedupe/hash/watermark fields;
-- bad resolved KIS paper host guard;
+- bad resolved KIS adapter host guard;
 - cancel requests without target ids/reason/deadline;
 - deterministic sizing/reservation breach;
 - partial publication without manifest;
@@ -135,7 +135,7 @@ The invalid fixture set proves the validator blocks:
 
 - No KIS broker/API call was made.
 - No DeepSeek provider call was made.
-- No live endpoint was called.
+- No unapproved endpoint was called.
 - No order was placed.
 - No secret env/config file was read or printed.
 - No strategy-risk numeric policy was changed.
@@ -148,7 +148,7 @@ The operational Ready-Set may now be reclassified from
 `blocked_until_runtime_contract_hardening_set_closes` to a contract-hardened
 Go-Check queue for UNIT-012, UNIT-013, UNIT-014, and UNIT-015.
 
-This does not mean the program is paper-run-ready or operationally complete.
-Actual collectors, AI runtime, intent pipeline, executor, KIS paper order
+This does not mean the program is operation-ready or operationally complete.
+Actual collectors, AI runtime, intent pipeline, executor, KIS broker order
 submission, reconciliation, and observation Prove still require Go/Check/Prove
 evidence.

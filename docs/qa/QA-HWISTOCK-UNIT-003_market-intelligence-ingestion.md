@@ -46,7 +46,7 @@ In scope:
 
 Out of scope:
 
-- live trading
+- account-affecting operation
 - strategy scoring
 - broker order routing
 - credential handling
@@ -67,7 +67,7 @@ Out of scope:
 | QA-008 | P0 | blocked-source | Inspect source registry and implementation config | General media HTML scraping and unofficial finance APIs are disabled by default | config/source review |
 | QA-009 | P0 | broker-boundary | Inspect source registry and implementation config | KIS/broker quote/news/realtime sources are deferred and cannot run in this unit | config/profile review |
 | QA-010 | P1 | event-schema | Inspect normalized event schema | Required fields include source ids, timestamps, symbol/corp code, dedupe key, body storage policy, and candidate eligibility | schema review |
-| QA-011 | P0 | network-boundary | Run foundation smoke with network disabled, then run approved live collector smoke | Fixture/config ingestion succeeds without network; approved public RSS may collect metadata-only news; OpenDART/Naver skip when keys are missing; KIS/broker, unofficial API, and general HTML scraping calls are not attempted | network/config log |
+| QA-011 | P0 | network-boundary | Run foundation smoke with network disabled, then run approved source collector smoke | Fixture/config ingestion succeeds without network; approved public RSS may collect metadata-only news; OpenDART/Naver skip when keys are missing; KIS/broker, unofficial API, and general HTML scraping calls are not attempted | network/config log |
 
 ## 3-1. Go Smoke Mapping
 
@@ -80,9 +80,9 @@ Current Go smoke coverage lives in
 | QA-002 | `testQa002AndQa011NoNetworkEnvOrRoutingImports` inspects implementation imports for no broker/order/trading routing modules. |
 | QA-003 | `testQa001AndQa003SourceRegistryCarriesPolicyFields` validates source permission/rate/terms notes. |
 | QA-004 | `testQa004DuplicateFixtureEventsLinkDeterministically` verifies deterministic duplicate linking. |
-| QA-005 | `testQa005AndQa006HealthAndSummaryExposeRequiredOperatorFields` checks last fetch, failures, backlog, source counts, duplicates, and disabled live sources. |
+| QA-005 | `testQa005AndQa006HealthAndSummaryExposeRequiredOperatorFields` checks last fetch, failures, backlog, source counts, duplicates, and disabled network sources. |
 | QA-006 | `testQa005AndQa006HealthAndSummaryExposeRequiredOperatorFields` checks the returned summary dictionary. No runtime evidence file is written by ingestion. |
-| QA-007 | `testQa007MarketDataContextFieldsAreDeclaredBeforeSignals` verifies venue, interval, OHLCV, and latency fields are declared while live chart sources remain disabled/deferred. |
+| QA-007 | `testQa007MarketDataContextFieldsAreDeclaredBeforeSignals` verifies venue, interval, OHLCV, and latency fields are declared while network chart sources remain disabled/deferred. |
 | QA-008 | `testQa008AndQa009BlockedSourcesCannotIngestInFoundation` verifies HTML scraping and unofficial APIs are blocked. |
 | QA-009 | `testQa008AndQa009BlockedSourcesCannotIngestInFoundation` verifies KIS/broker market/realtime/news data is deferred and cannot ingest. |
 | QA-010 | `testQa010NormalizedEventSchemaContainsRequiredFields` verifies required normalized event fields and validation. |
@@ -91,7 +91,7 @@ Current Go smoke coverage lives in
 ## 4. PASS / FAIL / BLOCKED Rules
 
 - PASS: only approved fixture/config sources and approved public RSS metadata
-  are collected in the current first live collector path, rate/terms notes
+  are collected in the current first source collector path, rate/terms notes
   exist, duplicates are handled, blocked/deferred sources cannot run, chart
   source policy exists when chart signals are enabled, and ingestion cannot
   directly place orders.
@@ -118,7 +118,7 @@ Current Go smoke coverage lives in
 Current Go-Check evidence:
 
 - `docs/evidence/RUN-20260604_unit-003-go-check-rebaseline.md`
-- `docs/evidence/RUN-20260605_unit-003-live-collector-hotfix.md`
+- `docs/evidence/RUN-20260605_unit-003-source-collector-hotfix.md`
 - `python -m unittest backend.tests.test_market_intelligence_ingestion`
 - `python -m unittest backend.tests.test_market_intelligence_ingestion backend.tests.test_storage_contract`
 - `python -m py_compile backend/lib/market_intelligence.py backend/service/market_intelligence_ingestion.py backend/tests/test_market_intelligence_ingestion.py`
@@ -134,10 +134,10 @@ Current evidence:
 | QA-002 | PASS | Import inspection confirms no broker/order/trading routing imports in UNIT-003 implementation modules. |
 | QA-003 | PASS | Source policy notes and rate/terms text are present in the implementation config. |
 | QA-004 | PASS | Duplicate disclosure fixtures link deterministically by dedupe key. |
-| QA-005 | PASS | Health output exposes source counts, failures, backlog, disabled live sources, blocked source ids, duplicate links, and last fetch timestamps. |
-| QA-006 | PASS | Summary dictionary exposes source counts, duplicate count, failures, disabled live sources, and retention notes without writing runtime evidence files. |
-| QA-007 | PASS | Market-data context fields include venue, interval, OHLCV schema, and latency budget while live chart sources remain disabled/deferred. |
+| QA-005 | PASS | Health output exposes source counts, failures, backlog, disabled network sources, blocked source ids, duplicate links, and last fetch timestamps. |
+| QA-006 | PASS | Summary dictionary exposes source counts, duplicate count, failures, disabled network sources, and retention notes without writing runtime evidence files. |
+| QA-007 | PASS | Market-data context fields include venue, interval, OHLCV schema, and latency budget while network chart sources remain disabled/deferred. |
 | QA-008 | PASS | General HTML scraping and unofficial finance APIs are blocked in foundation mode. |
 | QA-009 | PASS | KIS/broker market/realtime/news source remains deferred and cannot ingest. |
 | QA-010 | PASS | Normalized event schema includes all required UNIT-003 fields; validation rejects non-KST/ambiguous timestamps and caller body-policy overrides. |
-| QA-011 | PASS | Foundation fixture smoke succeeds without credentials, network imports, live source calls, broker/KIS imports, or order-routing imports. |
+| QA-011 | PASS | Foundation fixture smoke succeeds without credentials, network imports, network source calls, broker/KIS imports, or order-routing imports. |

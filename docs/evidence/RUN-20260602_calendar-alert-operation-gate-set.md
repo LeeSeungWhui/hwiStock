@@ -1,8 +1,8 @@
 ---
 schema_version: hwi.evidence/v0
-id: RUN-20260602-calendar-alert-paper-gate-set
+id: RUN-20260602-calendar-alert-operation-gate-set
 type: evidence
-name: Market calendar, alert channel, and one-week paper gate Set pass
+name: Market calendar, alert channel, and one-week operation gate Set pass
 stage: set
 environment: docs_only
 status: set
@@ -14,11 +14,11 @@ unit_refs:
   - HWISTOCK-UNIT-004
   - HWISTOCK-UNIT-006
 source_refs:
-  - docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md
+  - docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md
 go_allowed: false
 ---
 
-# Market Calendar, Alert Channel, And One-Week Paper Gate Set Pass
+# Market Calendar, Alert Channel, And One-Week Adapter Gate Set Pass
 
 ## 1. Scope
 
@@ -26,7 +26,7 @@ This docs-only Set pass closes three Ready-Set blockers:
 
 - official/broker market-calendar source
 - first-pass alert channel
-- one-week paper/sandbox pass criteria
+- one-week adapter-backed pass criteria
 
 No code, broker network call, AI network call, external alert delivery, order
 placement, or credential storage was performed.
@@ -44,8 +44,8 @@ Local KIS reference:
 
 - `apiRefer/국내휴장일조회[국내주식-040].xlsx`
 
-The local KIS capability matrix marks `국내휴장일조회` paper-unsupported, so it is
-not a first-pass paper-runtime dependency.
+The local KIS capability matrix marks `국내휴장일조회` adapter-unsupported, so it is
+not a first-pass operationtime dependency.
 
 ## 3. Closed Decisions
 
@@ -60,24 +60,24 @@ not a first-pass paper-runtime dependency.
   `data/alerts/YYYY-MM-DD/alerts.jsonl`, dashboard audit/error panel when
   implemented, and daily close report.
 - External alert delivery: deferred; requires later Set approval.
-- One-week paper/sandbox gate: minimum 7 consecutive calendar days and at least
+- One-week adapter-backed gate: minimum 7 consecutive calendar days and at least
   5 valid Korean market open days. If holidays reduce open days below 5, extend
   the run.
-- Paper pass criteria: P0 safety/evidence/reconciliation criteria; no profit
+- Operation pass criteria: P0 safety/evidence/reconciliation criteria; no profit
   threshold and no expected-profit claim.
 
 ## 4. Updated Documents
 
-- `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`
+- `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md`
 - `docs/sources/HWISTOCK-SOURCE-REGISTRY.md`
 - `docs/profiles/PROFILE-HWISTOCK.md`
 - `docs/modules/HWISTOCK-MOD-001_trading-safety-core.md`
 - `docs/modules/HWISTOCK-MOD-003_strategy-risk-rulebook.md`
 - `docs/modules/HWISTOCK-MOD-005_trading-engine-order-state.md`
-- `docs/units/HWISTOCK-UNIT-002_home-server-paper-runner.md`
+- `docs/units/HWISTOCK-UNIT-002_home-server-adapter-runner.md`
 - `docs/units/HWISTOCK-UNIT-004_strategy-risk-rulebook.md`
 - `docs/units/HWISTOCK-UNIT-006_trading-engine-order-state.md`
-- `docs/qa/QA-HWISTOCK-UNIT-002_home-server-paper-runner.md`
+- `docs/qa/QA-HWISTOCK-UNIT-002_home-server-adapter-runner.md`
 - `docs/set/READY-SET-ROW-CLOSURE-20260602_hwistock.md`
 - `docs/set/READY-SET-COMPLETION-20260602_hwistock.md`
 - `docs/evidence/RUN-20260602_ready-set-architecture.md`
@@ -85,7 +85,7 @@ not a first-pass paper-runtime dependency.
 
 ## 5. Verdict
 
-Calendar/alert/paper-gate Set status: PASS
+Calendar/alert/operation-gate Set status: PASS
 
 Implementation readiness for whole bundle: BLOCKED
 

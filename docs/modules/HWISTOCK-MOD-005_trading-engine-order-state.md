@@ -34,8 +34,8 @@ evidence_refs:
 
 This module owns the executable trading flow after AI and scanners have produced
 candidate cards. AI may propose candidates and watch conditions, but the trading
-engine compiles those conditions into deterministic checks, observes live or
-paper market data, manages positions, and routes approved intents to the active
+engine compiles those conditions into deterministic checks, observes operation or
+adapter market data, manages positions, and routes approved intents to the active
 execution adapter.
 
 ## 2. Product / Capability Contract
@@ -52,9 +52,9 @@ execution adapter.
 - For current foundation risk gating, `SOR` is normalized to underlying `KRX`
   metadata and `AUTO_SESSION` requires an explicit resolved underlying
   `session_venue_hint` of `KRX` or `NXT` before UNIT-004 validation runs.
-- During KIS paper runs, KIS-specific NXT/SOR broker branches stay disabled or
-  explicit-fallback-only because the current KIS paper references prove only the
-  KRX paper path. Before KIS paper approval, dry-run validation records intended
+- During KIS operation runs, KIS-specific NXT/SOR broker branches stay disabled or
+  explicit-fallback-only because the current KIS adapter references prove only the
+  KRX adapter path. Before KIS adapter approval, dry-run validation records intended
   venue/session routing but does not simulate broker fills.
 - Sell decisions are driven by stop-loss trigger, configured exit condition,
   signal invalidation, time/flat rule, or operator kill switch.
@@ -63,10 +63,10 @@ execution adapter.
   `filled`, `cancel_requested`, `cancelled`, `rejected`, `retrying`, and
   `failed`.
 - Internal fake broker execution is not used.
-- Before KIS paper approval, the engine may use a no-order dry-run recorder only.
-- The first broker-backed execution adapter is KIS KRX paper/mock-investment
+- Before KIS adapter approval, the engine may use a no-order dry-run recorder only.
+- The first broker-backed execution adapter is KIS KRX broker-adapter
   after official portal verification and explicit approval.
-- Live orders remain forbidden until an operator-selected paper/sandbox
+- Account-affecting orders remain forbidden until an operator-selected adapter-backed
   observation window has approved evidence and explicit user go/no-go.
 
 ## 2-1. Condition Schema Contract
@@ -112,7 +112,7 @@ conditions.
 
 ## 2-2. No-Order Dry-Run Contract
 
-Before KIS paper approval, a policy-approved intent must terminate as a
+Before KIS adapter approval, a policy-approved intent must terminate as a
 `no_order_dry_run` record. The dry-run record may say what the system would have
 attempted, but it must not produce broker order ids, fills, fake balances, or
 simulated PnL.
@@ -133,10 +133,10 @@ Required dry-run fields:
 - `no_simulated_fill`: `true`
 - `created_at_kst`
 
-## 2-3. KIS Paper Adapter Contract
+## 2-3. KIS Adapter Adapter Contract
 
 After explicit broker-network approval, the first broker-backed adapter is KIS
-KRX paper/mock-investment only. The adapter capability must expose at least:
+KRX broker-adapter only. The adapter capability must expose at least:
 
 - `supports_paper_krx_order=true`
 - `supports_paper_nxt_order=false`
@@ -150,7 +150,7 @@ KRX paper/mock-investment only. The adapter capability must expose at least:
 - `supports_paper_realized_pnl_query=false`
 - `supports_paper_holiday_query=false`
 
-KIS paper order/fill reconciliation uses the supported KRX paper APIs listed in
+KIS broker order/fill reconciliation uses the supported KRX adapter APIs listed in
 `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md`: cash order, modify/cancel
 order, daily order/fill lookup, balance, buyable amount, KRX realtime quote, KRX
 order book, and realtime fill notice. Unsupported helper APIs must use local
@@ -167,8 +167,8 @@ Future interfaces:
 - order state machine
 - broker adapter interface
 - no-order dry-run recorder
-- KIS KRX paper/mock adapter
-- future KIS live adapter
+- KIS KRX broker-adapter adapter
+- future KIS operation adapter
 - audit/event log
 
 ## 4. Decisions / Open Questions
@@ -178,21 +178,21 @@ Future interfaces:
 - Decision: condition compiler is required between AI candidate text and trading
   watcher rules.
 - Decision: NXT/SOR are venue/session parameters over the same state machine.
-- Decision: KIS paper testing proves the KRX path only; NXT/SOR broker adapter
-  calls require later real-account/support-confirmation evidence before live use.
+- Decision: KIS adapter testing proves the KRX path only; NXT/SOR broker adapter
+  calls require later real-account/support-confirmation evidence before account-affecting use.
 - Decision: first condition contract is `condition_card/v0` JSON with explicit
   source ids, venue route, watch conditions, risk refs, entry intent, and exit
   plan.
 - Decision: pre-approval execution is `no_order_dry_run` records only; no broker
   call, fake fill, fake balance, or simulated PnL is allowed.
-- Decision: KIS paper adapter is KRX-only for broker-backed evidence until later
+- Decision: KIS broker adapter is KRX-only for broker-backed evidence until later
   real-account/support-confirmation expands NXT/SOR behavior.
 - Decision: baseline numeric risk values are closed by `HWISTOCK-MOD-003` /
   `HWISTOCK-UNIT-004`; calendar source is closed by
-  `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`.
+  `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md`.
 - Current-authority rebaseline Go-Check passed on 2026-06-04 for the imported
   backend tree. The validated scope is still foundation-only:
   `condition_card/v0`, deterministic compiler skeleton, UNIT-004 risk-gate
   delegation, dry-run-only state transitions through `dry_run_recorded`,
-  KIS-paper capability flags, and fixture-only evidence representation. See
+  KIS-adapter capability flags, and fixture-only evidence representation. See
   `docs/evidence/RUN-20260604_unit-006-go-check-rebaseline.md`.

@@ -40,7 +40,7 @@ links:
   - HWISTOCK-MOD-002
   - HWISTOCK-MOD-003
 operational_runtime_authority:
-  superseded_by_module_ref: docs/modules/HWISTOCK-MOD-009_operational-paper-trading-program.md
+  superseded_by_module_ref: docs/modules/HWISTOCK-MOD-009_operational-automated-trading-program.md
   superseded_by_unit_ref: docs/units/HWISTOCK-UNIT-012_ai-analysis-runtime.md
   note: UNIT-005/MOD-004 remain the safety foundation; operational Pro/Flash scheduling and trade-document schemas are governed by MOD-009/UNIT-012.
 ---
@@ -50,11 +50,11 @@ operational_runtime_authority:
 ## 1. Purpose
 
 This module defines how `hwiStock` may use an AI API to orchestrate market
-information, chart context, candidate ranking, and paper-run review. AI is an
+information, chart context, candidate ranking, and operation review. AI is an
 analysis/orchestration layer, not a broker, not a risk engine, and not an order
 router. AI may propose a draft `order_intent`, but that object is not executable
 unless deterministic policy gates approve it and the active broker boundary is
-explicitly approved. Before KIS paper approval, approved intents are recorded
+explicitly approved. Before KIS adapter approval, approved intents are recorded
 only as no-order dry-run decisions.
 
 ## 2. User Value / Representative Scenarios
@@ -64,7 +64,7 @@ only as no-order dry-run decisions.
 - As a reviewer, I can inspect the exact sources and model output behind a
   candidate recommendation.
 - As an operator, I can disable AI without unlocking unsafe trading behavior.
-- As a paper-run reviewer, I can compare AI explanations with actual outcomes
+- As a operation reviewer, I can compare AI explanations with actual outcomes
   without treating them as proof of profitability.
 
 ## 3. Scope
@@ -78,7 +78,7 @@ only as no-order dry-run decisions.
 - Draft `order_intent` schema for recommendation-only buy/sell intent.
 - Source-grounded candidate synthesis.
 - Candidate ranking and explanation.
-- Paper/backtest review summaries.
+- Adapter/backtest review summaries.
 - AI call audit logs: model, prompt/schema version, source ids, latency, and
   validation status.
 - Deterministic policy gate after AI output.
@@ -89,7 +89,7 @@ only as no-order dry-run decisions.
 - Direct broker API calls from AI.
 - Direct order placement from AI.
 - Routing approved intents to KIS or any other broker network endpoint before an
-  explicitly approved KIS paper unit.
+  explicitly approved KIS adapter unit.
 - AI override of cash-reserve floor, stop-loss, holdings cap, kill switch, or stale-data
   gates.
 - Sending credentials, account identifiers, private account details, or
@@ -109,7 +109,7 @@ AI may:
 - propose `consider_entry` for deterministic review
 - propose a non-executable draft `order_intent` for deterministic review
 - flag `exit_review` or `hold_review` for operator/risk review
-- summarize paper/backtest results after the fact
+- summarize adapter/backtest results after the fact
 - generate 06:50 GPT Pro morning-review prompt from overnight analysis artifacts
 - generate 20:00 daily close analysis from system-calculated PnL and trade logs
 
@@ -134,10 +134,10 @@ The default flow is:
 5. Schema validator rejects malformed, uncited, stale, or low-confidence output.
 6. Deterministic policy gate applies cash-reserve floor, stop-loss, holdings cap,
    stale-data, and kill-switch rules.
-7. Before KIS paper approval, approved intent may only be recorded as a no-order
+7. Before KIS adapter approval, approved intent may only be recorded as a no-order
    dry-run decision without simulated fills or balances.
-8. After KIS paper approval, the first broker-backed path is KIS KRX
-   paper/mock-investment only; KIS live and external broker endpoints remain
+8. After KIS adapter approval, the first broker-backed path is KIS KRX
+   broker-adapter only; KIS operation and external broker endpoints remain
    unreachable until a later approved broker-integration unit verifies official
    docs and endpoint modes.
 
@@ -227,12 +227,12 @@ summaries, AI interpretation, failure notes, and next-day watch themes. AI does
 not calculate PnL numbers.
 
 Any unknown action is rejected.
-`draft_order_intent` is also rejected if it references live broker endpoints,
+`draft_order_intent` is also rejected if it references operation broker endpoints,
 credit/margin, all-in sizing, stale source data, or a missing risk reference.
 
 ### 4.4 Fallback Policy
 
-- AI API unavailable: do not unlock new AI-originated live/paper entries. Record
+- AI API unavailable: do not unlock new AI-originated operation/adapter entries. Record
   `ai_unavailable` and keep candidates watchlist-only unless a later unit
   explicitly approves a deterministic non-AI entry path.
 - GPT Pro morning review unavailable or late: use DeepSeek-only morning report
@@ -244,7 +244,7 @@ credit/margin, all-in sizing, stale source data, or a missing risk reference.
 - AI suggests all-in, credit/margin, overnight holding, or bypassing
   cash-reserve/holdings checks, stop-loss, or stale-data:
   reject and log policy violation.
-- AI suggests broker paper/mock/demo/testbed or live endpoint routing before the
+- AI suggests broker broker-adapter/demo/testbed or unapproved endpoint routing before the
   approved KIS integration unit: reject and log policy violation.
 
 ### 4.5 Tool / Retrieval Policy
@@ -306,15 +306,15 @@ Future interfaces may include:
 - order intent validator
 - policy gate adapter
 - no-order dry-run recorder
-- KIS paper adapter boundary
-- paper-run review summarizer
+- KIS broker adapter boundary
+- operation review summarizer
 - daily close report builder
 - morning GPT prompt builder
 
 ## 6. State / Data / Permission Rules
 
 - DeepSeek Pro, DeepSeek Flash, and ChatGPT Pro morning-review direction is
-  selected for planning. Final prompt/schema/cost limits and any live AI network
+  selected for planning. Final prompt/schema/cost limits and any operation AI network
   use still require explicit approval.
 - AI API calls require explicit approval before network use.
 - Prompt, schema, tool permissions, and fallback changes require docs updates.
@@ -329,7 +329,7 @@ Future interfaces may include:
 
 - `HWISTOCK-MOD-002`: source and chart context ingestion.
 - `HWISTOCK-MOD-003`: deterministic signal/risk rulebook.
-- `HWISTOCK-MOD-001`: safety core and live-operation gates.
+- `HWISTOCK-MOD-001`: safety core and operation-operation gates.
 
 ## 8. Module-Level Verification
 
@@ -338,7 +338,7 @@ Future interfaces may include:
 - Verify deterministic risk gate wins over AI recommendations.
 - Verify AI audit logs include model, prompt/schema version, input bundle ids,
   latency, validation result, and action.
-- Verify paper evidence separates AI hypothesis from actual outcome.
+- Verify adapter evidence separates AI hypothesis from actual outcome.
 
 ## 9. Included Units
 
@@ -356,7 +356,7 @@ Future interfaces may include:
 - Decision: AI output must be structured and source-grounded.
 - Decision: AI may propose draft `order_intent`, but only deterministic gates can
   approve it.
-- Decision: internal fake broker execution is not used. Before KIS paper
+- Decision: internal fake broker execution is not used. Before KIS adapter
   approval, approved intents are no-order dry-run records only; KIS and external
   broker endpoints are forbidden until a later approved unit.
 - Decision: DeepSeek Pro is the hourly aggregate source/market analyst; during
@@ -368,7 +368,7 @@ Future interfaces may include:
   automation when available before cutoff.
 - Decision: 20:00 daily close report includes system-calculated PnL and AI
   interpretation.
-- Decision: official broker paper/mock API use is deferred pending KIS API
+- Decision: official broker broker-adapter API use is deferred pending KIS API
   portal verification and explicit approval.
 - Decision: first-pass AI schemas are versioned as `*/v0`, with a job registry
   and prompt schema version on every output.
@@ -378,7 +378,7 @@ Future interfaces may include:
 - Decision: GPT Pro morning review hard cutoff is 07:20 KST.
 - Decision: AI failure does not unlock new AI-originated entries; late or
   malformed output is stored only as rejected/fallback commentary.
-- Open: exact nonzero token/cost caps for live AI API calls require future
+- Open: exact nonzero token/cost caps for paid AI API calls require future
   provider-pricing verification and explicit approval.
 
 ## 11. Evidence References

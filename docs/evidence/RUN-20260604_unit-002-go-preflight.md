@@ -6,10 +6,10 @@ unit_id: HWISTOCK-UNIT-002
 status: pass
 project_root: /data/workspace/My/hwiStock
 profile_ref: docs/profiles/PROFILE-HWISTOCK.md
-unit_ref: docs/units/HWISTOCK-UNIT-002_home-server-paper-runner.md
+unit_ref: docs/units/HWISTOCK-UNIT-002_home-server-adapter-runner.md
 module_refs:
   - docs/modules/HWISTOCK-MOD-001_trading-safety-core.md
-qa_scenario_ref: docs/qa/QA-HWISTOCK-UNIT-002_home-server-paper-runner.md
+qa_scenario_ref: docs/qa/QA-HWISTOCK-UNIT-002_home-server-adapter-runner.md
 ready_set_completion_ref: docs/set/READY-SET-COMPLETION-20260604_rebaseline_hwistock.md
 row_closure_ref: docs/set/READY-SET-ROW-CLOSURE-20260604_rebaseline_hwistock.md
 go_preflight_checklist_ref: docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260604_rebaseline_hwistock.md
@@ -25,8 +25,8 @@ PASS. `HWISTOCK-UNIT-002` may enter Go as a bounded local runner/systemd
 skeleton row.
 
 This verdict does not authorize broker/KIS network calls, AI provider calls,
-paper orders, live orders, credential storage, public/LAN exposure, systemd
-deployment/execution, or a one-week paper evidence claim.
+broker orders, account-affecting orders, credential storage, public/LAN exposure, systemd
+deployment/execution, or a one-week adapter evidence claim.
 
 ## 2. Delegation Guard
 
@@ -42,7 +42,7 @@ deployment/execution, or a one-week paper evidence claim.
 - Reason: UNIT-002 touches backend/ops product code and local runtime safety
   boundaries. Direct local implementation is not the default path.
 - Re-gate triggers: any KIS/broker/API/AI network call, credential handling,
-  public/LAN exposure, real systemd execution/deploy, DB migration, paper/live
+  public/LAN exposure, service-managed execution/deploy, DB migration, adapter-mode
   order behavior, fake fills/balances/PnL, or scope outside UNIT-002.
 
 ## 3. Selected Row Scope
@@ -59,11 +59,11 @@ Allowed first Go scope from the current row closure matrix:
 
 Hard exclusions:
 
-- paper orders
+- broker orders
 - broker/KIS calls
 - AI calls
-- live runner claim
-- one-week paper evidence claim
+- operation runner claim
+- one-week adapter evidence claim
 - public/LAN exposure
 - credential reads or storage
 
@@ -76,7 +76,7 @@ Hard exclusions:
 | PF-03 | pass | `HWISTOCK-UNIT-002` is listed in the current Go-Check queue. |
 | PF-04 | pass | `HWISTOCK-UNIT-002` row state is `ready_for_go_check`. |
 | PF-05 | pass | Unit, module, QA scenario, profile, and source policy docs exist. |
-| PF-06 | conditional_pass | No post-import external review was run; selected scope is local skeleton/sandbox-safe only and does not expand broker/AI/credential/public dashboard behavior. |
+| PF-06 | conditional_pass | No post-import external review was run; selected scope is local skeleton/adapter-safe only and does not expand broker/AI/credential/public dashboard behavior. |
 | PF-07 | pass | No open P0/P1 finding is known for this bounded skeleton row. |
 | PF-08 | pass | Strategy behavior is not implemented in this row. |
 | PF-09 | not_applicable | Dashboard UI is not implemented in this row. |
@@ -90,7 +90,7 @@ Hard exclusions:
 
 Focused smoke for this row must cover at minimum:
 
-- runner/service status payload reports paper/no-order/local-only defaults;
+- runner/service status payload reports adapter/no-order/local-only defaults;
 - kill switch blocks order routing;
 - 08:30 -> NXT, 09:30 -> KRX, 15:30 -> NXT, 20:30 -> idle;
 - missing/stale calendar keeps trading/order loops idle;

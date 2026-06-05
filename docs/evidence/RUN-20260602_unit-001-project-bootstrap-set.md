@@ -21,7 +21,7 @@ go_allowed: false
 This Set pass closes the docs-only bootstrap contract for hwiStock. It verifies
 that the project has an active HWI profile, a safety-core module, a bootstrap
 unit, and a bootstrap QA scenario, without implying product implementation or
-live-trading readiness.
+operation readiness.
 
 ## 2. Closed Bootstrap Decisions
 
@@ -34,10 +34,10 @@ live-trading readiness.
   official evidence changes that.
 - Broker boundary: no internal fake broker execution; pre-approval execution is
   no-order dry-run only.
-- Capital policy: cash-only, live starting capital 2,000,000 KRW.
-- Paper/mock budget: KIS paper/mock target budget 10,000,000 KRW until account
+- Capital policy: cash-only, starting capital 2,000,000 KRW.
+- Broker adapter budget: KIS broker-adapter target budget 10,000,000 KRW until account
   evidence proves actual balance.
-- Live readiness: at least one full week of paper/sandbox evidence plus explicit
+- Operation readiness: at least one full week of adapter-backed evidence plus explicit
   user go/no-go approval.
 
 ## 3. Updated Documents
@@ -54,9 +54,9 @@ live-trading readiness.
 `QA-HWISTOCK-UNIT-001` verifies:
 
 - root harness/profile wiring
-- default live-order prohibition
+- default unapproved-adapter order guard
 - safety module presence
-- one-week paper/sandbox gate
+- one-week adapter-backed gate
 - cash-only capital policy
 - visible closed decisions and remaining Ready-Set blockers
 

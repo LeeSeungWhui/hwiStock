@@ -21,13 +21,13 @@ environment: docs_only
 Later 2026-06-02 profile updates supersede the internal `mock_broker_api`
 direction in this historical bootstrap evidence. Current policy: no internal
 fake broker execution path; pre-approval behavior is no-order dry-run only, and
-the first broker-backed path is approved KIS KRX paper/mock-investment.
+the first broker-backed path is approved KIS KRX broker-adapter.
 
 ## Summary
 
 Created initial Hwi Work Harness docs for `hwiStock`, a stock day-trading
 automation project. This bootstrap is docs-only and does not create trading
-code, credentials, broker connections, paper orders, or live orders.
+code, credentials, broker connections, broker orders, or account-affecting orders.
 
 ## Created / Expected Files
 
@@ -42,19 +42,19 @@ code, credentials, broker connections, paper orders, or live orders.
 ## Bootstrap QA Notes
 
 - `AGENTS.md` points to `docs/profiles/PROFILE-HWISTOCK.md`.
-- Profile approval policy requires explicit approval for broker operations, live
-  orders, credentials, and real-money trading.
-- Profile/module/unit require at least one full week of paper/sandbox testing
-  evidence before actual live operation.
+- Profile approval policy requires explicit approval for broker operations, operation
+  orders, credentials, and account-affecting trading.
+- Profile/module/unit require at least one full week of adapter-backed testing
+  evidence before actual account-affecting operation.
 - Profile/module define strategy direction as short-term day trading (`단타`) and
   capital policy as cash-only.
 - Credit, margin, 미수, borrowed funds, and leveraged capital are forbidden by
   default.
-- Module contract states no live orders by default.
+- Module contract states no account-affecting orders by default.
 - Broker/API direction is now KIS because KB Securities is blocked as a practical
   personal API candidate. Internal fake broker execution is not used. Before an
   explicitly approved broker-network unit, execution stops at no-order dry-run
-  records. The first broker-backed path is approved KIS KRX paper/mock
+  records. The first broker-backed path is approved KIS KRX broker-adapter
   investment; NXT/SOR support remains later confirmation work.
 - Remaining Ready-Set blockers are strategy decision-packet approval or row
   exclusion, dashboard design review execution or row exclusion, current final

@@ -6,6 +6,7 @@ domain: backend
 name: AI analysis runtime
 status: go_check_local_passed
 implementation_status: go_check_passed_local_no_network_provider_smoke_blocked
+post_pro_reinforcement_status: corrective_gap_recorded
 priority: P0
 source_of_truth: user_intent
 owner: hwi
@@ -34,7 +35,7 @@ code_paths:
 qa_scenario_refs:
   - docs/qa/QA-HWISTOCK-UNIT-012_ai-analysis-runtime.md
 evidence_refs:
-  - docs/evidence/RUN-20260605_ready-set-operational-paper-trading-program.md
+  - docs/evidence/RUN-20260605_ready-set-operational-automated-trading-program.md
   - docs/evidence/RUN-20260605_gpt-pro-operational-ready-set-review.md
   - docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
 external_refs:
@@ -44,14 +45,19 @@ external_refs:
 
 # AI Analysis Runtime
 
+> Post-Pro corrective note (2026-06-05): local artifacts and timer activity are
+> not enough. This unit must reconcile actual Pro/Flash timers, provider-backed
+> versus safe-block outputs, and readiness wording before it can support a
+> operation observation claim.
+
 ## 1. Goal
 
-Make the AI layer an actual scheduled analysis pipeline for the paper program,
+Make the AI layer an actual scheduled analysis pipeline for the trading program,
 not a vague description and not a fake order brain.
 
 Current Go status: local no-network Go-Check passed on 2026-06-05. Provider
 network smoke remains blocked until explicitly scoped and approved. This does
-not make the whole paper program paper-run-ready.
+not make the whole trading program operation-ready.
 
 The current contract is:
 
@@ -73,7 +79,7 @@ The current contract is:
   automation when available before cutoff.
 
 AI output remains non-executable. The deterministic strategy/risk/order layers
-own all paper-order eligibility.
+own all broker-order eligibility.
 
 ## 2. Included Scope
 
@@ -95,12 +101,12 @@ own all paper-order eligibility.
   `NO_TRADE`, entry zone if relevant, take-profit, stop-loss, trailing-stop
   percent, cancel-if-not-filled window, position-size cap, source refs, KIS
   market-data refs, confidence/risk notes, portfolio-conflict status, and
-  explicit paper-only/no-live-order metadata.
+  explicit adapter-only/no-adapter-order metadata.
 - Flash must not invent ticker candidates. Its executable action universe is the
   deterministic `compiled_watch/v0` input created from NAVER/OpenDART events,
   the six KIS signal inputs, symbol mapping, freshness/session filters, and
   strategy/risk prefilters. Off-universe symbols become reject/watch records or
-  a `NO_TRADE` safe block; they cannot become paper intents.
+  a `NO_TRADE` safe block; they cannot become order intents.
 - Flash input must include at least one portfolio-consistency source:
   - previous `flash_trade_document/v0` chain with active/expired trade-action
     status; or
@@ -134,7 +140,7 @@ own all paper-order eligibility.
 | AC-06 | P0 | Secrets and copyrighted bodies are excluded | AI input payload review rejects credentials, account ids, and unapproved full article bodies. |
 | AC-07 | P0 | Missing provider/key is safe | Missing key or provider failure records a safe block and does not unlock new entries. |
 | AC-08 | P0 | Flash is portfolio-aware | Flash input includes previous trade-document and/or portfolio/order-state context, and output marks conflicts instead of proposing duplicate/conflicting entries. |
-| AC-09 | P0 | Flash candidate universe is deterministic | Flash can only score/select symbols from a prebuilt `compiled_watch/v0`; off-universe tickers are rejected and cannot produce paper intents. |
+| AC-09 | P0 | Flash candidate universe is deterministic | Flash can only score/select symbols from a prebuilt `compiled_watch/v0`; off-universe tickers are rejected and cannot produce order intents. |
 
 ## 5. Go Notes
 

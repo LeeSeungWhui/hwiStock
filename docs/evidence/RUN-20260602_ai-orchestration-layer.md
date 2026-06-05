@@ -23,13 +23,13 @@ environment: docs_only
 Later 2026-06-02 profile updates supersede the internal `mock_broker_api`
 direction in this historical evidence. Current policy: no internal fake broker
 execution path; pre-approval behavior is no-order dry-run only, and the first
-broker-backed path is approved KIS KRX paper/mock-investment.
+broker-backed path is approved KIS KRX broker-adapter.
 
 ## Summary
 
 Created the initial docs-only AI orchestration contract for `hwiStock`. The
 contract allows AI API use for candidate synthesis, ranking, explanation, and
-paper-run review, but forbids AI from placing orders or overriding deterministic
+operation review, but forbids AI from placing orders or overriding deterministic
 risk gates.
 
 ## Safety Decisions
@@ -41,10 +41,10 @@ risk gates.
 - AI output must be structured and source-grounded.
 - AI may produce a draft `order_intent`, but it is non-executable until
   deterministic policy gates approve it.
-- Before approved KIS paper integration, approved intents can only be recorded
+- Before approved KIS broker-adapter integration, approved intents can only be recorded
   as no-order dry-run decisions; no internal fake broker/fill simulator is used.
 - KIS/external broker endpoints remain disabled until an approved broker-network
-  unit. KIS KRX paper/mock investment is the planned first broker-backed path
+  unit. KIS KRX broker-adapter is the planned first broker-backed path
   after explicit approval and smoke; no internal fake broker/fill simulator is
   used before that.
 - Malformed, uncited, stale, low-confidence, or policy-violating AI output is
@@ -59,6 +59,6 @@ risk gates.
 - Decide whether AI gets tool access or only normalized input bundles.
 - Define concrete JSON schema before implementation.
 - Define concrete draft `order_intent` schema before implementation.
-- Define no-order dry-run schema and KIS KRX paper adapter schema/fallback
+- Define no-order dry-run schema and KIS KRX broker adapter schema/fallback
   before implementation.
-- Build paper-only tests before any live-readiness discussion.
+- Build adapter-bound tests before any operation-readiness discussion.

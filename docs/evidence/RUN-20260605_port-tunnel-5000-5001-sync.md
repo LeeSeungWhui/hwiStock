@@ -7,13 +7,13 @@ current_authority: true
 project_root: /data/workspace/My/hwiStock
 profile_ref: docs/profiles/PROFILE-HWISTOCK.md
 unit_refs:
-  - docs/units/HWISTOCK-UNIT-002_home-server-paper-runner.md
+  - docs/units/HWISTOCK-UNIT-002_home-server-adapter-runner.md
   - docs/units/HWISTOCK-UNIT-007_dashboard-operator-console.md
 module_refs:
   - docs/modules/HWISTOCK-MOD-001_trading-safety-core.md
   - docs/modules/HWISTOCK-MOD-006_dashboard-operator-console.md
 qa_scenario_refs:
-  - docs/qa/QA-HWISTOCK-UNIT-002_home-server-paper-runner.md
+  - docs/qa/QA-HWISTOCK-UNIT-002_home-server-adapter-runner.md
   - docs/qa/QA-HWISTOCK-UNIT-007_dashboard-operator-console.md
 created_at: 2026-06-05
 environment: local_only
@@ -32,7 +32,7 @@ PASS. hwiStock local dashboard/API defaults are synchronized to:
 - hwibuntu access path: SSH local forwarding from hwibuntu loopback to
   hwiServer loopback
 
-This record does **not** prove browser rendering, server startup, or live tunnel
+This record does **not** prove browser rendering, server startup, or active tunnel
 connectivity. It records static/default configuration, helper scripts, and
 focused validation only. Runtime local-server and hwibuntu tunnel proof were
 completed later in:
@@ -65,7 +65,7 @@ ops/tunnel/hwibuntu-dashboard-tunnel.sh
 ```
 
 Services must remain bound to loopback. This does not authorize `0.0.0.0`,
-LAN/public IP exposure, reverse proxy exposure, broker/API calls, or live
+LAN/public IP exposure, reverse proxy exposure, broker/API calls, or operation
 trading.
 
 ## 3. Changed Surfaces

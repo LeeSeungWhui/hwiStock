@@ -159,16 +159,16 @@ source ./env.sh && python3 scripts/validate_runtime_contracts.py
   - order-state snapshots;
   - news/disclosure events;
   - calendar/session evidence.
-- Define paper-only broker guard:
-  - paper/mock account alias allowlist;
-  - KIS paper/mock base URL allowlist;
-  - paper-supported TR ID allowlist;
-  - KRX-only paper order route until future approval;
+- Define adapter-bound broker guard:
+  - broker-adapter account alias allowlist;
+  - KIS broker-adapter base URL allowlist;
+  - adapter-supported TR ID allowlist;
+  - KRX-only broker order route until future approval;
   - startup self-test;
   - resolved REST/WebSocket host-class assertions;
   - TR-ID allowlist version;
-  - fatal abort on live/unknown domain, live profile, unsupported route, or
-    missing paper-mode evidence.
+  - fatal abort on unapproved/unknown domain, operation profile, unsupported route, or
+    missing adapter-mode evidence.
 - Define cancel-request requirements:
   - target request id;
   - target client order key;
@@ -181,7 +181,7 @@ source ./env.sh && python3 scripts/validate_runtime_contracts.py
 
 - Broker network calls.
 - DeepSeek provider calls.
-- Live trading.
+- Account-affecting operation.
 - Real account login.
 - Credential reads or prints.
 - Runtime strategy-risk parameter changes.
@@ -199,11 +199,11 @@ source ./env.sh && python3 scripts/validate_runtime_contracts.py
 | AC-06 | P0 | Portfolio conflicts are deterministic | Held/pending/exiting/cooldown/lock/consumed-doc conflicts produce named reject codes before KIS submission. |
 | AC-07 | P0 | Reservation accounting protects cash/slots | Pending buys/sells and reserved holding slots are included in cash reserve and max-holdings checks. |
 | AC-08 | P0 | Order state machine is formal | Allowed order states, transitions, owning process, and recovery rules are defined. |
-| AC-09 | P0 | Ambiguous broker submit is fail-safe | Unknown submit/crash paths require reconciliation before retry and cannot duplicate paper orders. |
+| AC-09 | P0 | Ambiguous broker submit is fail-safe | Unknown submit/crash paths require reconciliation before retry and cannot duplicate broker orders. |
 | AC-10 | P0 | Freshness TTLs are explicit | Each input class has a TTL, source timestamp rule, and fail-closed behavior. |
-| AC-11 | P0 | Paper-only guard is enforceable | Unknown/live KIS domain/account/TR ID/route aborts before transport. |
-| AC-12 | P0 | Failure-mode QA exists | QA covers duplicate docs, partial writes, stale inputs, conflicts, reservation breach, restart, KIS reject, partial fill, websocket disconnect, and live misconfiguration. |
-| AC-13 | P0 | Validator fixtures cover Pro findings | Invalid fixtures cover short deterministic ids, nested Flash action failures, missing refs, stale KIS/portfolio/order snapshots, bad paper guard, cancel target gaps, reservation breach, partial publication, ambiguous submit, duplicate intent, and duplicate KIS snapshot sequence. |
+| AC-11 | P0 | Adapter-bound guard is enforceable | Unknown/operation KIS domain/account/TR ID/route aborts before transport. |
+| AC-12 | P0 | Failure-mode QA exists | QA covers duplicate docs, partial writes, stale inputs, conflicts, reservation breach, restart, KIS reject, partial fill, websocket disconnect, and operation misconfiguration. |
+| AC-13 | P0 | Validator fixtures cover Pro findings | Invalid fixtures cover short deterministic ids, nested Flash action failures, missing refs, stale KIS/portfolio/order snapshots, bad adapter guard, cancel target gaps, reservation breach, partial publication, ambiguous submit, duplicate intent, and duplicate KIS snapshot sequence. |
 
 ## 5. Go Notes
 

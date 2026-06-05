@@ -35,11 +35,11 @@ AI API call, or order placement was attempted.
 
 | source | use |
 | --- | --- |
-| `docs/profiles/PROFILE-HWISTOCK.md` | no internal fake broker, KIS KRX paper-first, no-order dry-run before broker approval |
+| `docs/profiles/PROFILE-HWISTOCK.md` | no internal fake broker, KIS KRX adapter-first, no-order dry-run before broker approval |
 | `docs/modules/HWISTOCK-MOD-005_trading-engine-order-state.md` | durable trading-engine/order-state module contract |
 | `docs/units/HWISTOCK-UNIT-006_trading-engine-order-state.md` | execution contract for the trading engine/order state unit |
 | `docs/qa/QA-HWISTOCK-UNIT-006_trading-engine-order-state.md` | QA scenario rows and evidence requirements |
-| `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md` | KIS paper-supported, constrained, unsupported, fallback, and live-verification API behavior |
+| `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md` | KIS adapter-supported, constrained, unsupported, fallback, and runtime-verification API behavior |
 
 ## 3. Set Decisions
 
@@ -50,10 +50,10 @@ AI API call, or order placement was attempted.
 | Natural language | AI/free text cannot become executable; vague conditions are rejected or downgraded to dashboard-only commentary. |
 | State machine | Minimum states include `draft_intent`, `compiled_watch`, `eligible`, `blocked`, `dry_run_recorded`, `submitted`, `accepted`, `partial_fill`, `filled`, `cancel_requested`, `cancelled`, `rejected`, `retrying`, `failed`. |
 | Pre-approval behavior | Stop at `dry_run_recorded`; record no-order dry-run only with no broker call, fake fill, fake balance, or simulated PnL. |
-| First broker-backed adapter | Approved KIS KRX paper/mock-investment only. |
-| NXT/SOR | Venue/session parameters over the same state machine. KIS paper NXT/SOR broker branches are disabled or explicit-fallback-only. |
-| KIS paper capabilities | KRX order/realtime supported where references allow; NXT/SOR/integrated realtime and several helper APIs are unsupported and must use disabled/fallback records. |
-| Reconciliation | Use supported KIS KRX paper order/fill/balance/realtime fill-notice data; use local state/fallback for paper-unsupported helper queries. |
+| First broker-backed adapter | Approved KIS KRX broker-adapter only. |
+| NXT/SOR | Venue/session parameters over the same state machine. KIS adapter NXT/SOR broker branches are disabled or explicit-fallback-only. |
+| KIS broker-adapter capabilities | KRX order/realtime supported where references allow; NXT/SOR/integrated realtime and several helper APIs are unsupported and must use disabled/fallback records. |
+| Reconciliation | Use supported KIS KRX broker order/fill/balance/realtime fill-notice data; use local state/fallback for adapter-unsupported helper queries. |
 
 ## 4. Acceptance Closure
 
@@ -66,8 +66,8 @@ AI API call, or order placement was attempted.
 | AC-05 | set | Pre-approval path is no-order dry-run only. |
 | AC-06 | set | NXT/SOR are parameterized routes, not separate strategy families. |
 | AC-07 | set | `condition_card/v0` schema is selected. |
-| AC-08 | set | KIS paper capability flags are selected. |
-| AC-09 | set | KIS paper reconciliation and fallback behavior are selected. |
+| AC-08 | set | KIS adapter capability flags are selected. |
+| AC-09 | set | KIS broker-adapter reconciliation and fallback behavior are selected. |
 
 ## 5. Follow-Ups
 
@@ -75,11 +75,11 @@ AI API call, or order placement was attempted.
   reserve ratio 0.25, maximum simultaneous holdings 5, and AI-assisted stop
   price capped by deterministic maximum -5% loss.
 - Runtime calendar source hierarchy is closed by
-  `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`; missing or stale
+  `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md`; missing or stale
   cached calendar makes trading/order loops idle.
-- KIS paper account/product-code/HTS ID, actual paper balance, and current rate
+- KIS broker-adapter account/product-code/HTS ID, actual adapter balance, and current rate
   limits require a future explicitly approved broker-network smoke.
-- Live NXT/SOR behavior requires a future real-account/support-confirmation gate.
+- Operation NXT/SOR behavior requires a future broker-account/support-confirmation gate.
 - The broader Ready-Set bundle is still not implementation-ready until the
   completion gate and final go-check queue are closed.
 

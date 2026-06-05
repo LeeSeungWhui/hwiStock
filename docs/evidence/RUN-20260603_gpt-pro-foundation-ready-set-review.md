@@ -66,9 +66,9 @@ Go preflight before implementation.
 | GPTR-FND-001 | P1 | fixed | `HWISTOCK-UNIT-006` could expand beyond the approved first-Go scope. | Constrain first-Go scope to no-order dry-run condition/order-state skeleton only. |
 | GPTR-FND-002 | P1 | fixed | No-VCS root baseline needs a first-Go sequencing decision. | Require Git initialization or explicit no-VCS exception before code edits. |
 | GPTR-FND-003 | P1 | fixed | Selected queue needs concrete proof that broker/AI/order networks remain disabled. | Add selected-queue network-boundary smoke requirements to preflight and QA notes. |
-| GPTR-FND-004 | P1 | fixed | DART/source ingestion needs a fixture-vs-live-source first-Go mode line. | Restrict first foundation Go to fixture/config skeleton; live OpenDART calls require later explicit source API config approval. |
+| GPTR-FND-004 | P1 | fixed | DART/source ingestion needs a fixture-vs-operation-source first-Go mode line. | Restrict first foundation Go to fixture/config skeleton; network OpenDART calls require later explicit source API config approval. |
 | GPTR-FND-005 | P2 | deferred | Historical evidence can be noisy. | Current source-of-truth priority and current-state evidence remain authoritative; a superseded-evidence index can be added later. |
-| GPTR-FND-006 | P2 | deferred | Future strategy paper run should add operational halt metrics before paper orders. | Deferred with `HWISTOCK-UNIT-004` strategy implementation. |
+| GPTR-FND-006 | P2 | deferred | Future strategy operation run should add operational halt metrics before broker orders. | Deferred with `HWISTOCK-UNIT-004` strategy implementation. |
 | GPTR-FND-007 | P2 | fixed | Selected units should map docs QA rows to focused Go checks. | Completion/preflight now require per-unit focused Go smoke rows and evidence refs. |
 
 Open P0 findings: `0`.
@@ -82,16 +82,16 @@ The narrowed queue excludes:
 - AI provider/network implementation
 - one-week systemd runner implementation
 - dashboard implementation and dashboard design work
-- all broker-backed KIS paper/live behavior, including token issuance, balance
+- all broker-backed KIS adapter-mode behavior, including token issuance, balance
   lookup, quote/realtime calls, order calls, and account evidence
 - NXT/SOR broker behavior except no-order dry-run route metadata
 
 ## 6. Residual Risks
 
 - `HWISTOCK-UNIT-006` must stay narrow during first Go.
-- Live OpenDART ingestion remains disabled until source API config approval.
+- Network OpenDART ingestion remains disabled until source API config approval.
 - The no-VCS baseline must be resolved before code edits.
-- KIS paper constraints remain unresolved until future approved broker-network
+- KIS broker-adapter constraints remain unresolved until future approved broker-network
   smoke.
 - Strategy defaults remain unproven and excluded from this first queue.
 
@@ -102,8 +102,8 @@ This review did not approve:
 - broker network calls
 - KIS token/account/balance/order calls
 - AI provider network calls
-- paper order placement
-- live order placement
+- broker order placement
+- account-affecting order placement
 - credential storage
 - dashboard public/LAN exposure
 - internal fake broker fills, balances, or PnL

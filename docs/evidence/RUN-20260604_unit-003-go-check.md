@@ -38,7 +38,7 @@ PASS for the foundation-only Go implementation/check scope.
 
 `HWISTOCK-UNIT-003` now has a stdlib-only, fixture/config-first market
 intelligence ingestion skeleton. This is not Prove evidence and does not
-authorize live source collection, broker/KIS calls, AI provider calls, order
+authorize network source collection, broker/KIS calls, AI provider calls, order
 placement, credential storage, runtime scheduler execution, or runtime artifact
 writes.
 
@@ -65,7 +65,7 @@ writes.
 - `backend/service/market_intelligence_ingestion.py`
   - in-memory fixture-row ingestion only;
   - returned events, summary, and health dictionaries only;
-  - source counts, duplicate count, disabled live sources, blocked source ids,
+  - source counts, duplicate count, disabled network sources, blocked source ids,
     failures, backlog, last fetch timestamps, and retention notes.
 - `backend/tests/test_market_intelligence_ingestion.py`
   - focused unittest smoke coverage for QA-001 through QA-011 where practical.
@@ -75,7 +75,7 @@ writes.
 - No implementation path reads environment variables or credential files.
 - No implementation path imports network client modules.
 - No implementation path imports broker, KIS, trading, or order-routing modules.
-- Live OpenDART, Naver, KRX/KIND, KIS/broker, general HTML scraping, and
+- Network OpenDART, Naver, KRX/KIND, KIS/broker, general HTML scraping, and
   unofficial API sources remain disabled in foundation mode.
 - Approved first-Go sources are fixture-only; no network client exists.
 - Ingestion writes no runtime artifacts under `data/`.
@@ -88,13 +88,13 @@ writes.
 | QA-002 | pass | Import smoke confirms no broker/order/trading routing imports. |
 | QA-003 | pass | Source policy notes and rate/terms text are present in the implementation config. |
 | QA-004 | pass | Duplicate disclosure fixtures link deterministically by dedupe key. |
-| QA-005 | pass | Health output exposes source counts, duplicate count, failures, backlog, disabled live sources, blocked source ids, and last fetch timestamps. |
-| QA-006 | pass | Summary dictionary exposes source counts, duplicate count, failures, disabled live sources, and retention notes without writing runtime evidence files. |
-| QA-007 | pass | Market-data context fields include venue, interval, OHLCV, volume, and latency status while live sources remain conditional/deferred. |
+| QA-005 | pass | Health output exposes source counts, duplicate count, failures, backlog, disabled network sources, blocked source ids, and last fetch timestamps. |
+| QA-006 | pass | Summary dictionary exposes source counts, duplicate count, failures, disabled network sources, and retention notes without writing runtime evidence files. |
+| QA-007 | pass | Market-data context fields include venue, interval, OHLCV, volume, and latency status while network sources remain conditional/deferred. |
 | QA-008 | pass | General HTML scraping and unofficial finance APIs are blocked in foundation mode. |
 | QA-009 | pass | KIS/broker market/realtime/news source remains deferred and cannot ingest. |
 | QA-010 | pass | Normalized event schema includes all required UNIT-003 fields and validation catches missing fields. |
-| QA-011 | pass | Foundation fixture smoke succeeds without credentials, network imports, or live source calls. |
+| QA-011 | pass | Foundation fixture smoke succeeds without credentials, network imports, or network source calls. |
 
 ## 6. Validation
 
@@ -214,7 +214,7 @@ Findings: error=0 warning=0 info=0
 
 ## 7. Remaining Risks / Handoff Notes
 
-- This is a skeleton foundation pass only. Live source fetchers, schedulers,
+- This is a skeleton foundation pass only. Operation source fetchers, schedulers,
   storage persistence, API routes, and Prove evidence remain future work.
 - The earlier optional worker-side hwi-rule-gate blocker is superseded by the
   final profile-aware orchestrator rule-gate pass recorded above.

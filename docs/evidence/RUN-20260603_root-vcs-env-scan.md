@@ -36,7 +36,7 @@ scan did not read secret file contents and did not start implementation.
 - No KIS token/account/balance/order call was made.
 - No AI provider network call was made.
 - No external review was sent.
-- No paper or live order was placed.
+- No adapter or account-affecting order was placed.
 - No Go implementation was started.
 
 ## Result

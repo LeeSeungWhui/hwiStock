@@ -1,6 +1,6 @@
 ---
 schema_version: hwi.evidence/v0
-id: RUN-20260605-ready-set-continuous-paper-runner
+id: RUN-20260605-ready-set-continuous-adapter-runner
 type: ready_set_evidence
 status: pass_docs_only
 project_root: /data/workspace/My/hwiStock
@@ -13,24 +13,24 @@ module_refs:
   - HWISTOCK-MOD-008
 ---
 
-# Ready-Set Evidence — Continuous KIS Paper Runner
+# Ready-Set Evidence — Continuous KIS Broker-Adapter Runner
 
 ## 1. Summary
 
 The Ready-Set bundle was corrected for the next operational hwiStock target:
-a 24-hour continuous KIS paper/mock runner.
+a 24-hour continuous KIS broker-adapter runner.
 
 The correction explicitly rejects a fixed seven-day program design. The runner
-is continuous. The operator decides the paper/sandbox observation period, and
+is continuous. The operator decides the adapter-backed observation period, and
 evidence records that period as metadata.
 
 ## 2. Actions Performed
 
-- Added `HWISTOCK-MOD-008` continuous KIS paper runtime contract.
-- Added `HWISTOCK-UNIT-010` KIS paper continuous runner execution contract.
+- Added `HWISTOCK-MOD-008` continuous KIS operation runtime contract.
+- Added `HWISTOCK-UNIT-010` KIS broker-adapter continuous runner execution contract.
 - Added `QA-HWISTOCK-UNIT-010` QA scenario.
 - Added 2026-06-05 Ready-Set completion, row closure, and Go preflight docs.
-- Updated the market calendar/alert/paper policy to operator-controlled
+- Updated the market calendar/alert/operation policy to operator-controlled
   observation windows.
 - Updated active profile/index references to prevent skeleton PASS or fixed
   seven-day wording from being used as operational readiness.
@@ -49,7 +49,7 @@ evidence records that period as metadata.
 PASS for docs-only Ready-Set correction.
 
 Next target: `HWISTOCK-UNIT-010` Go-Check implementation, subject to
-`docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_continuous-paper-runner_hwistock.md`.
+`docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_continuous-adapter-runner_hwistock.md`.
 
 Current operational state remains:
 

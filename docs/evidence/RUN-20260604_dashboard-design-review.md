@@ -25,7 +25,7 @@ This evidence records the approved dashboard design review for
 read-only docs scope.
 
 The review did not authorize dashboard implementation, public/LAN exposure,
-broker calls, KIS calls, AI provider calls, paper orders, live orders, credential
+broker calls, KIS calls, AI provider calls, broker orders, account-affecting orders, credential
 storage, or Go implementation.
 
 ## 2. Route Notes
@@ -80,5 +80,5 @@ future unit explicitly adds it.
 
 This review did not perform implementation, browser QA, server operation,
 deployment, git/svn mutation, credential access, broker/KIS access, AI provider
-access, paper orders, or live orders.
+access, broker orders, or account-affecting orders.
 

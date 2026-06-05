@@ -6,9 +6,10 @@ domain: frontend
 name: Dashboard operator console
 spec_status: set
 build_status: go_check_passed
-verification_status: browser_prove_passed
+verification_status: browser_prove_passed_with_post_pro_readiness_truth_go_check
 ready_set_rebaseline_status: go_check_passed
 prove_status: pass
+post_pro_readiness_truth_status: go_check_passed_api_frontend_tunnel_smoke
 priority: P1
 source_of_truth: user_intent
 owner: hwi
@@ -19,6 +20,7 @@ go_check_evidence_refs:
   - docs/evidence/RUN-20260605_port-tunnel-5000-5001-sync.md
   - docs/evidence/RUN-20260605_local-server-smoke-5000-5001.md
   - docs/evidence/RUN-20260605_hwibuntu-tunnel-smoke-5000-5001.md
+  - docs/evidence/RUN-20260605_post-pro-corrective-go-check-unit-011-015.md
 prove_evidence_refs:
   - docs/evidence/RUN-20260605_browser-ui-prove-5000-5001.md
   - docs/evidence/RUN-20260605_browser-ui-reprove-login-api500.md
@@ -32,6 +34,14 @@ links:
 ---
 
 # Dashboard Operator Console
+
+> Post-Pro readiness note (2026-06-05): browser rendering proof is not enough.
+> The dashboard must loudly expose false readiness, order-gate blocks, adapter
+> network/order/observation state, and fallback-data state before it can be used
+> as the operational observation truth surface.
+> The local API/frontend/tunnel Go-Check for this readiness truth surface passed
+> in `docs/evidence/RUN-20260605_post-pro-corrective-go-check-unit-011-015.md`;
+> browser visual re-Prove is still a later evidence row.
 
 ## 1. Purpose
 
@@ -66,7 +76,7 @@ positions, logs, and daily review. It must not expose direct buy/sell controls.
   Required first-screen sections:
   - status strip: mode, KST time/trading window, venue route, kill-switch state,
     service health, and data-source health
-  - account summary: paper/live-readonly mode, cash reserve, system-calculated
+  - account summary: adapter-mode-readonly mode, cash reserve, system-calculated
     PnL, open-position count, and today's risk rejects
   - candidates/watchlist with reason, source ids, AI status, risk flags, and
     order eligibility state

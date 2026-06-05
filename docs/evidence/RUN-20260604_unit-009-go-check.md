@@ -15,7 +15,7 @@ unit_ref: docs/units/HWISTOCK-UNIT-009_kis-api-portal-verification.md
 qa_ref: docs/qa/QA-HWISTOCK-UNIT-009_kis-api-portal-verification.md
 capability_matrix_ref: docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md
 set_evidence_ref: docs/evidence/RUN-20260602_unit-009-kis-api-portal-verification-set.md
-kis_smoke_evidence_ref: docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md
+kis_smoke_evidence_ref: docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md
 work_class: docs_only
 route: cursor-sdk-local
 worker_output_acceptance: local_takeover_after_quarantined_worker_outputs
@@ -37,10 +37,10 @@ credential_values_printed: false
 
 Partial boundaries remain intentional:
 
-- paper budget numeric confirmation,
+- adapter budget numeric confirmation,
 - exact current rate-limit numbers,
-- NXT/SOR live routing proof,
-- paper-unsupported helper APIs (modify/cancel eligibility, sellable quantity, holiday,
+- NXT/SOR account-affecting routing proof,
+- adapter-unsupported helper APIs (modify/cancel eligibility, sellable quantity, holiday,
   NXT/integrated realtime).
 
 No additional KIS/broker/API/network calls were made during this Go-Check.
@@ -51,7 +51,7 @@ No additional KIS/broker/API/network calls were made during this Go-Check.
 | --- | --- |
 | `docs/evidence/RUN-20260604_unit-009-go-preflight.md` | PASS (PF-01..PF-13) |
 | selected row hard exclusions | honored |
-| sanitized smoke reuse only | `docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md` cited without raw values |
+| sanitized smoke reuse only | `docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md` cited without raw values |
 
 ## 3. Changed Artifacts (This Go-Check)
 
@@ -59,7 +59,7 @@ No additional KIS/broker/API/network calls were made during this Go-Check.
 | --- | --- |
 | `docs/units/HWISTOCK-UNIT-009_kis-api-portal-verification.md` | status `go_check_pass`; Go evidence refs; bounded smoke cross-reference notes |
 | `docs/qa/QA-HWISTOCK-UNIT-009_kis-api-portal-verification.md` | status `go_check_pass`; Go-Check verdict and partial-boundary wording |
-| `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md` | 2026-06-04 smoke cross-reference for proven KRX paper paths |
+| `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md` | 2026-06-04 smoke cross-reference for proven KRX adapter paths |
 | `docs/index.md` | UNIT-009 Go evidence links and status wording |
 | `docs/evidence/RUN-20260604_unit-009-go-preflight.md` | created |
 | `docs/evidence/RUN-20260604_unit-009-go-check.md` | created |
@@ -69,8 +69,8 @@ No additional KIS/broker/API/network calls were made during this Go-Check.
 | row_id | mode | result | evidence |
 | --- | --- | --- | --- |
 | QA-001 | docs | PASS | official endpoint families remain enumerated in unit Set pass and matrix |
-| QA-002 | docs | PASS with partial boundary | paper/live separation and KRX paper constraints documented; bounded smoke cross-reference added for proven KRX REST/WS paths without new calls |
-| QA-003 | docs | PASS with partial boundary | KRX/NXT/SOR fields documented; paper KRX limits preserved; NXT/SOR remain `live_verify` |
+| QA-002 | docs | PASS with partial boundary | adapter-mode separation and KRX adapter constraints documented; bounded smoke cross-reference added for proven KRX REST/WS paths without new calls |
+| QA-003 | docs | PASS with partial boundary | KRX/NXT/SOR fields documented; adapter KRX limits preserved; NXT/SOR remain `live_verify` |
 | QA-004 | safety | PASS | this Go row made no credential use, login, token request, broker API call, or order placement |
 
 Overall QA verdict: **PASS** with documented partial boundaries.
@@ -80,25 +80,25 @@ Overall QA verdict: **PASS** with documented partial boundaries.
 | ac_id | prior | go-check |
 | --- | --- | --- |
 | AC-01 | pass | pass (unchanged) |
-| AC-02 | partial | pass with partial boundary (paper KRX core path cross-referenced to sanitized smoke; budget numeric still deferred) |
-| AC-03 | partial | pass with partial boundary (NXT/SOR live-verify labels preserved) |
+| AC-02 | partial | pass with partial boundary (adapter KRX core path cross-referenced to sanitized smoke; budget numeric still deferred) |
+| AC-03 | partial | pass with partial boundary (NXT/SOR support-verify labels preserved) |
 | AC-04 | pass | pass (no network call in Set or Go) |
 
 ## 6. Capability Matrix Cross-Reference (Sanitized Smoke Only)
 
-The following KRX paper/mock families are documented as **paper_proven_bounded_20260604**
+The following KRX broker-adapter families are documented as **paper_proven_bounded_20260604**
 in `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md`, sourced only from
-`docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md`:
+`docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md`:
 
-- OAuth token issue and revoke (paper REST domain only)
+- OAuth token issue and revoke (adapter REST domain only)
 - balance/position inquiry
 - buyable amount inquiry
 - KRX quote inquiry
-- paper cash buy and cancel (minimal mock order, immediately cancelled)
+- broker cash buy and cancel (minimal broker order, immediately cancelled)
 - daily order/fill inquiry
 - WebSocket approval key and KRX fill-notice subscription ACK
 
-Labels for paper-unsupported, paper-constrained (NXT/SOR on orders), `local_fallback`,
+Labels for adapter-unsupported, adapter-constrained (NXT/SOR on orders), `local_fallback`,
 and `live_verify` paths are unchanged.
 
 ## 7. Denied Paths After Go-Check
@@ -106,8 +106,8 @@ and `live_verify` paths are unchanged.
 Unless a future unit explicitly approves them, the following remain denied:
 
 - additional KIS token/account/balance/quote/realtime/order/modify/cancel/WebSocket calls,
-- paper orders outside explicitly scoped approved units,
-- live orders,
+- broker orders outside explicitly scoped approved units,
+- account-affecting orders,
 - credential storage in repo/docs,
 - broker network use for ordinary Go rows,
 - fake fills/balances/PnL,

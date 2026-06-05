@@ -7,13 +7,13 @@ current_authority: true
 project_root: /data/workspace/My/hwiStock
 profile_ref: docs/profiles/PROFILE-HWISTOCK.md
 unit_refs:
-  - docs/units/HWISTOCK-UNIT-002_home-server-paper-runner.md
+  - docs/units/HWISTOCK-UNIT-002_home-server-adapter-runner.md
   - docs/units/HWISTOCK-UNIT-007_dashboard-operator-console.md
 module_refs:
   - docs/modules/HWISTOCK-MOD-001_trading-safety-core.md
   - docs/modules/HWISTOCK-MOD-006_dashboard-operator-console.md
 qa_scenario_refs:
-  - docs/qa/QA-HWISTOCK-UNIT-002_home-server-paper-runner.md
+  - docs/qa/QA-HWISTOCK-UNIT-002_home-server-adapter-runner.md
   - docs/qa/QA-HWISTOCK-UNIT-007_dashboard-operator-console.md
 supporting_refs:
   - docs/evidence/RUN-20260605_port-tunnel-5000-5001-sync.md
@@ -42,7 +42,7 @@ Confirmed:
 - hwibuntu HTTP checks over its own loopback returned expected responses;
 - frontend BFF over the hwibuntu tunnel reached the same backend instance as
   direct backend tunnel checks;
-- no KIS, broker, order, live trading, browser, deploy, public/LAN exposure, or
+- no KIS, broker, order, account-affecting operation, browser, deploy, public/LAN exposure, or
   git operation was run.
 
 This smoke proves the SSH tunnel access shape for HTTP-level checks. It does
@@ -128,5 +128,5 @@ failure was inferred from that script error.
 
 - Browser/screenshot Prove is still not run.
 - KIS/broker/API/provider calls are still not authorized by this evidence.
-- Live trading, public/LAN exposure, deployment, and git mutation are still not
+- Account-affecting operation, public/LAN exposure, deployment, and git mutation are still not
   authorized by this evidence.

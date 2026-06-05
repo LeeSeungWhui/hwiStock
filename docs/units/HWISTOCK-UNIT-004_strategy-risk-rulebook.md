@@ -84,13 +84,13 @@ verification:
     - risk-contract-check
   suggested_gates:
     - strategy-rulebook-smoke
-    - paper-trading-smoke
+    - automated-trading-smoke
 qa_scenario_refs:
   - docs/qa/QA-HWISTOCK-UNIT-004_strategy-risk-rulebook.md
 risk:
   tier: 3
   reasons:
-    - Trading strategy/risk parameters can affect real-money order behavior once live mode exists.
+    - Trading strategy/risk parameters can affect account-affecting order behavior once operation mode exists.
     - Incorrect all-in, stop-loss, cash-reserve, or holdings-cap logic can cause outsized loss.
 last_set:
   status: set
@@ -124,7 +124,7 @@ expectations. Current-authority rebaseline Go-Check on 2026-06-04 restored a
 stdlib-only local strategy/risk skeleton with config constants, signal and
 entry-intent validators, watchlist-only candidate validation, no-order dry-run
 records, and focused unittest coverage. It does not authorize broker, KIS, AI
-provider, paper order, live order, fake fill, fake balance, or fake PnL
+provider, broker order, account-affecting order, fake fill, fake balance, or fake PnL
 behavior.
 
 ### Module Change
@@ -144,7 +144,7 @@ Initial creation of `HWISTOCK-MOD-003`.
 - Entry preconditions.
 - Exit rules.
 - Daily halt and kill-switch rules.
-- Backtest/paper evidence requirements.
+- Backtest/adapter evidence requirements.
 
 ## 4. Excluded Scope
 
@@ -152,7 +152,7 @@ Initial creation of `HWISTOCK-MOD-003`.
 - Profit expectation.
 - Broker/API code.
 - KIS/external broker network calls before approved verification.
-- Live order placement.
+- Account-affecting broker order placement.
 - Final alpha/signal formula.
 - Credit, margin, 미수, borrowed funds, or leveraged capital.
 
@@ -169,13 +169,13 @@ Initial creation of `HWISTOCK-MOD-003`.
 | AC-07 | P1 | Fast strategy tempo is bounded | 10-20 minute hypothesis and no automatic continuous trading are documented | config/log review | QA-009 |
 | AC-08 | P1 | 1-5% is not treated as a daily account target | Target band is recorded as per-position price movement only | doc/config review | QA-011 |
 | AC-09 | P0 | Signal bundle combines context and chart confirmation | Entry logs include event/chart path, source ids, chart interval, and stale-data status | config/log review | QA-012 |
-| AC-10 | P0 | Risk-approved intents respect broker boundary | Before KIS paper approval, approved intent is recorded as no-order dry-run only; no broker call, simulated fill, or fake balance is produced | adapter/policy review | QA-014 |
+| AC-10 | P0 | Risk-approved intents respect broker boundary | Before KIS adapter approval, approved intent is recorded as no-order dry-run only; no broker call, simulated fill, or fake balance is produced | adapter/policy review | QA-014 |
 
 ## 6. Implementation Notes
 
-- Treat `HWISTOCK-MOD-003` values as draft defaults for backtest and paper runs.
-- Do not implement live, KIS/external broker, or broker-provided paper/mock/demo
-  order routing from this unit. Before a KIS paper unit is explicitly approved,
+- Treat `HWISTOCK-MOD-003` values as draft defaults for backtest and operation runs.
+- Do not implement operation, KIS/external broker, or broker-provided broker-adapter/demo
+  order routing from this unit. Before a KIS adapter unit is explicitly approved,
   first order-intent tests must terminate at no-order dry-run records only, with
   no simulated fills or fake balances.
 - Do not let market-intelligence events directly bypass candidate, entry,
@@ -193,7 +193,7 @@ Initial creation of `HWISTOCK-MOD-003`.
   average entry and must reject unauditable, missing, or stale AI stop output.
   There is no first-pass deterministic fallback stop when AI stop output is
   unavailable or invalid.
-- Treat 1-5% as a per-position price-move target band for paper experiments, not
+- Treat 1-5% as a per-position price-move target band for adapter experiments, not
   a daily account return target and not a guaranteed outcome. Reject entries when
   expected reward/risk is below the configured threshold.
 - Do not implement a loop that automatically enters a new trade every 10-20
@@ -206,8 +206,8 @@ Initial creation of `HWISTOCK-MOD-003`.
   `docs/set/READY-SET-STRATEGY-DECISION-PACKET-20260602_hwistock.md` and require
   user approval before full trading strategy Go.
 - Later refinement of liquidity, take-profit, and trailing parameters remains a
-  follow-up item after backtest/paper evidence.
-- Paper observation criteria are closed by
-  `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`; the gate is
+  follow-up item after backtest/adapter evidence.
+- Operation observation criteria are closed by
+  `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md`; the gate is
   operator-selected, safety/evidence/reconciliation based, and has no profit
   threshold.

@@ -29,14 +29,14 @@ hwiStock Ready-Set beyond the narrowed foundation-only queue.
 
 The owner approved:
 
-- Strategy packet approval for paper/sandbox planning only.
+- Strategy packet approval for adapter-backed planning only.
 - Dashboard design review execution using the prepared dashboard design review
   packet.
 - Current final external Ready-Set review execution using the sanitized share
   set after fresh pre-send checks.
 
 This evidence does not approve Go implementation, broker network calls, KIS
-token/account/balance/order calls, AI provider network calls, paper orders, live
+token/account/balance/order calls, AI provider network calls, broker orders, operation
 orders, credential storage, or public/LAN dashboard exposure.
 
 ## 2. Owner Decision Receipt
@@ -47,15 +47,15 @@ orders, credential storage, or public/LAN dashboard exposure.
 | received_at | 2026-06-04 conversation turn |
 | owner_message | User selected `초안 승인 (Recommended)`, `리뷰 실행 (Recommended)`, and `외부 리뷰 실행 (Recommended)` through sequential question cards. |
 | matched_action | Action 1 + Action 2 + Action 3 |
-| matched_phrase_ref | Equivalent to approving first-pass strategy defaults for paper/sandbox planning only, running dashboard design review, and running current final external Ready-Set review. |
+| matched_phrase_ref | Equivalent to approving first-pass strategy defaults for adapter-backed planning only, running dashboard design review, and running current final external Ready-Set review. |
 | route_scope | full queue |
 | conditional_unit_006_scope | `not_applicable` |
 | external_review_presend_dry_run_ref | `docs/evidence/RUN-20260602_external-review-presend-dry-run.md` |
 | outgoing_candidate_count | `85` |
 | candidate_exact_match_result | `pass_85_current_bundle`; fresh current candidate list rebuilt on 2026-06-04 and refreshed after dashboard design review intake |
 | candidate_secret_scan_result | `no_matches` |
-| approvals_granted | strategy defaults for paper/sandbox planning only; dashboard design review execution; current final external Ready-Set review execution after fresh pre-send checks |
-| approvals_not_granted | broker calls, KIS token/account/balance/order calls, AI provider calls, paper orders, live orders, credential storage, public/LAN dashboard exposure, dashboard implementation, buy/sell controls, Go implementation |
+| approvals_granted | strategy defaults for adapter-backed planning only; dashboard design review execution; current final external Ready-Set review execution after fresh pre-send checks |
+| approvals_not_granted | broker calls, KIS token/account/balance/order calls, AI provider calls, broker orders, account-affecting orders, credential storage, public/LAN dashboard exposure, dashboard implementation, buy/sell controls, Go implementation |
 | docs_to_update | design review findings intake, external review evidence, review findings intake, row closure matrix, completion report, completion audit, Go preflight refs as supported by later review results |
 | pf11_effect | `pass_candidate` for the three approved actions after this receipt is written |
 | still_blocked_by | dashboard design review findings, full-queue external review findings, row closure rewrite, completion report rewrite, selected-row Go preflight |
@@ -96,6 +96,6 @@ During this pre-send pass:
 - No broker network call was made.
 - No KIS token/account/balance/order call was made.
 - No AI provider network call was made.
-- No paper or live order was placed.
+- No adapter or account-affecting order was placed.
 - No credential file content was read or shared.
 - No external review had been sent yet at the time this evidence was written.

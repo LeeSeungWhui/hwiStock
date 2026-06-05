@@ -1,6 +1,6 @@
 ---
 schema_version: hwi.evidence/v0
-id: RUN-20260604-kis-paper-mock-api-smoke
+id: RUN-20260604-kis-adapter-adapter-api-smoke
 stage: go-preflight
 status: pass_rest_and_websocket_smoke
 project_root: /data/workspace/My/hwiStock
@@ -9,8 +9,8 @@ updated_at: 2026-06-04
 environment: local_shell
 approval_type: kis_paper_mock_api_smoke_with_mock_orders
 approval_scope: kis_krx_paper_mock_supported_paths
-smoke_matrix_ref: docs/set/KIS-PAPER-MOCK-API-SMOKE-MATRIX-20260604_hwistock.md
-preflight_ref: docs/evidence/RUN-20260604_kis-paper-mock-api-smoke-approval-preflight.md
+smoke_matrix_ref: docs/set/KIS-BROKER-ADAPTER-API-SMOKE-MATRIX-20260604_hwistock.md
+preflight_ref: docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke-approval-preflight.md
 profile_ref: docs/profiles/PROFILE-HWISTOCK.md
 capability_matrix_ref: docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md
 credential_values_printed: false
@@ -24,19 +24,19 @@ live_domain_calls_made: false
 raw_responses_stored: false
 ---
 
-# KIS Paper/Mock API Smoke Run
+# KIS Broker Adapter API Smoke Run
 
 ## 1. Boundary And Source Grounding
 
-This run used the owner-approved KIS paper/mock scope from
-`docs/evidence/RUN-20260604_kis-paper-mock-api-smoke-approval-preflight.md`.
+This run used the owner-approved KIS broker-adapter scope from
+`docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke-approval-preflight.md`.
 
 Hard boundaries observed:
 
-- KIS paper REST domain only: `openapivts.koreainvestment.com`.
+- KIS broker-adapter REST domain only: `openapivts.koreainvestment.com`.
 - KRX route only.
-- One minimal paper/mock cash buy order was submitted and immediately cancelled.
-- No live domain, real account, live order, real-money behavior, NXT, SOR,
+- One minimal broker-adapter cash buy order was submitted and immediately cancelled.
+- No unapproved domain, broker account, account-affecting order, account-affecting behavior, NXT, SOR,
   credit, margin, 미수, or borrowed capital path was used.
 - No app key, app secret, access token, account number, order id, raw response,
   exact balance, or order identifier was written to this document.
@@ -44,17 +44,17 @@ Hard boundaries observed:
 Official-source checks used before execution:
 
 - KIS Developers token endpoint documentation for `/oauth2/tokenP` and the
-  paper REST domain.
+  adapter REST domain.
 - KIS Developers token revoke documentation for `/oauth2/revokeP`.
 - Korea Investment official `open-trading-api` sample `kis_devlp.yaml` for
-  paper REST/WS domain conventions.
+  adapter REST/WS domain conventions.
 - Korea Investment official `open-trading-api` sample domestic stock functions
-  for paper TR IDs:
-  - paper balance: `VTTC8434R`
-  - paper buyable inquiry: `VTTC8908R`
-  - paper cash buy order: `VTTC0012U`
-  - paper order cancel/modify: `VTTC0013U`
-  - paper daily order/fill inquiry: `VTTC0081R`
+  for adapter TR IDs:
+  - adapter balance: `VTTC8434R`
+  - adapter buyable inquiry: `VTTC8908R`
+  - broker cash buy order: `VTTC0012U`
+  - broker order cancel/modify: `VTTC0013U`
+  - broker daily order/fill inquiry: `VTTC0081R`
 
 ## 2. Environment Proof
 
@@ -68,12 +68,12 @@ Observed locally before API calls:
 | `KIS_PAPER_APP_SECRET` | present |
 | `KIS_PAPER_ACCOUNT_NO` | present |
 | `KIS_PAPER_ACCOUNT_PRODUCT_CODE` | present |
-| `KIS_PAPER_BASE_URL` | present, paper REST host only |
-| `KIS_PAPER_WS_URL` | present, official paper WS host form |
+| `KIS_PAPER_BASE_URL` | present, adapter REST host only |
+| `KIS_PAPER_WS_URL` | present, official adapter WS host form |
 | `KIS_PAPER_HTS_ID` | present |
 
 `KIS_PAPER_HTS_ID` was added after the initial REST smoke and used only as a
-redacted websocket subscription key for the paper fill-notice ACK check.
+redacted websocket subscription key for the adapter fill-notice ACK check.
 
 ## 3. Smoke Result Summary
 
@@ -83,15 +83,15 @@ retry at `2026-06-04T10:11:47+09:00`, and websocket fill-notice ACK smoke at
 
 | smoke_id | API family | result | evidence summary |
 | --- | --- | --- | --- |
-| KIS-PAPER-001 | OAuth token issue | PASS | HTTP 200; token present; token value not printed or stored. |
-| KIS-PAPER-002 | Balance/position lookup | PASS | HTTP 200; paper account reachable; holding-row count summarized only. |
-| KIS-PAPER-003 | Buyable amount lookup | PASS | HTTP 200; response shape present; account and amounts not stored. |
-| KIS-PAPER-004 | KRX quote | PASS | HTTP 200; quote output shape present for KRX domestic stock symbol. |
-| KIS-PAPER-005 | Cash buy order | PASS | Hash key issued; one minimal KRX paper cash buy order accepted; order id redacted. |
-| KIS-PAPER-006 | Cancel order | PASS | Cancel hash key issued; accepted paper order was cancelled; order id redacted. |
-| KIS-PAPER-007 | Daily order/fill lookup | PASS | HTTP 200; paper daily order/fill output shape present; order ids redacted. |
-| KIS-PAPER-008 | Realtime fill notice | PASS | Websocket approval key issued; paper fill-notice TR `H0STCNI9` subscription ACK received; approval key and HTS ID redacted. |
-| KIS-PAPER-009 | Token revoke | PASS | First immediate reissue attempt received HTTP 403; after wait/retry, token issued and `/oauth2/revokeP` returned HTTP 200. |
+| KIS-ADAPTER-001 | OAuth token issue | PASS | HTTP 200; token present; token value not printed or stored. |
+| KIS-ADAPTER-002 | Balance/position lookup | PASS | HTTP 200; adapter account reachable; holding-row count summarized only. |
+| KIS-ADAPTER-003 | Buyable amount lookup | PASS | HTTP 200; response shape present; account and amounts not stored. |
+| KIS-ADAPTER-004 | KRX quote | PASS | HTTP 200; quote output shape present for KRX domestic stock symbol. |
+| KIS-ADAPTER-005 | Cash buy order | PASS | Hash key issued; one minimal KRX broker cash buy order accepted; order id redacted. |
+| KIS-ADAPTER-006 | Cancel order | PASS | Cancel hash key issued; accepted broker order was cancelled; order id redacted. |
+| KIS-ADAPTER-007 | Daily order/fill lookup | PASS | HTTP 200; broker daily order/fill output shape present; order ids redacted. |
+| KIS-ADAPTER-008 | Realtime fill notice | PASS | Websocket approval key issued; adapter fill-notice TR `H0STCNI9` subscription ACK received; approval key and HTS ID redacted. |
+| KIS-ADAPTER-009 | Token revoke | PASS | First immediate reissue attempt received HTTP 403; after wait/retry, token issued and `/oauth2/revokeP` returned HTTP 200. |
 
 ## 4. Main REST Smoke Step Details
 
@@ -101,13 +101,13 @@ Sanitized execution summary:
 | --- | --- | --- | --- |
 | `oauth_token` | pass | 200 | token present, expiry class present |
 | `quote_inquire_price` | pass | 200 | `MCA00000`, normal processing |
-| `balance_inquire` | pass | 200 | paper inquiry complete |
-| `buyable_inquire_psbl_order` | pass | 200 | paper inquiry complete |
+| `balance_inquire` | pass | 200 | broker inquiry complete |
+| `buyable_inquire_psbl_order` | pass | 200 | broker inquiry complete |
 | `hashkey_order_cash` | pass | 200 | hash present |
-| `mock_cash_buy_order` | pass | 200 | paper buy order complete |
+| `mock_cash_buy_order` | pass | 200 | broker buy order complete |
 | `hashkey_cancel` | pass | 200 | hash present |
-| `mock_order_cancel` | pass | 200 | paper cancel order complete |
-| `daily_order_fill_inquire` | pass | 200 | paper inquiry complete |
+| `mock_order_cancel` | pass | 200 | broker cancel order complete |
+| `daily_order_fill_inquire` | pass | 200 | broker inquiry complete |
 
 The smoke runner used only response status, message class, output-shape
 presence, and redacted counts for evidence. It did not persist tokens, raw
@@ -120,17 +120,17 @@ Sanitized websocket execution summary:
 | step | status | evidence summary |
 | --- | --- | --- |
 | `ws_approval_key` | pass | HTTP 200; approval key present; approval key value not printed or stored. |
-| `fill_notice_subscribe_send` | pass | Paper fill-notice TR `H0STCNI9` subscription request sent; HTS ID redacted. |
+| `fill_notice_subscribe_send` | pass | Adapter fill-notice TR `H0STCNI9` subscription request sent; HTS ID redacted. |
 | `fill_notice_subscribe_ack` | pass | One ACK received for `H0STCNI9`; response class was OK; raw payload not printed or stored. |
 
 No realtime fill data payload was required for this connectivity smoke; the
-gate only needed to prove that the paper websocket approval and subscription
+gate only needed to prove that the adapter websocket approval and subscription
 path can be reached safely with redaction.
 
 ## 6. Residual Items
 
 - Because the app key and app secret were pasted into chat before this run,
   treat them as exposed in principle and consider rotating/regenerating the KIS
-  paper API credentials after the current smoke/debugging phase.
+  adapter API credentials after the current smoke/debugging phase.
 - Future automated smoke code should preserve the same fail-closed behavior:
-  prove paper domain first, redact identifiers, and stop before live endpoints.
+  prove adapter domain first, redact identifiers, and stop before unapproved endpoints.

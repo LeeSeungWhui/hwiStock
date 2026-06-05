@@ -24,12 +24,12 @@ supersedes:
 PASS for the bounded current-tree storage skeleton scope.
 
 `HWISTOCK-UNIT-008` now has typed artifact contracts, deterministic hashing,
-canonical date-scoped artifact paths, paper-day evidence link validation,
+canonical date-scoped artifact paths, adapter-day evidence link validation,
 system-only PnL validation, an Alembic PostgreSQL schema skeleton for
 `hwistock_core`, and focused contract tests.
 
-This result does not authorize live database migration execution, broker/KIS
-network calls, AI provider calls, paper orders, live orders, credential
+This result does not authorize operational database migration execution, broker/KIS
+network calls, AI provider calls, broker orders, account-affecting orders, credential
 storage, runtime `data/` artifact commits, dashboard UI, deploy, server
 operations, browser QA, or operational trading readiness.
 
@@ -37,7 +37,7 @@ operations, browser QA, or operational trading readiness.
 
 | path | change |
 | --- | --- |
-| `backend/lib/storage_schemas.py` | typed artifact models, SHA-256 hashing, KST artifact path builder, sensitive-key name validation, system-only PnL validation, paper-day evidence link validation |
+| `backend/lib/storage_schemas.py` | typed artifact models, SHA-256 hashing, KST artifact path builder, sensitive-key name validation, system-only PnL validation, adapter-day evidence link validation |
 | `backend/lib/request_payload.py` | storage/report query payload helper stubs compatible with the backend profile |
 | `backend/migrations/README.md` | hwiStock Alembic isolation notes using `HWISTOCK_DATABASE_URL` and schema `hwistock_core` |
 | `backend/migrations/env.py` | Alembic env skeleton with `HWISTOCK_DATABASE_URL`, `hwistock_core`, and controlled search path |
@@ -186,7 +186,7 @@ Executed locally from `/data/workspace/My/hwiStock` on 2026-06-04:
 
 ## 6. Residual Boundaries
 
-- No live PostgreSQL database connection or `alembic upgrade` was run.
+- No operational PostgreSQL database connection or `alembic upgrade` was run.
 - `HWISTOCK_DATABASE_URL` values were not read because env/config values may
   contain secrets.
 - Sensitive validation checks field names and known marker absence; it does not

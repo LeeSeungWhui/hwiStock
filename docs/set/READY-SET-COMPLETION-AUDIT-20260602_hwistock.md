@@ -12,7 +12,7 @@ review_findings_intake_ref: docs/set/READY-SET-REVIEW-FINDINGS-INTAKE-20260604_f
 external_review_evidence_ref: docs/evidence/RUN-20260604_gpt-pro-full-ready-set-review.md
 dashboard_design_findings_intake_ref: docs/set/READY-SET-REVIEW-FINDINGS-INTAKE-20260604_dashboard-design.md
 owner_decision_receipt_ref: docs/evidence/RUN-20260604_full-ready-set-owner-decisions-presend.md
-selected_queue_scope: full_queue_skeleton_sandbox_safe
+selected_queue_scope: full_queue_skeleton_adapter_safe
 created_at: 2026-06-02
 updated_at: 2026-06-04
 ---
@@ -25,7 +25,7 @@ Ready-Set is complete for the full nine-unit queue with exclusions.
 
 `implementation_ready` is `true` only for the
 `full_queue_skeleton_sandbox_safe` Go-Check scope. It does not authorize
-operational trading, broker/KIS calls, AI provider calls, paper orders, live
+operational trading, broker/KIS calls, AI provider calls, broker orders, operation
 orders, credential storage, public/LAN dashboard exposure, or expected-profit
 claims.
 
@@ -82,7 +82,7 @@ claims.
 | external review | Current final GPT/Claude/equivalent review after latest Set closure | ChatGPT Pro review ran for the full queue after dashboard findings were applied | pass |
 | external findings count | `open_external_findings_count: 0` | Full findings intake records no open P0/P1/P2-blocking findings after fixes/accepted preflight constraints | pass |
 | owner decision receipt | Owner approvals recorded before row/completion rewrite | 2026-06-04 owner receipt records strategy approval, dashboard design review approval, and full external review approval | pass |
-| Go preflight guard | Pre-Go checklist exists and blocks unsafe starts | Go preflight now targets the full skeleton/sandbox-safe queue and keeps `PF-13` as a code-edit gate | pass_as_guard |
+| Go preflight guard | Pre-Go checklist exists and blocks unsafe starts | Go preflight now targets the full skeleton/adapter-safe queue and keeps `PF-13` as a code-edit gate | pass_as_guard |
 | rule preset routing | Active rule presets are mapped to units before Go | Rule preset applicability matrix exists; source-code rule gate remains future Go evidence because no product code exists yet | pass |
 | residual gaps | No needs-input blockers remain for selected queue | Remaining high-risk actions are denied approvals, not Ready-Set gaps | pass |
 
@@ -92,9 +92,9 @@ claims.
 | --- | --- | --- | --- | --- |
 | 1 | HWISTOCK-UNIT-001 | ready_for_go_check | pass | Bootstrap/profile verification and docs safety boundary. |
 | 2 | HWISTOCK-UNIT-008 | ready_for_go_check | pass | PostgreSQL/storage foundation scope only. |
-| 3 | HWISTOCK-UNIT-003 | ready_for_go_check | pass | Fixture/config-first ingestion skeleton; live source API calls deferred. |
+| 3 | HWISTOCK-UNIT-003 | ready_for_go_check | pass | Fixture/config-first ingestion skeleton; network source API calls deferred. |
 | 4 | HWISTOCK-UNIT-009 | ready_for_go_check | pass | Local KIS docs/capability matrix only; no broker network. |
-| 5 | HWISTOCK-UNIT-004 | ready_for_go_check | pass | Strategy/risk config and validators using approved paper/sandbox defaults. |
+| 5 | HWISTOCK-UNIT-004 | ready_for_go_check | pass | Strategy/risk config and validators using approved adapter-backed defaults. |
 | 6 | HWISTOCK-UNIT-006 | ready_for_go_check | pass | No-order dry-run condition/order-state skeleton only. |
 | 7 | HWISTOCK-UNIT-005 | ready_for_go_check | pass | AI schema/job/prompt/audit skeleton with provider network disabled. |
 | 8 | HWISTOCK-UNIT-002 | ready_for_go_check | pass | Local runner/systemd lifecycle skeleton and no-order wiring. |
@@ -107,8 +107,8 @@ Ready-Set closure does not approve:
 - broker network calls;
 - KIS token/account/balance/quote/realtime/order/modify/cancel/WebSocket calls;
 - AI provider network calls;
-- paper order placement;
-- live order placement;
+- broker order placement;
+- account-affecting order placement;
 - credential storage;
 - public or LAN dashboard exposure;
 - dashboard service-control actions or buy/sell controls;

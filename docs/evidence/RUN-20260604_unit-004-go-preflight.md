@@ -31,7 +31,7 @@ rulebook skeleton scope.
 This verdict authorizes only approved config constants, deterministic
 entry-intent validators, no-order dry-run record shaping, focused tests, and
 evidence updates. It does not authorize broker/KIS calls, AI provider calls,
-paper orders, live orders, fake fills, fake balances, fake PnL, credential
+broker orders, account-affecting orders, fake fills, fake balances, fake PnL, credential
 storage, or runtime data artifact commits.
 
 ## 2. Delegation Guard
@@ -52,10 +52,10 @@ storage, or runtime data artifact commits.
   - `docs/evidence/RUN-20260604_unit-004-*.md`
 - Forbidden:
   - broker/KIS/AI network calls
-  - paper or live order placement
+  - adapter or account-affecting order placement
   - fake broker, fake fill, fake balance, fake PnL generation
   - approved strategy parameter changes beyond the already-approved first-pass
-    paper/sandbox planning defaults
+    adapter-backed planning defaults
   - runtime `data/` artifact commits
 
 ## 3. Selected Row Scope
@@ -81,7 +81,7 @@ Excluded:
 | check_id | result | evidence |
 | --- | --- | --- |
 | PF-01 | pass | Ready-Set completion report exists. |
-| PF-02 | pass | Full queue skeleton/sandbox-safe scope is active. |
+| PF-02 | pass | Full queue skeleton/adapter-safe scope is active. |
 | PF-03 | pass | `HWISTOCK-UNIT-004` appears in the Go queue. |
 | PF-04 | pass | Strategy decision packet owner approval is recorded in `RUN-20260604_full-ready-set-owner-decisions-presend.md`. |
 | PF-05 | pass | Unit, module, QA scenario, profile, and index refs exist. |
@@ -91,7 +91,7 @@ Excluded:
 | PF-09 | pass | Broker/KIS order behavior remains out of scope. |
 | PF-10 | pass | Selected action is no-network, no-order, no-credential local config/validation work. |
 | PF-11 | pass | Git baseline and Ready-Set owner decisions are recorded. |
-| PF-12 | not_applicable | Current queue is the full skeleton/sandbox-safe queue. |
+| PF-12 | not_applicable | Current queue is the full skeleton/adapter-safe queue. |
 | PF-13 | pass | Git baseline exists; secrets and runtime `data/` remain ignored. |
 
 ## 5. Pre-Go Action

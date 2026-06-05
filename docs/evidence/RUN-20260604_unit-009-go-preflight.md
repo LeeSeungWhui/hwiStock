@@ -8,14 +8,14 @@ created_at: 2026-06-04
 updated_at: 2026-06-04
 orchestration_gate_id: DG-HWISTOCK-UNIT-009-GO-20260604-001
 selected_unit_id: HWISTOCK-UNIT-009
-selected_queue_scope: full_queue_skeleton_sandbox_safe
+selected_queue_scope: full_queue_skeleton_adapter_safe
 completion_report_ref: docs/set/READY-SET-COMPLETION-20260602_hwistock.md
 row_closure_ref: docs/set/READY-SET-ROW-CLOSURE-20260602_hwistock.md
 go_preflight_checklist_ref: docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260602_hwistock.md
 unit_ref: docs/units/HWISTOCK-UNIT-009_kis-api-portal-verification.md
 qa_ref: docs/qa/QA-HWISTOCK-UNIT-009_kis-api-portal-verification.md
 capability_matrix_ref: docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md
-kis_smoke_evidence_ref: docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md
+kis_smoke_evidence_ref: docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md
 external_review_ref: docs/evidence/RUN-20260604_gpt-pro-full-ready-set-review.md
 git_init_ref: docs/evidence/RUN-20260604_git-init-ready-set-delta-sync.md
 work_class: docs_only
@@ -58,7 +58,7 @@ and index references. It does not authorize new KIS/broker/API/network calls.
 | PF-07 | no open P0/P1 external review findings | pass | full review closed with exclusions encoded in row closure |
 | PF-08 | strategy row approved or excluded for selected scope | pass | UNIT-009 is docs/product_api only; no broker-backed strategy/order behavior |
 | PF-09 | dashboard design review complete or dashboard row excluded | pass | dashboard unit not selected; no dashboard implementation in this row |
-| PF-10 | broker/AI/paper/live/credential approvals explicit for selected action | pass | docs-only/no-network/no-order/no-credential action; bounded KIS paper/mock smoke already completed and referenced locally only |
+| PF-10 | broker/AI/adapter-mode/credential approvals explicit for selected action | pass | docs-only/no-network/no-order/no-credential action; bounded KIS broker-adapter smoke already completed and referenced locally only |
 | PF-11 | owner decision receipt recorded for approval-driven closure | pass | `docs/evidence/RUN-20260604_full-ready-set-owner-decisions-presend.md` via Ready-Set refs |
 | PF-12 | narrowed foundation Action 4 `UNIT-006` scope recorded if applicable | not_applicable | full queue selected; UNIT-009 does not change UNIT-006 include/exclude |
 | PF-13 | VCS baseline resolved before code edits | pass | Git on `main`; git-init evidence recorded |
@@ -80,15 +80,15 @@ Overall preflight verdict: **PASS** for docs-only UNIT-009 Go-Check.
 | --- | --- | --- |
 | new KIS token issuance | denied for this row | pass: no call planned |
 | KIS account/balance/quote/realtime/order/modify/cancel/WebSocket | denied for this row | pass: no call planned |
-| paper or live order placement | denied for this row | pass: no call planned |
+| adapter or account-affecting order placement | denied for this row | pass: no call planned |
 | AI provider network | denied | pass |
 | credential storage/commits | denied | pass |
 | public/LAN dashboard exposure | denied | pass |
 | fake broker fills/balances/PnL | denied | pass |
 | expected-profit claims | denied | pass |
 
-Completed bounded smoke `docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md` may be cited as
-local cross-reference for KRX paper paths already proven. It does not authorize additional
+Completed bounded smoke `docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md` may be cited as
+local cross-reference for KRX adapter paths already proven. It does not authorize additional
 broker network use in this UNIT-009 row.
 
 ## 5. Focused Go Smoke Mapping (Docs-Only)
@@ -96,8 +96,8 @@ broker network use in this UNIT-009 row.
 | qa_row | focused_check | preflight_expectation |
 | --- | --- | --- |
 | QA-001 | official endpoint families enumerated | pass via existing Set evidence plus matrix index |
-| QA-002 | paper/mock separation and paper constraints documented | partial-boundary allowed; smoke cross-reference only |
-| QA-003 | KRX/NXT/SOR fields and paper KRX limits documented | partial-boundary allowed; NXT/SOR remain live-verify |
+| QA-002 | broker-adapter separation and adapter constraints documented | partial-boundary allowed; smoke cross-reference only |
+| QA-003 | KRX/NXT/SOR fields and adapter KRX limits documented | partial-boundary allowed; NXT/SOR remain support-verify |
 | QA-004 | no credential use or broker API call in this Go row | pass: docs-only worker contract |
 
 ## 6. Handoff

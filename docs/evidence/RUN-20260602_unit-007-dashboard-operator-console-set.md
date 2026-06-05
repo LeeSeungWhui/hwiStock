@@ -23,7 +23,7 @@ access policy, first-screen sections, and AI conversation boundary.
 
 - Dashboard remains read-only for orders.
 - Direct buy/sell controls, broker adapter toggles, risk-parameter changes,
-  prompt/model changes, and live-readiness controls are excluded.
+  prompt/model changes, and operation-readiness controls are excluded.
 - Default access is local-only `127.0.0.1`.
 - Remote access uses SSH tunnel or Chrome Remote Desktop by default.
 - Public/LAN IP exposure requires a later explicit Set contract with

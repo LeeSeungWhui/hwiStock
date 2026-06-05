@@ -25,7 +25,7 @@ validation_command: source ./env.sh && python3 scripts/validate_runtime_contract
 
 This document closes the contract shape required by `HWISTOCK-UNIT-016` before
 order-producing Go rows may start. It does not implement broker calls, place
-orders, call DeepSeek, or authorize live trading.
+orders, call DeepSeek, or authorize account-affecting operation.
 
 The machine-checkable catalog is
 `docs/contracts/hwistock-runtime-contracts.schema.json`. The local validator is
@@ -41,12 +41,12 @@ The machine-checkable catalog is
 | 4 | `deepseek_flash_decision_10m` | `flash_trade_document/v0` | intent pipeline | no |
 | 5 | portfolio/order reconciler | `portfolio_snapshot/v0`, `order_state_snapshot/v0` | Flash and executor | no |
 | 6 | intent pipeline | `paper_order_intent/v0` | executor | yes, only after gates |
-| 7 | executor | `executor_decision/v0`, `broker_order_request/v0` | KIS paper adapter/reconciliation | request only |
-| 8 | KIS paper adapter/reconciler | `broker_order_result/v0`, `reconciliation_event/v0` | ledger/dashboard/report | no |
+| 7 | executor | `executor_decision/v0`, `broker_order_request/v0` | KIS broker adapter/reconciliation | request only |
+| 8 | KIS broker adapter/reconciler | `broker_order_result/v0`, `reconciliation_event/v0` | ledger/dashboard/report | no |
 
 AI artifacts are never directly executable. The executor reads only
 schema-validated `paper_order_intent/v0` records and still re-checks
-authoritative portfolio/order state before any KIS paper submission.
+authoritative portfolio/order state before any KIS broker submission.
 
 ## 3. Common Artifact Rules
 
@@ -113,7 +113,7 @@ decision bucket**.
   document supersedes them unless the new document explicitly renews the wait
   and deterministic gates still pass.
 - `BUY_NOW` still means immediate limit-order attempt only when current quote,
-  spread, freshness, reserve, holdings, and paper-only gates pass. It is not a
+  spread, freshness, reserve, holdings, and adapter-bound gates pass. It is not a
   market-order shortcut.
 - `HOLD`, `SELL`, stop-loss, take-profit, and trailing-stop handling are checked
   continuously by the executor against realtime price/orderbook state; AI prose
@@ -153,7 +153,7 @@ authoritative.
 
 The executor must acquire an account/symbol single-writer lock, re-read the
 authoritative state, update the reservation ledger, and then submit at most one
-paper request. It must reject conflicts for:
+broker request. It must reject conflicts for:
 
 - held symbol duplicate buy;
 - pending duplicate order;
@@ -214,7 +214,7 @@ rules, the intent is rejected before executor submission.
 | calendar/session evidence | session check must be evaluated within 60 seconds before submit |
 
 Expired inputs fail closed. The pipeline may write watch/reject/`NO_TRADE`
-artifacts, but expired inputs cannot produce an executable paper order request.
+artifacts, but expired inputs cannot produce an executable broker order request.
 
 ## 9. Order State Machine
 
@@ -226,19 +226,19 @@ runtime rule is:
   `client_order_key` or local intent metadata exists;
 - illegal transitions become `ERROR_LOCKED` and require operator inspection.
 
-## 10. Paper-Only Broker Guard
+## 10. Adapter-Bound Broker Guard
 
 KIS broker transport is allowed only when all conditions pass:
 
 - runtime label is `PAPER_ONLY`;
 - broker adapter is `kis_paper`;
 - base URL alias is `kis_paper_vts`;
-- order route is KRX paper cash order;
-- TR ID alias exists in the paper allowlist from the capability matrix;
-- account identity is a redacted paper account alias, not a raw account number;
-- startup self-test proves no live/unknown endpoint is configured.
+- order route is KRX broker cash order;
+- TR ID alias exists in the adapter allowlist from the capability matrix;
+- account identity is a redacted adapter account alias, not a raw account number;
+- startup self-test proves no unapproved/unknown endpoint is configured.
 
-Unknown/live domains, live profile names, raw account ids, unsupported TR IDs,
+Unknown/unapproved domains, unapproved profile names, raw account ids, unsupported TR IDs,
 or unsupported NXT/SOR/integrated broker routes abort before network transport.
 
 The guard must also record sanitized resolved host classes:
@@ -285,7 +285,7 @@ The validator checks:
 - KIS market snapshot payload, heartbeat, latency, rate-limit, raw-ref, and
   payload-hash fields are required;
 - KIS, portfolio, and order snapshots must be fresh for executable inputs;
-- broker requests are paper-only and include resolved host-class assertions;
+- broker requests are adapter-bound and include resolved host-class assertions;
 - cancel requests include target refs/reason/deadline;
 - deterministic sizing rejects reserve breaches;
 - ambiguous submit results require reconciliation;

@@ -19,8 +19,8 @@ external_review_evidence_ref: docs/evidence/RUN-20260604_gpt-pro-full-ready-set-
 dashboard_design_findings_intake_ref: docs/set/READY-SET-REVIEW-FINDINGS-INTAKE-20260604_dashboard-design.md
 owner_decision_receipt_ref: docs/evidence/RUN-20260604_full-ready-set-owner-decisions-presend.md
 git_init_delta_sync_ref: docs/evidence/RUN-20260604_git-init-ready-set-delta-sync.md
-kis_paper_smoke_evidence_ref: docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md
-selected_queue_scope: full_queue_skeleton_sandbox_safe
+kis_paper_smoke_evidence_ref: docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md
+selected_queue_scope: full_queue_skeleton_adapter_safe
 ---
 
 # Ready-Set Row Closure Matrix
@@ -40,20 +40,20 @@ scope limits remain only as historical context for the next reissued matrix.
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | HWISTOCK-UNIT-001 | `docs/units/HWISTOCK-UNIT-001_project-bootstrap.md` | `docs/qa/QA-HWISTOCK-UNIT-001_project-bootstrap.md` | superseded_by_code_import | Bootstrap/profile verification, docs safety boundary, project skeleton guardrails. | Product behavior, runtime trading approval. |
 | 2 | HWISTOCK-UNIT-008 | `docs/units/HWISTOCK-UNIT-008_data-evidence-storage.md` | `docs/qa/QA-HWISTOCK-UNIT-008_data-evidence-storage.md` | superseded_by_code_import | PostgreSQL schema/migration skeleton, `hwistock_core`, artifact paths, hashes, redaction-safe evidence storage, system PnL fields. | Credentials, private identifiers, broker data ingestion, AI-calculated PnL. |
-| 3 | HWISTOCK-UNIT-003 | `docs/units/HWISTOCK-UNIT-003_market-intelligence-ingestion.md` | `docs/qa/QA-HWISTOCK-UNIT-003_market-intelligence-ingestion.md` | superseded_by_code_import | Source registry, fixture/config-first ingestion, DART schema, dedupe/event schema, health/evidence outputs. | Live OpenDART without future source API approval; Naver/KIND/KRX/KIS/broker data calls; HTML scraping. |
+| 3 | HWISTOCK-UNIT-003 | `docs/units/HWISTOCK-UNIT-003_market-intelligence-ingestion.md` | `docs/qa/QA-HWISTOCK-UNIT-003_market-intelligence-ingestion.md` | superseded_by_code_import | Source registry, fixture/config-first ingestion, DART schema, dedupe/event schema, health/evidence outputs. | Network OpenDART without future source API approval; Naver/KIND/KRX/KIS/broker data calls; HTML scraping. |
 | 4 | HWISTOCK-UNIT-009 | `docs/units/HWISTOCK-UNIT-009_kis-api-portal-verification.md` | `docs/qa/QA-HWISTOCK-UNIT-009_kis-api-portal-verification.md` | superseded_by_code_import | KIS docs/capability matrix refinement and local-reference analysis only. | KIS token, account, balance, quote, realtime, order, modify/cancel, WebSocket, or broker network call. |
-| 5 | HWISTOCK-UNIT-004 | `docs/units/HWISTOCK-UNIT-004_strategy-risk-rulebook.md` | `docs/qa/QA-HWISTOCK-UNIT-004_strategy-risk-rulebook.md` | superseded_by_code_import | Strategy/risk config, validators, rule tests, approved paper/sandbox defaults, cash reserve, holdings cap, stop validation. | Broker/AI network, paper/live orders, expected-profit claims, unapproved parameter changes. |
+| 5 | HWISTOCK-UNIT-004 | `docs/units/HWISTOCK-UNIT-004_strategy-risk-rulebook.md` | `docs/qa/QA-HWISTOCK-UNIT-004_strategy-risk-rulebook.md` | superseded_by_code_import | Strategy/risk config, validators, rule tests, approved adapter-backed defaults, cash reserve, holdings cap, stop validation. | Broker/AI network, adapter/account-affecting orders, expected-profit claims, unapproved parameter changes. |
 | 6 | HWISTOCK-UNIT-006 | `docs/units/HWISTOCK-UNIT-006_trading-engine-order-state.md` | `docs/qa/QA-HWISTOCK-UNIT-006_trading-engine-order-state.md` | superseded_by_code_import | Condition compiler, `condition_card/v0`, no-order dry-run records, state-machine skeleton, disabled KIS adapter boundary. | Submitted/accepted/fill transitions, broker calls, fake fills, fake balances, fake PnL. |
 | 7 | HWISTOCK-UNIT-005 | `docs/units/HWISTOCK-UNIT-005_ai-orchestration-layer.md` | `docs/qa/QA-HWISTOCK-UNIT-005_ai-orchestration-layer.md` | superseded_by_code_import | AI job registry, schemas, validators, prompt templates, fixture outputs, audit records with provider network disabled. | DeepSeek/ChatGPT provider calls, browser automation, model/tool execution, nonzero AI cost. |
-| 8 | HWISTOCK-UNIT-002 | `docs/units/HWISTOCK-UNIT-002_home-server-paper-runner.md` | `docs/qa/QA-HWISTOCK-UNIT-002_home-server-paper-runner.md` | superseded_by_code_import | systemd files, local runner lifecycle skeleton, health/status, calendar idle behavior, local alert plumbing, no-order mode wiring. | Paper orders, broker/KIS calls, AI calls, live runner claim, one-week paper evidence claim. |
+| 8 | HWISTOCK-UNIT-002 | `docs/units/HWISTOCK-UNIT-002_home-server-adapter-runner.md` | `docs/qa/QA-HWISTOCK-UNIT-002_home-server-adapter-runner.md` | superseded_by_code_import | systemd files, local runner lifecycle skeleton, health/status, calendar idle behavior, local alert plumbing, no-order mode wiring. | Broker orders, broker/KIS calls, AI calls, operation runner claim, one-week adapter evidence claim. |
 | 9 | HWISTOCK-UNIT-007 | `docs/units/HWISTOCK-UNIT-007_dashboard-operator-console.md` | `docs/qa/QA-HWISTOCK-UNIT-007_dashboard-operator-console.md` | superseded_by_code_import | Local read-only dashboard UI/API surfaces, masked values, sanitized errors, status/candidate/report/log panels, AI report thread. | Buy/sell controls, public/LAN exposure, service-control actions, risk/prompt/model changes. |
 
 ## 2. Scope Result
 
 Selected queue scope: `full_queue_skeleton_sandbox_safe`.
 
-No row is approved for operational trading, broker-backed paper trading,
-AI-provider runtime behavior, public dashboard exposure, or live operation.
+No row is approved for operational trading, broker-backed automated trading,
+AI-provider runtime behavior, public dashboard exposure, or account-affecting operation.
 Every selected row must still pass the Go preflight checklist immediately before
 file edits.
 
@@ -71,8 +71,8 @@ This matrix was rewritten after:
   `docs/evidence/RUN-20260604_gpt-pro-full-ready-set-review.md`;
 - full review findings intake in
   `docs/set/READY-SET-REVIEW-FINDINGS-INTAKE-20260604_full.md`;
-- KIS paper/mock REST and websocket smoke evidence in
-  `docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md`;
+- KIS broker-adapter REST and websocket smoke evidence in
+  `docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md`;
 - Git initialization and `.env` ignore evidence in
   `docs/evidence/RUN-20260604_git-init-ready-set-delta-sync.md`.
 
@@ -90,11 +90,11 @@ exception evidence note. This is now resolved by
 
 The row states above do not authorize:
 
-- broker network calls outside explicitly scoped approved KIS paper/mock units;
-- additional KIS token/account/balance/quote/realtime/order/modify/cancel/WebSocket calls outside the completed bounded smoke or future explicitly scoped approved KIS paper/mock units;
+- broker network calls outside explicitly scoped approved KIS broker-adapter units;
+- additional KIS token/account/balance/quote/realtime/order/modify/cancel/WebSocket calls outside the completed bounded smoke or future explicitly scoped approved KIS broker-adapter units;
 - AI provider network calls;
-- paper order placement outside explicitly scoped approved KIS paper/mock units;
-- live order placement;
+- broker order placement outside explicitly scoped approved KIS broker-adapter units;
+- account-affecting order placement;
 - credential storage;
 - public or LAN dashboard exposure;
 - dashboard service-control actions or buy/sell controls;

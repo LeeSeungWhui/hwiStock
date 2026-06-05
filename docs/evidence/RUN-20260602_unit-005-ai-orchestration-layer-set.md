@@ -11,7 +11,7 @@ created_at: 2026-06-02
 updated_at: 2026-06-05
 superseded_by:
   - RUN-20260605-owner-runtime-architecture-clarification
-  - RUN-20260605-ready-set-operational-paper-trading-program
+  - RUN-20260605-ready-set-operational-automated-trading-program
 superseded_note: >
   This evidence records the first-pass UNIT-005 Set state from 2026-06-02.
   The operational AI runtime roles and schemas are superseded by the
@@ -84,7 +84,7 @@ placement was attempted.
 | AC-06 | set | Timeout/unavailable/malformed fallback is defined. |
 | AC-07 | set | Audit fields are required on outputs. |
 | AC-08 | set | Draft order intents are non-executable. |
-| AC-09 | set | Broker boundary follows no-order dry-run before KIS paper approval. |
+| AC-09 | set | Broker boundary follows no-order dry-run before KIS adapter approval. |
 | AC-10 | set | Scheduled AI jobs are separated by role. |
 | AC-11 | set | Tool-use disabled boundary is defined. |
 | AC-12 | set | AI network disabled and zero-cost-cap defaults are defined. |

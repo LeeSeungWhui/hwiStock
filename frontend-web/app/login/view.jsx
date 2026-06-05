@@ -15,7 +15,6 @@ import Checkbox from "@/app/lib/component/Checkbox";
 import { apiJSON } from "@/app/lib/runtime/api";
 import usePageData from "@/app/lib/hooks/usePageData";
 import { PAGE_CONFIG } from "./initData";
-import Link from "next/link";
 import { useGlobalUi } from "@/app/common/store/SharedStore";
 import LANG_KO from "./lang.ko";
 
@@ -26,16 +25,16 @@ import LANG_KO from "./lang.ko";
 const LoginView = ({ initialDataObj, initialErrorObj }) => {
 
   /* 1. 상수 ======================================================================================================================= */
-  const minUsernameLength = 3;
   const minPasswordLength = 8;
+  const operatorUsername = String(
+    process.env.NEXT_PUBLIC_HWISTOCK_OPERATOR_USERNAME || "demo@demo.demo",
+  ).trim();
 
   /* 2. 데이터 ======================================================================================================================= */
   const loginObj = EasyObj({
-    email: "",
     password: "",
     rememberMe: false,
     errors: {
-      email: "",
       password: "",
     },
   });
@@ -43,7 +42,6 @@ const LoginView = ({ initialDataObj, initialErrorObj }) => {
     pending: false,
     formError: "",
   });
-  const emailRef = useRef(null);
   const passwordRef = useRef(null);
   const errorSummaryRef = useRef(null);
   const focusFrameRef = useRef(null);
@@ -62,7 +60,6 @@ const LoginView = ({ initialDataObj, initialErrorObj }) => {
     sessionData.result &&
     sessionData.result.username
   );
-  const emailErrorId = loginObj.errors.email ? "login-email-error" : undefined;
   const passwordErrorId = loginObj.errors.password
     ? "login-password-error"
     : undefined;
@@ -104,26 +101,11 @@ const LoginView = ({ initialDataObj, initialErrorObj }) => {
    * @updated 2026-02-27
    */
   const validateForm = () => {
-    loginObj.errors.email = "";
     loginObj.errors.password = "";
     ui.formError = "";
     let firstIssueObj = null;
 
-    const email = String(loginObj.email || "").trim();
     const password = String(loginObj.password || "");
-
-    loginObj.email = email;
-
-    if (!email) {
-      loginObj.errors.email = LANG_KO.view.validation.emailRequired;
-      if (!firstIssueObj) firstIssueObj = { ref: emailRef, summary: loginObj.errors.email };
-    } else if (email.length < minUsernameLength) {
-      loginObj.errors.email = LANG_KO.view.validation.emailMinLength;
-      if (!firstIssueObj) firstIssueObj = { ref: emailRef, summary: loginObj.errors.email };
-    } else if (!/\S+@\S+\.\S+/.test(email)) {
-      loginObj.errors.email = LANG_KO.view.validation.emailInvalid;
-      if (!firstIssueObj) firstIssueObj = { ref: emailRef, summary: loginObj.errors.email };
-    }
 
     if (!password) {
       loginObj.errors.password = LANG_KO.view.validation.passwordRequired;
@@ -156,14 +138,14 @@ const LoginView = ({ initialDataObj, initialErrorObj }) => {
     ui.pending = true;
     try {
       const loginPayloadObj = {
-        username: loginObj.email,
+        username: operatorUsername,
         password: loginObj.password,
         rememberMe: Boolean(loginObj.rememberMe),
       };
       await apiJSON(PAGE_CONFIG.API.login, {
         method: "POST",
         body: loginPayloadObj,
-      }, { authless: true });
+      });
       await reload?.();
       const redirectPath = sanitizeRedirect(nextHint) || "/dashboard";
       window.location.assign(redirectPath);
@@ -185,13 +167,7 @@ const LoginView = ({ initialDataObj, initialErrorObj }) => {
         backendErrorObj = { message: error.message };
       }
       const { message, field } = backendErrorObj;
-      if (field === "email") {
-        loginObj.errors.email = message;
-        cancelAnimationFrame(focusFrameRef.current);
-        focusFrameRef.current = requestAnimationFrame(() => {
-          emailRef.current?.focus();
-        });
-      } else if (field === "password") {
+      if (field === "email" || field === "password") {
         loginObj.errors.password = message;
         cancelAnimationFrame(focusFrameRef.current);
         focusFrameRef.current = requestAnimationFrame(() => {
@@ -318,31 +294,8 @@ const LoginView = ({ initialDataObj, initialErrorObj }) => {
                 {ui.formError}
               </div>
             ) : null}
-            <div>
-              <label
-                htmlFor="login-email"
-                className="block text-sm font-medium text-gray-700"
-              >
-                {LANG_KO.view.form.emailLabel}
-              </label>
-              <div className="mt-2">
-                <Input
-                  id="login-email"
-                  type="email"
-                  autoComplete="username"
-                  dataObj={loginObj}
-                  dataKey="email"
-                  ref={emailRef}
-                  placeholder={LANG_KO.view.form.emailPlaceholder}
-                  aria-describedby={emailErrorId}
-                  error={loginObj.errors.email}
-                />
-                {loginObj.errors.email && (
-                  <p id={emailErrorId} className="mt-2 text-sm text-red-600">
-                    {loginObj.errors.email}
-                  </p>
-                )}
-              </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+              {LANG_KO.view.form.operatorNotice}
             </div>
 
             <div>
@@ -379,12 +332,6 @@ const LoginView = ({ initialDataObj, initialErrorObj }) => {
                 dataKey="rememberMe"
                 label={LANG_KO.view.form.rememberMeLabel}
               />
-              <Link
-                href="/forgot-password"
-                className="text-sm font-medium text-blue-600 hover:text-blue-500"
-              >
-                {LANG_KO.view.form.forgotPasswordLabel}
-              </Link>
             </div>
 
             <Button
@@ -397,15 +344,6 @@ const LoginView = ({ initialDataObj, initialErrorObj }) => {
               {LANG_KO.view.form.submitLabel}
             </Button>
 
-            <div className="text-center text-sm text-gray-600">
-              {`${LANG_KO.view.form.signupGuidePrefix} `}{" "}
-              <Link
-                href="/signup"
-                className="font-medium text-blue-600 hover:text-blue-500"
-              >
-                {LANG_KO.view.form.signupLinkLabel}
-              </Link>
-            </div>
           </form>
         </section>
       </div>

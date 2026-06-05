@@ -40,18 +40,18 @@ Review goal:
 
 Important project constraints:
 
-- No live trading is approved.
+- No account-affecting operation is approved.
 - No broker network calls are approved.
 - No AI provider network calls are approved.
-- Before KIS paper approval, order intents must stop at no-order dry-run records.
+- Before KIS adapter approval, order intents must stop at no-order dry-run records.
 - If a foundation-only queue is chosen, `HWISTOCK-UNIT-006` must be explicitly
   included as a no-order dry-run condition/order-state skeleton or explicitly
   excluded from the first queue.
 - Internal fake broker fills, fake balances, and fake PnL are forbidden.
 - Capital is cash-only; credit, margin, 미수, borrowed funds, and leverage are
   forbidden.
-- Starting live capital is 2,000,000 KRW; KIS paper target budget is 10,000,000
-  KRW pending paper balance evidence.
+- Starting operation capital is 2,000,000 KRW; KIS adapter target budget is 10,000,000
+  KRW pending adapter balance evidence.
 - Maximum simultaneous holdings is 5.
 - There is no fixed per-symbol allocation cap; every buy must preserve
   `minimum_cash_reserve_ratio = 0.25`.
@@ -93,7 +93,7 @@ Questions:
 3. Is the AI boundary safe and internally consistent?
 4. Are there any apparent conflicts where older evidence notes contradict the
    current profile/module/unit/completion/snapshot state?
-5. Is the strategy decision packet safe enough for paper/sandbox planning only?
+5. Is the strategy decision packet safe enough for adapter-backed planning only?
 6. Should the first Go queue be full, or foundation-only with strategy/dashboard
    excluded?
 7. Are the QA scenarios sufficient for Go/Check and later one-week Prove?

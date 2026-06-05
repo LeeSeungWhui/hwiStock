@@ -10,8 +10,8 @@ current_authority: true
 created_at: 2026-06-05
 updated_at: 2026-06-05
 profile_ref: docs/profiles/PROFILE-HWISTOCK.md
-module_ref: docs/modules/HWISTOCK-MOD-009_operational-paper-trading-program.md
-ready_set_ref: docs/set/READY-SET-COMPLETION-20260605_operational-paper-trading-program_hwistock.md
+module_ref: docs/modules/HWISTOCK-MOD-009_operational-automated-trading-program.md
+ready_set_ref: docs/set/READY-SET-COMPLETION-20260605_operational-automated-trading-program_hwistock.md
 contract_ref: docs/contracts/HWISTOCK-RUNTIME-DATA-EXECUTION-CONTRACTS.md
 schema_catalog_ref: docs/contracts/hwistock-runtime-contracts.schema.json
 supersedes:
@@ -22,7 +22,7 @@ supersedes:
 
 ## 1. Owner-Approved Runtime Shape
 
-The owner rebaselined the operational paper-trading target to this structure:
+The owner rebaselined the operational automated-trading target to this structure:
 
 1. 24-hour collection:
    - NAVER Search News API as the selected first runtime news source;
@@ -37,7 +37,7 @@ The owner rebaselined the operational paper-trading target to this structure:
    - volume ranking;
    - volume-power / execution-strength style ranking;
    - fluctuation ranking;
-   - program-trading aggregate status where the KIS paper capability matrix
+   - program-trading aggregate status where the KIS adapter capability matrix
      proves support.
 4. Top-of-hour DeepSeek Pro:
    - full market analysis;
@@ -54,7 +54,7 @@ The owner rebaselined the operational paper-trading target to this structure:
 6. Always-on trading program:
    - reads new trade documents;
    - cancels previous unfilled buy waits;
-   - registers new `WAIT_BUY` / `BUY_NOW` paper orders only after deterministic
+   - registers new `WAIT_BUY` / `BUY_NOW` broker orders only after deterministic
      gates;
    - monitors held symbols for stop-loss, take-profit, and trailing-stop in
      realtime.
@@ -108,9 +108,9 @@ Allowed action values:
 - AI artifacts remain non-executable.
 - `position_size_pct` is an advisory cap requested by Flash; the deterministic
   risk layer still enforces cash reserve, maximum holdings, available cash,
-  reserved cash, pending orders, and paper-only broker guards.
+  reserved cash, pending orders, and adapter-bound broker guards.
 - The executor must re-read authoritative portfolio/order state immediately
-  before any KIS paper submission.
+  before any KIS broker submission.
 - Stop-loss, take-profit, and trailing-stop handling belongs to the always-on
   executor using realtime KIS state, not to a delayed AI tick.
 - Follow-up owner decision on 2026-06-05: keep NAVER as the single first-runtime
@@ -126,17 +126,17 @@ Allowed action values:
 - `docs/contracts/fixtures/runtime-contract-invalid.json`
 - `scripts/validate_runtime_contracts.py`
 - `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md`
-- `docs/modules/HWISTOCK-MOD-009_operational-paper-trading-program.md`
+- `docs/modules/HWISTOCK-MOD-009_operational-automated-trading-program.md`
 - `docs/units/HWISTOCK-UNIT-012_ai-analysis-runtime.md`
 - `docs/units/HWISTOCK-UNIT-013_signal-to-intent-pipeline.md`
-- `docs/units/HWISTOCK-UNIT-014_kis-paper-order-execution-reconciliation.md`
+- `docs/units/HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md`
 - `docs/units/HWISTOCK-UNIT-016_runtime-contract-hardening.md`
 - `docs/qa/QA-HWISTOCK-UNIT-012_ai-analysis-runtime.md`
 - `docs/qa/QA-HWISTOCK-UNIT-013_signal-to-intent-pipeline.md`
-- `docs/qa/QA-HWISTOCK-UNIT-014_kis-paper-order-execution-reconciliation.md`
+- `docs/qa/QA-HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md`
 - `docs/qa/QA-HWISTOCK-UNIT-016_runtime-contract-hardening.md`
-- `docs/set/READY-SET-COMPLETION-20260605_operational-paper-trading-program_hwistock.md`
-- `docs/set/READY-SET-ROW-CLOSURE-20260605_operational-paper-trading-program_hwistock.md`
+- `docs/set/READY-SET-COMPLETION-20260605_operational-automated-trading-program_hwistock.md`
+- `docs/set/READY-SET-ROW-CLOSURE-20260605_operational-automated-trading-program_hwistock.md`
 - `docs/index.md`
 - `docs/profiles/PROFILE-HWISTOCK.md`
 
@@ -151,5 +151,5 @@ Current correct status remains:
 - `paper_run_ready: false`;
 - `continuous_runner_ready: false`;
 - `operational_trading_readiness: false`;
-- live trading: forbidden;
-- KIS live orders: forbidden.
+- account-affecting operation: forbidden;
+- KIS account-affecting orders: forbidden.

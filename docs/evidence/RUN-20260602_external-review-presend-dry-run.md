@@ -53,7 +53,7 @@ refresh: 80 files.
 - `docs/modules/HWISTOCK-MOD-006_dashboard-operator-console.md`
 - `docs/modules/HWISTOCK-MOD-007_data-evidence-storage.md`
 - `docs/units/HWISTOCK-UNIT-001_project-bootstrap.md`
-- `docs/units/HWISTOCK-UNIT-002_home-server-paper-runner.md`
+- `docs/units/HWISTOCK-UNIT-002_home-server-adapter-runner.md`
 - `docs/units/HWISTOCK-UNIT-003_market-intelligence-ingestion.md`
 - `docs/units/HWISTOCK-UNIT-004_strategy-risk-rulebook.md`
 - `docs/units/HWISTOCK-UNIT-005_ai-orchestration-layer.md`
@@ -62,7 +62,7 @@ refresh: 80 files.
 - `docs/units/HWISTOCK-UNIT-008_data-evidence-storage.md`
 - `docs/units/HWISTOCK-UNIT-009_kis-api-portal-verification.md`
 - `docs/qa/QA-HWISTOCK-UNIT-001_project-bootstrap.md`
-- `docs/qa/QA-HWISTOCK-UNIT-002_home-server-paper-runner.md`
+- `docs/qa/QA-HWISTOCK-UNIT-002_home-server-adapter-runner.md`
 - `docs/qa/QA-HWISTOCK-UNIT-003_market-intelligence-ingestion.md`
 - `docs/qa/QA-HWISTOCK-UNIT-004_strategy-risk-rulebook.md`
 - `docs/qa/QA-HWISTOCK-UNIT-005_ai-orchestration-layer.md`
@@ -71,7 +71,7 @@ refresh: 80 files.
 - `docs/qa/QA-HWISTOCK-UNIT-008_data-evidence-storage.md`
 - `docs/qa/QA-HWISTOCK-UNIT-009_kis-api-portal-verification.md`
 - `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md`
-- `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`
+- `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md`
 - `docs/sources/HWISTOCK-SOURCE-REGISTRY.md`
 - `docs/set/READY-SET-APPROVAL-ACTIONS-20260602_hwistock.md`
 - `docs/set/READY-SET-COMPLETION-20260602_hwistock.md`
@@ -95,7 +95,7 @@ refresh: 80 files.
 - `docs/evidence/RUN-20260602_ai-orchestration-layer.md`
 - `docs/evidence/RUN-20260602_broker-candidate-kb-blocked.md`
 - `docs/evidence/RUN-20260602_broker-selection-kis.md`
-- `docs/evidence/RUN-20260602_calendar-alert-paper-gate-set.md`
+- `docs/evidence/RUN-20260602_calendar-alert-operation-gate-set.md`
 - `docs/evidence/RUN-20260602_doc-reference-ledger.md`
 - `docs/evidence/RUN-20260602_external-review-presend-dry-run.md`
 - `docs/evidence/RUN-20260602_external-review-share-manifest.md`
@@ -107,7 +107,7 @@ refresh: 80 files.
 - `docs/evidence/RUN-20260602_stack-rule-preset-set.md`
 - `docs/evidence/RUN-20260602_strategy-risk-rulebook.md`
 - `docs/evidence/RUN-20260602_unit-001-project-bootstrap-set.md`
-- `docs/evidence/RUN-20260602_unit-002-home-server-paper-runner-set.md`
+- `docs/evidence/RUN-20260602_unit-002-home-server-adapter-runner-set.md`
 - `docs/evidence/RUN-20260602_unit-003-market-intelligence-set.md`
 - `docs/evidence/RUN-20260602_unit-004-strategy-risk-rulebook-set.md`
 - `docs/evidence/RUN-20260602_unit-005-ai-orchestration-layer-set.md`
@@ -163,7 +163,7 @@ dry-run also records the local safety boundary:
 - no KIS token/account/balance/order call was made
 - no AI provider network call was made
 - no external review was sent
-- no live or paper order placement was made
+- no operation or broker order placement was made
 
 Local secret scan command shape for the latest refresh:
 
@@ -191,7 +191,7 @@ Latest local refresh before any external review approval:
 - Secret-pattern scan over `AGENTS.md` and `docs/`: no matches.
 - Candidate-scoped fail-closed secret scan: no matches.
 - This refresh did not send the bundle, call a broker, call an AI provider,
-  place paper orders, place live orders, or authorize Go.
+  place broker orders, place account-affecting orders, or authorize Go.
 
 Exact-match rebuild command used for the candidate set:
 

@@ -20,10 +20,22 @@ from service.HwiStockRunnerService import resolve_bind_host
 DEFAULT_BIND_HOST = "127.0.0.1"
 
 
+def _isTruthy(value: object) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def resolveBindHost(config) -> str:
     server = config["SERVER"] if config.has_section("SERVER") else {}
     config_host = server.get("bind_host", "").strip() or None
     return resolve_bind_host(config_host)
+
+
+def resolveReloadEnabled(config) -> bool:
+    server = config["SERVER"] if config.has_section("SERVER") else {}
+    envReload = os.getenv("HWISTOCK_BACKEND_RELOAD")
+    if envReload is not None:
+        return _isTruthy(envReload)
+    return _isTruthy(server.get("reload", "false"))
 
 
 def loadConfig():
@@ -44,5 +56,5 @@ if __name__ == "__main__":
         "server:app",
         host=bind_host,
         port=serverConfig.getint("port", 5001),
-        reload=True,
+        reload=resolveReloadEnabled(config),
     )

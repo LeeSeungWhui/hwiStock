@@ -46,7 +46,7 @@ The dashboard is read-only:
 - no strategy/risk parameter editing
 - no prompt/model editing
 - no service start/stop controls
-- no live-trading approval controls
+- no operation-trading approval controls
 
 The operator may inspect state and talk with the investment AI, but any action
 that could change trading behavior remains outside this dashboard unit.
@@ -56,7 +56,7 @@ that could change trading behavior remains outside this dashboard unit.
 The first screen should be the actual operator console, not a landing page.
 Expected state sections:
 
-- system mode: dry-run, KIS paper, or future live-readonly
+- system mode: dry-run, KIS adapter, or future read-only broker-adapter
 - market session: KRX/NXT/out-of-session, calendar status, stale-data status
 - cash and reserve state: current capital, minimum reserve floor, available
   order cash
@@ -83,7 +83,7 @@ Expected state sections:
    encouraging manual trading?
 2. Are read-only boundaries obvious in the UI model?
 3. Is the layout suitable for a 24-hour home-server monitor?
-4. Are alerts, stale data, calendar idle, kill switch, and paper/live state
+4. Are alerts, stale data, calendar idle, kill switch, and adapter-mode state
    visible enough?
 5. Does the AI conversation panel look like analysis/explanation, not command
    execution?

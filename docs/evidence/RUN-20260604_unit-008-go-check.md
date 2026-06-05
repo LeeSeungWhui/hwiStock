@@ -28,8 +28,8 @@ created_at: 2026-06-04
 PASS. `HWISTOCK-UNIT-008` completed Go-Check for the local storage skeleton
 scope.
 
-This result does not authorize live DB migration execution, broker/KIS network
-calls, AI provider calls, paper orders, live orders, credential storage,
+This result does not authorize operational DB migration execution, broker/KIS network
+calls, AI provider calls, broker orders, account-affecting orders, credential storage,
 dashboard UI, runtime `data/` artifact commits, or operational trading
 readiness.
 

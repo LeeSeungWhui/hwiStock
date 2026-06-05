@@ -7,13 +7,13 @@ current_authority: true
 project_root: /data/workspace/My/hwiStock
 profile_ref: docs/profiles/PROFILE-HWISTOCK.md
 unit_refs:
-  - docs/units/HWISTOCK-UNIT-002_home-server-paper-runner.md
+  - docs/units/HWISTOCK-UNIT-002_home-server-adapter-runner.md
   - docs/units/HWISTOCK-UNIT-007_dashboard-operator-console.md
 module_refs:
   - docs/modules/HWISTOCK-MOD-001_trading-safety-core.md
   - docs/modules/HWISTOCK-MOD-006_dashboard-operator-console.md
 qa_scenario_refs:
-  - docs/qa/QA-HWISTOCK-UNIT-002_home-server-paper-runner.md
+  - docs/qa/QA-HWISTOCK-UNIT-002_home-server-adapter-runner.md
   - docs/qa/QA-HWISTOCK-UNIT-007_dashboard-operator-console.md
 created_at: 2026-06-05
 environment: local_only
@@ -53,7 +53,7 @@ Confirmed:
   `/healthz`;
 - BFF `/api/bff/api/v1/hwistock/runner/status` returned 200 with
   `liveOrdersEnabled=false` and `brokerCallsEnabled=false`;
-- no KIS, broker, order, live trading, SSH tunnel, browser, deploy, or git
+- no KIS, broker, order, account-affecting operation, SSH tunnel, browser, deploy, or git
   operation was run.
 
 ## 2. Runtime Method
@@ -61,7 +61,7 @@ Confirmed:
 The `run.sh start-dev` wrappers printed successful startup, but their background
 processes were not alive after the shell command returned in this Codex
 execution environment. For reliable smoke evidence, both servers were then run
-as foreground processes held by live Codex tool sessions.
+as foreground processes held by foreground Codex tool sessions.
 
 Backend foreground launch shape:
 
@@ -140,5 +140,5 @@ Possible next proof steps:
 Follow-up note: hwibuntu SSH tunnel smoke was completed in
 `docs/evidence/RUN-20260605_hwibuntu-tunnel-smoke-5000-5001.md`.
 
-Do not proceed to broker/KIS calls, live orders, public/LAN exposure, or
+Do not proceed to broker/KIS calls, account-affecting orders, public/LAN exposure, or
 production deployment from this evidence.

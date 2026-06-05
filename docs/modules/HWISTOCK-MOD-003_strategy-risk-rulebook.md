@@ -86,8 +86,8 @@ when it must stop trading.
   exit reason.
 - As an operator, I can verify the first test does not add broad account-level
   risk controls unless a later Set decision approves them.
-- As the owner, I can paper-test the rules for an observation window I choose
-  before approving live operation.
+- As the owner, I can adapter-test the rules for an observation window I choose
+  before approving account-affecting operation.
 
 ## 3. Scope
 
@@ -108,7 +108,7 @@ when it must stop trading.
 - Stop-loss, optional take-profit/time exits, and day-end flat policy.
 - No-averaging-down rule.
 - Manual kill switch and operational error blocks.
-- Paper/backtest evidence requirements.
+- Adapter/backtest evidence requirements.
 
 ### Excluded
 
@@ -117,7 +117,7 @@ when it must stop trading.
 - Final alpha/signal formula.
 - Broker/API implementation.
 - KIS/external broker network calls before the KIS API verification unit.
-- Live order placement.
+- Account-affecting broker order placement.
 - Credit, margin, 미수, borrowed funds, or leveraged capital.
 
 ## 4. Product / Capability Contract
@@ -127,10 +127,10 @@ when it must stop trading.
 - Starting capital: 2,000,000 KRW cash.
 - Capital mode: cash-only.
 - All-in single-stock deployment: forbidden by default.
-- Live starting capital baseline: 2,000,000 KRW cash.
-- Official paper/mock-investment starting budget candidate: 10,000,000 KRW after
-  KIS API verification. Paper sizing must be scalable down to the 2,000,000 KRW
-  live baseline.
+- Starting capital baseline: 2,000,000 KRW cash.
+- Official broker-adapter starting budget candidate: 10,000,000 KRW after
+  KIS API verification. Adapter sizing must be scalable down to the 2,000,000 KRW
+  capital baseline.
 - Required first-pass allocation controls:
   - minimum cash reserve ratio: 0.25 of total capital
   - maximum simultaneous holdings: 5
@@ -138,8 +138,8 @@ when it must stop trading.
 - There is no fixed per-symbol maximum allocation in the first policy. Position
   sizing may concentrate into fewer symbols when the strategy/risk gates approve
   it, but every buy decision must preserve the cash reserve floor. With
-  2,000,000 KRW live starting capital, the runner must keep at least 500,000 KRW
-  unallocated by default; with the 10,000,000 KRW KIS paper target budget, it
+  2,000,000 KRW starting capital, the runner must keep at least 500,000 KRW
+  unallocated by default; with the 10,000,000 KRW KIS adapter target budget, it
   must keep at least 2,500,000 KRW unallocated by default.
 - Averaging down is forbidden by default unless a future approved unit changes
   the rule.
@@ -161,7 +161,7 @@ when it must stop trading.
   style, fill result, retry result, slippage, and final position state.
 - Daily loss halt, consecutive-loss halt, max-trade count, and cooldown are
   excluded from the first minimal policy by default, but may be added later
-  after paper evidence.
+  after adapter evidence.
 
 ### 4.3 Strategy Tempo
 
@@ -174,7 +174,7 @@ when it must stop trading.
   only the draft target band for an individual position. It is not enough to
   justify an entry by itself. The entry must still pass candidate filters,
   liquidity checks, stop policy, cash-reserve floor, and holdings cap.
-- Reward/risk guard is approved for the first-pass paper/sandbox default: an
+- Reward/risk guard is approved for the first-pass adapter-backed default: an
   entry must meet `minimum_reward_risk_ratio = 1.2` before it can become a
   no-order dry-run entry intent.
 - The 08:00-20:00 trading envelope is an observation/opportunity window. It does
@@ -221,10 +221,10 @@ and produce only a structured recommendation or non-executable draft
 The AI recommendation is not an order. `consider_entry` only means the candidate
 may proceed to deterministic risk checks. The risk engine still owns position
 sizing, stop-loss validation, cash-reserve/holdings checks, stale-data rejection, and
-  order eligibility. Before KIS paper approval, an approved order intent can only
+  order eligibility. Before KIS adapter approval, an approved order intent can only
   be recorded as a no-order dry-run decision. It must not route to KIS, any
   external broker, or an internal fake broker/fill simulator. After explicit
-  broker-network approval, the first broker-backed route is KIS KRX paper/mock.
+  broker-network approval, the first broker-backed route is KIS KRX broker-adapter.
 
 ### 4.5 Candidate Stock Selection
 
@@ -306,7 +306,7 @@ The system must block new entries and alert the operator when:
 
 Daily realized-loss halt, consecutive-loss halt, completed-trade cap, and
 cooldown are intentionally not first-pass defaults. They may be added in a later
-Set decision if the paper run shows they are needed.
+Set decision if the operation run shows they are needed.
 
 ## 5. Interfaces
 
@@ -317,7 +317,7 @@ Current current-authority rebaseline implementation files:
 
 Current stdlib-only local interfaces:
 
-- `loadStrategyRiskConfig()` — approved paper/sandbox defaults
+- `loadStrategyRiskConfig()` — approved adapter-backed defaults
 - `validateStrategyRiskConfig()` — config contract validation
 - `validateEntryIntent()` — deterministic entry-intent rejection reasons
 - `validateCandidateOnlyIntent()` — watchlist-only boundary
@@ -342,7 +342,7 @@ Future interfaces may include:
 - Audit logs must include candidate, entry, sizing, exit, and halt reasons.
 - AI output must be logged with model, prompt/schema version, source ids,
   latency, cost metadata when available, and structured validation result.
-- Paper/backtest/live evidence must never imply guaranteed profitability.
+- Adapter/backtest/operation evidence must never imply guaranteed profitability.
 
 ## 7. Existing Assets / Reuse Points
 
@@ -359,11 +359,11 @@ Future interfaces may include:
   entries.
 - Verify UNIT-004 no-order dry-run evidence records candidate, entry, size, stop,
   target, hold window, and rejection reason without fill/PnL simulation; later
-  trading-engine paper evidence owns real exit/fill/PnL fields.
+  trading-engine adapter evidence owns real exit/fill/PnL fields.
 
 ## 9. Included Units
 
-- `HWISTOCK-UNIT-004`: strategy/risk rulebook planning and paper-readiness
+- `HWISTOCK-UNIT-004`: strategy/risk rulebook planning and adapter-readiness
   contract.
 - `HWISTOCK-UNIT-006`: trading engine/order state implementation contract uses
   this rulebook as its deterministic policy source.
@@ -371,7 +371,7 @@ Future interfaces may include:
 ## 10. Decisions / Open Contract Questions
 
 - Decision: starting capital is 2,000,000 KRW cash.
-- Decision: official paper/mock-investment starting budget is 10,000,000 KRW if
+- Decision: official broker-adapter starting budget is 10,000,000 KRW if
   KIS verification confirms a usable mode.
 - Decision: all-in single-stock deployment is forbidden by default.
 - Decision: first-pass risk policy is minimal: minimum cash reserve floor,
@@ -395,10 +395,10 @@ Future interfaces may include:
 - Decision: KIS is the selected broker/API direction.
 - Decision: KB Securities is blocked as a practical personal API candidate unless
   future official confirmation proves otherwise.
-- Decision: internal fake broker execution is not used. Before KIS paper
+- Decision: internal fake broker execution is not used. Before KIS adapter
   approval, approved order intents are recorded only as no-order dry-run
   decisions.
-- Decision: official KIS paper/mock-investment API use is the first
+- Decision: official KIS broker-adapter API use is the first
   broker-backed route after KIS API portal verification and explicit approval.
 - Decision: the 08:00-20:00 envelope is observation/opportunity time, not
   continuous trading permission.
@@ -412,9 +412,9 @@ Future interfaces may include:
   take-profit label, and time-stop behavior are approved by
   `docs/set/READY-SET-STRATEGY-DECISION-PACKET-20260602_hwistock.md`.
 - Open: later refinement of liquidity, take-profit, and trailing parameters after
-  backtest/paper evidence.
-- Decision: paper-run observation criteria are defined by
-  `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md` and are safety/
+  backtest/adapter evidence.
+- Decision: operation observation criteria are defined by
+  `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md` and are safety/
   evidence criteria, not a profit target. The observation duration is selected
   by the operator and is not hardcoded into the runner.
 

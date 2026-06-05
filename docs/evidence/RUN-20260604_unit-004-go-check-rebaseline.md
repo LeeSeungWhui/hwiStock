@@ -32,7 +32,7 @@ strategy/risk rulebook skeleton in the imported MyWebTemplate backend tree.
 The implementation is limited to deterministic config/constants, signal and
 entry validators, watchlist-only candidate validation, no-order dry-run record
 building/validation, and focused unittest coverage. It does not authorize or
-implement broker/KIS calls, AI provider calls, paper/live orders, fake broker
+implement broker/KIS calls, AI provider calls, adapter/account-affecting orders, fake broker
 fills, fake balances, fake PnL, credential access, or runtime data artifacts.
 
 Follow-up remediation on 2026-06-04 closed Darwin's accepted findings:
@@ -68,10 +68,10 @@ Follow-up remediation on 2026-06-04 closed Darwin's accepted findings:
   - rejection coverage for reserve breach, all-in, holdings cap, event-first
     without chart confirmation, stale signal data, averaging down, continuous
     re-entry without fresh signal, missing/stale/unauditable/wider-than--5% AI
-    stop, forbidden broker/KIS/live/paper/fake routes, and fake
+    stop, forbidden broker/KIS/operation/adapter/fake routes, and fake
     fill/balance/PnL flags
   - no-order dry-run record builder that records candidate, entry, size, stop,
-    target, hold window, rejection reasons, and explicit no-paper/no-live/
+    target, hold window, rejection reasons, and explicit no-adapter/no-unapproved-adapter/
     no-fake-broker boundary flags without fill/PnL simulation
 - `backend/tests/test_strategy_risk_rulebook.py`
   - focused unittest coverage for local-scope QA rows and stdlib-only import boundary
@@ -84,7 +84,7 @@ Follow-up remediation on 2026-06-04 closed Darwin's accepted findings:
   credential paths.
 - No implementation path imports network clients, broker/KIS adapters, or
   runtime execution modules.
-- No implementation path creates submitted/accepted/fill states, paper/live
+- No implementation path creates submitted/accepted/fill states, adapter-mode
   orders, fake broker output, fake balances, or fake PnL.
 - No implementation path writes runtime artifacts under `data/`.
 - Selected scope touched backend library/test files only; no MyWebTemplate
@@ -99,7 +99,7 @@ Follow-up remediation on 2026-06-04 closed Darwin's accepted findings:
 | QA-003 | pass | `validateCandidateOnlyIntent()` enforces watchlist-only boundary and rejects entry fields. |
 | QA-004 | pass | Missing stop or venue route rejects entry intent. |
 | QA-005 | pass | Config validation requires reserve 0.25, holdings 5, -5% stop envelope, and dry-run-only boundaries. |
-| QA-006 | pass | Dry-run record includes candidate, entry, size, stop, target, hold window, rejection reasons, and explicit no-paper/no-live/no-fake-broker boundary flags without fill/PnL simulation. |
+| QA-006 | pass | Dry-run record includes candidate, entry, size, stop, target, hold window, rejection reasons, and explicit no-adapter/no-unapproved-adapter/no-fake-broker boundary flags without fill/PnL simulation. |
 | QA-007 | deferred | 19:30/19:50 flattening requires later trading-engine execution/log evidence. Config metadata remains present. |
 | QA-008 | pass | Averaging-down add-on is rejected. |
 | QA-009 | pass | Continuous re-entry without a fresh signal is rejected. |
@@ -107,7 +107,7 @@ Follow-up remediation on 2026-06-04 closed Darwin's accepted findings:
 | QA-011 | pass | Target band label remains `per_position_price_move`, not a daily account target. |
 | QA-012 | pass | Event-first candidate without chart confirmation is rejected. |
 | QA-013 | pass | Chart-first path remains valid without event context and still goes through risk checks. |
-| QA-014 | pass | Broker/KIS/paper/live/fake route attempts, fake simulation flags including nested `fake_*_generated` variants, and dry-run boundary tampering are rejected. |
+| QA-014 | pass | Broker/KIS/adapter-mode/fake route attempts, fake simulation flags including nested `fake_*_generated` variants, and dry-run boundary tampering are rejected. |
 | QA-015 | pass | Missing, stale, unauditable, or wider-than--5% AI stop output is rejected. |
 | QA-016 | pass | Current config exposes first-pass chart interval, stale threshold, chart-confirmation, target, and hold-window defaults. |
 
@@ -167,7 +167,7 @@ git diff --check
 Secret marker scan:
 
 ```text
-known KIS paper credential/account/id markers in UNIT-004 changed code/evidence/docs
+known KIS adapter credential/account/id markers in UNIT-004 changed code/evidence/docs
 => no matches
 ```
 
@@ -182,7 +182,7 @@ known KIS paper credential/account/id markers in UNIT-004 changed code/evidence/
     and local validation. Entry validation now rejects top-level and nested
     manual/operator/safety block activation.
   - P2 dry-run boundary gap: closed by Hilbert follow-up patch and local
-    validation. Dry-run records now expose and validate no-paper/no-live/
+    validation. Dry-run records now expose and validate no-adapter/no-unapproved-adapter/
     no-fake-broker boundary flags.
 - Open P0/P1 after remediation: none.
 - Closure layer verdict after remediation: sufficient for current UNIT-004
@@ -205,7 +205,7 @@ known KIS paper credential/account/id markers in UNIT-004 changed code/evidence/
 - `HWISTOCK-UNIT-006` remains the later execution/logging owner for actual
   stop-hit exit attempts, 19:30 entry cutoff enforcement, 19:50 flattening, and
   any future dry-run state-machine integration.
-- Broker/KIS/paper/live routing remains denied outside explicitly approved later
+- Broker/KIS/adapter/account-affecting routing remains denied outside explicitly approved later
   units.
 - AI provider runtime calls remain denied; this rulebook only validates already
   normalized/local data.

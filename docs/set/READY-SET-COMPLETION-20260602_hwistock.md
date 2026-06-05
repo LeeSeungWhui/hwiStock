@@ -47,11 +47,11 @@ rule_preset_applicability_matrix_ref: docs/set/READY-SET-RULE-PRESET-APPLICABILI
 gate_evidence_matrix_ref: docs/set/READY-SET-GATE-EVIDENCE-MATRIX-20260603_hwistock.md
 current_state_snapshot_ref: docs/evidence/RUN-20260603_ready-set-current-state-snapshot.md
 git_init_delta_sync_ref: docs/evidence/RUN-20260604_git-init-ready-set-delta-sync.md
-kis_paper_smoke_evidence_ref: docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md
+kis_paper_smoke_evidence_ref: docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md
 reviewed_after_latest_set_closure: true
 open_external_findings_count: 0
 row_closure_matrix_ref: docs/set/READY-SET-ROW-CLOSURE-20260602_hwistock.md
-selected_queue_scope: full_queue_skeleton_sandbox_safe
+selected_queue_scope: full_queue_skeleton_adapter_safe
 go_check_queue:
   - unit_id: HWISTOCK-UNIT-001
     order: 1
@@ -84,7 +84,7 @@ go_check_queue:
   - unit_id: HWISTOCK-UNIT-002
     order: 8
     queue_status: superseded_by_code_import
-    qa_scenario_ref: docs/qa/QA-HWISTOCK-UNIT-002_home-server-paper-runner.md
+    qa_scenario_ref: docs/qa/QA-HWISTOCK-UNIT-002_home-server-adapter-runner.md
   - unit_id: HWISTOCK-UNIT-007
     order: 9
     queue_status: superseded_by_code_import
@@ -93,11 +93,11 @@ excluded_from_first_go_queue: []
 blocked_go_reasons: []
 pre_go_code_edit_blockers: []
 residual_denied_approvals:
-  - broker network calls outside explicitly scoped approved KIS paper/mock units
+  - broker network calls outside explicitly scoped approved KIS broker-adapter units
   - additional KIS token/account/balance/quote/realtime/order/modify/cancel/WebSocket calls outside the completed bounded smoke
   - AI provider network calls
-  - paper order placement outside explicitly scoped approved KIS paper/mock units
-  - live order placement
+  - broker order placement outside explicitly scoped approved KIS broker-adapter units
+  - account-affecting order placement
   - credential storage
   - public or LAN dashboard exposure
   - service-control actions from dashboard
@@ -133,10 +133,10 @@ as the current authority until a new Ready-Set completion, row closure, and Go
 preflight are issued against the imported code baseline.
 
 This remains not operational trading readiness. The earlier bounded KIS
-paper/mock smoke documented in
-`docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md` remains evidence for
+broker-adapter smoke documented in
+`docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md` remains evidence for
 that completed smoke only. It does not authorize unscoped broker/KIS network
-calls, AI provider calls, additional paper orders, live orders, credential
+calls, AI provider calls, additional broker orders, account-affecting orders, credential
 storage, public/LAN dashboard exposure, service-control actions, buy/sell
 controls, fake broker fills/balances/PnL, or expected-profit claims.
 
@@ -155,8 +155,8 @@ supported by the following evidence:
   `docs/evidence/RUN-20260604_gpt-pro-full-ready-set-review.md`.
 - Full review findings intake:
   `docs/set/READY-SET-REVIEW-FINDINGS-INTAKE-20260604_full.md`.
-- KIS paper/mock REST and websocket smoke evidence:
-  `docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md`.
+- KIS broker-adapter REST and websocket smoke evidence:
+  `docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md`.
 - Git initialization and `.env` ignore evidence:
   `docs/evidence/RUN-20260604_git-init-ready-set-delta-sync.md`.
 - Row closure matrix:
@@ -179,7 +179,7 @@ current Go authorization after the MyWebTemplate code import.
 | HWISTOCK-UNIT-008 | set | data_db/product_api | HWISTOCK-MOD-007 | QA-HWISTOCK-UNIT-008 | included; PostgreSQL schema/migration and evidence-storage skeleton |
 | HWISTOCK-UNIT-003 | set | product_api | HWISTOCK-MOD-002 | QA-HWISTOCK-UNIT-003 | included; fixture/config-first ingestion skeleton |
 | HWISTOCK-UNIT-009 | set | docs/product_api | HWISTOCK-MOD-005 | QA-HWISTOCK-UNIT-009 | included; KIS docs/capability matrix only |
-| HWISTOCK-UNIT-004 | set | product_api | HWISTOCK-MOD-003 | QA-HWISTOCK-UNIT-004 | included; strategy/risk config and validators using approved paper/sandbox defaults |
+| HWISTOCK-UNIT-004 | set | product_api | HWISTOCK-MOD-003 | QA-HWISTOCK-UNIT-004 | included; strategy/risk config and validators using approved adapter-backed defaults |
 | HWISTOCK-UNIT-006 | set | product_api | HWISTOCK-MOD-005 | QA-HWISTOCK-UNIT-006 | included; no-order dry-run condition/order-state skeleton |
 | HWISTOCK-UNIT-005 | set | product_api | HWISTOCK-MOD-004 | QA-HWISTOCK-UNIT-005 | included; AI schemas/jobs/prompts/audit skeleton with provider network disabled |
 | HWISTOCK-UNIT-002 | set | ops/product_api | HWISTOCK-MOD-001 | QA-HWISTOCK-UNIT-002 | included; local runner/systemd lifecycle skeleton and no-order wiring |
@@ -220,11 +220,11 @@ high-risk operational capabilities remain intentionally excluded or
 future-gated:
 
 - additional broker/KIS network use requires later explicit unit scope,
-  approval, and evidence; the bounded 2026-06-04 paper/mock smoke is complete;
+  approval, and evidence; the bounded 2026-06-04 broker-adapter smoke is complete;
 - AI provider network use requires later explicit approval and cost/network
   configuration;
-- additional paper orders and all live orders require later explicit approval;
-- live readiness requires the one-week paper/sandbox gate and explicit
+- additional broker orders and all account-affecting orders require later explicit approval;
+- operation readiness requires the one-week adapter-backed gate and explicit
   go/no-go;
 - code edits still require a newly issued selected-row Go preflight; the VCS
   decision is resolved by Git initialization evidence.
@@ -241,7 +241,7 @@ The historical pre-import Go-Check queue was:
 4. `HWISTOCK-UNIT-009`: KIS docs/capability matrix refinement from local
    references only.
 5. `HWISTOCK-UNIT-004`: strategy/risk config, validators, approved
-   paper/sandbox defaults, cash reserve, holdings cap, and stop validation.
+   adapter-backed defaults, cash reserve, holdings cap, and stop validation.
 6. `HWISTOCK-UNIT-006`: no-order dry-run condition/order-state skeleton,
    `condition_card/v0`, and disabled broker/KIS adapter boundary.
 7. `HWISTOCK-UNIT-005`: AI job registry, schemas, validators, prompt templates,
@@ -259,16 +259,16 @@ Every selected row must still run Go preflight immediately before file edits.
 The following remain denied until a later explicit owner approval and matching
 profile/module/unit update:
 
-- broker network calls outside explicitly scoped approved KIS paper/mock units;
-- additional KIS token/account/balance/quote/realtime/order/modify/cancel/WebSocket calls outside the completed bounded smoke or future explicitly scoped approved KIS paper/mock units;
+- broker network calls outside explicitly scoped approved KIS broker-adapter units;
+- additional KIS token/account/balance/quote/realtime/order/modify/cancel/WebSocket calls outside the completed bounded smoke or future explicitly scoped approved KIS broker-adapter units;
 - AI provider network calls;
-- paper order placement outside explicitly scoped approved KIS paper/mock units;
-- live order placement;
+- broker order placement outside explicitly scoped approved KIS broker-adapter units;
+- account-affecting order placement;
 - credential storage;
 - public or LAN dashboard exposure;
 - dashboard service-control actions or buy/sell controls;
 - fake broker fills, fake balances, or fake PnL;
 - expected-profit claims.
 
-The one-week paper/sandbox evidence gate remains future Prove work and is not
+The one-week adapter-backed evidence gate remains future Prove work and is not
 satisfied by this Ready-Set closure.

@@ -46,17 +46,17 @@ In scope:
 - timeout/malformed fallback
 - sensitive-data exclusion
 - audit logs
-- no-order dry-run / KIS paper adapter boundary
+- no-order dry-run / KIS broker adapter boundary
 - AI tool-use disabled boundary
 - AI network disabled-by-default config
 
 Out of scope:
 
-- live AI API call
-- live trading
+- paid AI API call
+- account-affecting operation
 - broker credential handling
 - KIS/external broker endpoint routing
-- broker-provided paper/mock/demo/testbed endpoint routing before approval
+- broker-provided broker-adapter/demo/testbed endpoint routing before approval
 - model performance claims
 
 ## 3. Scenario Rows
@@ -72,8 +72,8 @@ Out of scope:
 | QA-007 | P1 | audit | Generate AI recommendation record | Model, prompt/schema version, input bundle ids, latency, validation result, and action are logged | audit log |
 | QA-008 | P1 | safety | Submit AI suggestion to all-in, use credit, hold overnight, or ignore stop | Output is rejected and logged as policy violation | policy log |
 | QA-009 | P0 | schema | Submit draft `order_intent` with missing risk reference, stale source, or invalid sizing | Intent is rejected before policy approval | schema/policy log |
-| QA-010 | P0 | adapter | Submit policy-approved `order_intent` before KIS paper approval | Intent is recorded as no-order dry-run only; no broker endpoint, internal fake broker, simulated fill, or fake balance is reachable | adapter/network log |
-| QA-011 | P0 | safety | Submit AI output naming a KIS/external broker endpoint, broker demo endpoint, live endpoint, or credential | Output is rejected and logged as policy violation | policy log |
+| QA-010 | P0 | adapter | Submit policy-approved `order_intent` before KIS adapter approval | Intent is recorded as no-order dry-run only; no broker endpoint, internal fake broker, simulated fill, or fake balance is reachable | adapter/network log |
+| QA-011 | P0 | safety | Submit AI output naming a KIS/external broker endpoint, broker demo endpoint, unapproved endpoint, or credential | Output is rejected and logged as policy violation | policy log |
 | QA-012 | P0 | schedule | Inspect AI job registry | DeepSeek Pro hourly aggregate analysis, Flash minute trade-document generation, GPT Pro 07:00, and 20:00 daily report jobs are separated; market-regime/session analysis is inside the Pro hourly artifact for operational runtime | schema/config review |
 | QA-013 | P1 | fallback | Simulate GPT Pro late/unavailable at 07:00 | DeepSeek-only morning report is used and fallback is logged | scheduler/log |
 | QA-014 | P1 | calculation | Generate 20:00 daily report | PnL numbers come from system calculations and AI only explains/interprets them | report review |
@@ -84,7 +84,7 @@ Out of scope:
 
 - PASS: all P0 rows pass and AI output remains recommendation-only.
 - FAIL: AI can invoke orders, bypass deterministic gates, leak sensitive data,
-  route to KIS/external broker, broker paper/mock/demo, or live endpoints before
+  route to KIS/external broker, broker broker-adapter/demo, or unapproved endpoints before
   approval, or proceed with malformed/uncited output.
 - BLOCKED: no AI boundary/schema/job registry/network-default contract exists.
 
@@ -116,8 +116,8 @@ Current execution evidence:
 | QA-007 | pass | Audit record model/prompt/input/source/latency/action validation test. |
 | QA-008 | pass | All-in, credit/margin, stop-bypass, and overnight policy rejection tests. |
 | QA-009 | pass | Draft order intent risk-reference/stale/all-in/broker rejection tests. |
-| QA-010 | pass | No-order dry-run record validation with no broker/fake/paper/live execution. |
-| QA-011 | pass | KIS/broker/demo/testbed/paper/live endpoint reference rejection tests. |
+| QA-010 | pass | No-order dry-run record validation with no broker/fake/adapter-mode execution. |
+| QA-011 | pass | KIS/broker/demo/testbed/adapter/unapproved endpoint reference rejection tests. |
 | QA-012 | pass | Six-role job registry separation test. |
 | QA-013 | pass | ChatGPT Pro late/unavailable DeepSeek-only fallback test. |
 | QA-014 | pass | Daily close report system-PnL source validation test. |

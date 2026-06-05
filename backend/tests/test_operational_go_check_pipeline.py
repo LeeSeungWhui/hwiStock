@@ -269,6 +269,13 @@ def test_unit015_operator_snapshot_is_read_only_and_masks_readiness(tmp_path: Pa
     assert snapshot["safety"]["rawAccountDisplayed"] is False
     assert snapshot["readiness"]["operationalTradingReadiness"] is False
     assert snapshot["summary"]["accountId"] == "paper_account_alias:masked"
+    assert snapshot["readinessTruth"]["headline"] == "NOT_READY_FOR_PAPER_TRADING"
+    assert snapshot["readinessTruth"]["serviceVisibilityIsNotReadiness"] is True
+    assert snapshot["readinessTruth"]["paperNetworkEnabled"] is False
+    assert snapshot["readinessTruth"]["paperOrdersSubmitted"] is False
+    assert snapshot["readinessTruth"]["paperObservationAccepted"] is False
+    assert snapshot["readinessTruth"]["operationalTradingReadiness"] is False
+    assert "blocked_calendar_unconfigured" in snapshot["readinessTruth"]["blockers"]
 
     report = operator_console.writeObservationReport(
         startedAtKst="2026-06-05T09:00:00+09:00",

@@ -16,7 +16,7 @@ dashboard_design_review_evidence_ref: docs/evidence/RUN-20260604_dashboard-desig
 dashboard_design_findings_intake_ref: docs/set/READY-SET-REVIEW-FINDINGS-INTAKE-20260604_dashboard-design.md
 full_review_evidence_ref: docs/evidence/RUN-20260604_gpt-pro-full-ready-set-review.md
 full_review_findings_intake_ref: docs/set/READY-SET-REVIEW-FINDINGS-INTAKE-20260604_full.md
-selected_queue_scope: full_queue_skeleton_sandbox_safe
+selected_queue_scope: full_queue_skeleton_adapter_safe
 ---
 
 # Ready-Set Approval Actions
@@ -48,7 +48,7 @@ Approval phrase:
 
 > Approve the first-pass strategy defaults in
 > `docs/set/READY-SET-STRATEGY-DECISION-PACKET-20260602_hwistock.md` for
-> paper/sandbox planning only. Keep broker and AI network calls disabled until
+> adapter-backed planning only. Keep broker and AI network calls disabled until
 > later explicit approval.
 
 Effect:
@@ -57,7 +57,7 @@ Effect:
   `blocked_until_strategy_decision_approval` to final-review-pending.
 - Does not approve broker network calls.
 - Does not approve AI network calls.
-- Does not approve live trading.
+- Does not approve account-affecting operation.
 
 ### Action 2: Run Dashboard Design Review
 
@@ -162,7 +162,7 @@ note. The receipt must include:
 | candidate_exact_match_result | required for Action 3; must be `pass` before external send |
 | candidate_secret_scan_result | required for Action 3; fail-closed scan must be `no_matches` before external send |
 | approvals_granted | list only approvals actually granted by the owner message |
-| approvals_not_granted | broker calls, AI calls, paper orders, live orders, credential storage, and Go remain denied unless explicitly granted |
+| approvals_not_granted | broker calls, AI calls, broker orders, account-affecting orders, credential storage, and Go remain denied unless explicitly granted |
 | docs_to_update | completion report, row closure matrix, audit, findings intake, or preflight refs supported by the decision |
 | pf11_effect | `fail` / `pass_candidate` / `not_applicable`; only written receipt evidence can move PF-11 toward pass |
 | still_blocked_by | any remaining owner/review blocker after this decision |

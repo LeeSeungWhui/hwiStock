@@ -32,7 +32,7 @@ approval, exclusion, review-run, or narrowed-queue decisions.
   or enthusiasm.
 - For Action 4, the template requires exactly one final review route phrase and
   exactly one `HWISTOCK-UNIT-006` include/exclude scope phrase.
-- The template keeps broker, AI, paper order, live order, credential storage,
+- The template keeps broker, AI, broker order, account-affecting order, credential storage,
   dashboard exposure, fake broker, and Go permissions denied by default.
 
 ## 3. Safety
@@ -44,7 +44,7 @@ approval, exclusion, review-run, or narrowed-queue decisions.
 - No broker network call was made.
 - No KIS token/account/balance/order call was made.
 - No AI provider network call was made.
-- No paper or live order was placed.
+- No adapter or account-affecting order was placed.
 - No Go implementation was started.
 
 ## 4. Result

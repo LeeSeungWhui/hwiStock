@@ -32,7 +32,7 @@ engine/order-state skeleton scope.
 
 This verdict authorizes only local schema/compiler/state-machine/dry-run/capability
 code, focused tests, and docs/evidence updates. It does not authorize broker or
-KIS network calls, AI provider calls, paper orders, live orders, executable
+KIS network calls, AI provider calls, broker orders, account-affecting orders, executable
 `submitted`/`accepted`/fill transitions, fake fills, fake balances, fake PnL,
 credential reads, or runtime data artifact creation.
 
@@ -55,7 +55,7 @@ credential reads, or runtime data artifact creation.
   - `docs/evidence/RUN-20260604_unit-006-go-check.md`
 - Forbidden:
   - broker/KIS/AI network calls
-  - paper or live order placement
+  - adapter or account-affecting order placement
   - executable `submitted`, `accepted`, `partial_fill`, `filled`, cancel/retry,
     reconciliation, or broker-backed transitions
   - fake broker, fake fill, fake balance, fake PnL generation
@@ -70,7 +70,7 @@ Included implementation:
 - Candidate-card to deterministic condition compiler skeleton.
 - Order-state enum/transition skeleton that can stop at `dry_run_recorded`.
 - No-order dry-run decision recorder.
-- KRX/NXT/SOR route metadata and KIS paper capability flags with unsupported
+- KRX/NXT/SOR route metadata and KIS adapter capability flags with unsupported
   NXT/SOR/helper branches disabled or local-fallback-only.
 - Focused unittest coverage for the foundation P0 QA rows.
 - Unit/module/QA/index and evidence updates.
@@ -79,7 +79,7 @@ Excluded:
 
 - Broker/KIS network adapters and endpoint calls.
 - AI provider calls or browser/model automation.
-- Paper/live order placement.
+- Adapter/account-affecting order placement.
 - Simulated fills, fake balances, fake PnL, or broker order ids.
 - Executable transitions into `submitted`, `accepted`, `partial_fill`, `filled`,
   cancel/retry, or reconciliation states.
@@ -95,7 +95,7 @@ Excluded:
 | PF-04 | pass | Unit, module, QA scenario, profile, and index refs exist. |
 | PF-05 | pass | Selected row explicitly limits Go to condition/order-state skeleton and no-order dry-run. |
 | PF-06 | pass | Residual denials forbid submitted/accepted/fill transitions, broker calls, fake fills, fake balances, and fake PnL. |
-| PF-07 | pass | KIS paper smoke evidence does not authorize additional unscoped broker/KIS calls for this unit. |
+| PF-07 | pass | KIS broker-adapter smoke evidence does not authorize additional unscoped broker/KIS calls for this unit. |
 | PF-08 | pass | UNIT-004 strategy/risk validator foundation is already available for risk-boundary references. |
 | PF-09 | pass | No dashboard, service runner, broker adapter, AI provider, or runtime data path is required for this Go scope. |
 

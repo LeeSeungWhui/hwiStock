@@ -28,8 +28,8 @@ links:
 
 This module owns durable storage of market-intelligence inputs, AI analysis,
 candidate cards, orders, fills, positions, PnL calculations, and evidence
-reports. The goal is to keep AI context, dashboard state, paper testing, and
-future live-readiness review reproducible.
+reports. The goal is to keep AI context, dashboard state, adapter testing, and
+future operation-readiness review reproducible.
 
 ## 2. Product / Capability Contract
 
@@ -43,7 +43,7 @@ future live-readiness review reproducible.
   - hwiStock must use its own PostgreSQL database/schema and must not share
     MyWebTemplate database names, schemas, migrations, or tables
   - append-only JSON/JSONL/Markdown artifacts under `data/` preserve raw source
-    bundles, AI outputs, report snapshots, and paper-run evidence manifests
+    bundles, AI outputs, report snapshots, and operation evidence manifests
   - database rows must store artifact paths and content hashes so runtime state
     can be audited back to files
 - Do not store credentials or private account identifiers in reports.
@@ -57,7 +57,7 @@ future live-readiness review reproducible.
 - 20:00 daily reports combine system-calculated profit, loss, net PnL,
   fees/taxes when available, trade logs, AI candidate outcomes, and AI
   interpretation.
-- Every paper/live-readiness claim must link named evidence.
+- Every adapter/operation-readiness claim must link named evidence.
 - Artifact writes are append-only by default. Corrections create a new artifact
   with `supersedes_artifact_id`; they do not mutate historical trading or AI
   evidence silently.
@@ -65,7 +65,7 @@ future live-readiness review reproducible.
   forbidden in artifacts and reports. Use redacted aliases such as
   `paper_account_alias`.
 - Retain normalized events, AI artifacts, trading logs, reports, and evidence
-  through the operator-selected paper/sandbox observation gate. Long-term
+  through the operator-selected adapter-backed observation gate. Long-term
   retention defaults to local-only until backup policy is explicitly selected.
 
 ## 3. Storage Backend
@@ -212,7 +212,7 @@ Isolation rules:
 
 - `backend/lib/storage_schemas.py`: typed artifact contracts, deterministic
   SHA-256 hashing, KST date/path helper, redaction/sensitive-key checks,
-  DailyPnL system-calculation validation, and paper-day evidence linkage
+  DailyPnL system-calculation validation, and adapter-day evidence linkage
   validation.
 - `backend/lib/request_payload.py`: FastAPI-profile request payload helper names
   introduced before route implementation.

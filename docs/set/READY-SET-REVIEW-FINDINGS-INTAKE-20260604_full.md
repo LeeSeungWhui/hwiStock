@@ -18,7 +18,7 @@ row_closure_matrix_ref: docs/set/READY-SET-ROW-CLOSURE-20260602_hwistock.md
 completion_report_ref: docs/set/READY-SET-COMPLETION-20260602_hwistock.md
 completion_audit_ref: docs/set/READY-SET-COMPLETION-AUDIT-20260602_hwistock.md
 go_preflight_checklist_ref: docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260602_hwistock.md
-selected_queue_scope: full_queue_skeleton_sandbox_safe
+selected_queue_scope: full_queue_skeleton_adapter_safe
 pf11_status: pass
 pf12_status: not_applicable
 open_p0_findings: 0
@@ -49,7 +49,7 @@ open_p2_blocking_findings: 0
 
 | finding_id | source | severity | affected_area | affected_docs | finding_summary | required_action | local_status | closure_evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| FQ-001 | gpt_pro_full_review | P1 | completion status | `READY-SET-COMPLETION-20260602_hwistock.md` | Completion report still said `implementation_ready_foundation_only`. | Rewrite completion report for full skeleton/sandbox-safe queue. | fixed | `docs/set/READY-SET-COMPLETION-20260602_hwistock.md` |
+| FQ-001 | gpt_pro_full_review | P1 | completion status | `READY-SET-COMPLETION-20260602_hwistock.md` | Completion report still said `implementation_ready_foundation_only`. | Rewrite completion report for full skeleton/adapter-safe queue. | fixed | `docs/set/READY-SET-COMPLETION-20260602_hwistock.md` |
 | FQ-002 | gpt_pro_full_review | P1 | row closure | `READY-SET-ROW-CLOSURE-20260602_hwistock.md` | Four units remained excluded from the first queue. | Rewrite all nine rows as exactly `ready_for_go_check` and keep limitations in scope notes/reasons. | fixed | `docs/set/READY-SET-ROW-CLOSURE-20260602_hwistock.md` |
 | FQ-003 | gpt_pro_full_review | P1 | review evidence | Full review evidence/intake refs | Full external review intake was not yet recorded. | Add full review evidence and findings intake, then link completion, audit, row closure, and preflight. | fixed | This file and `docs/evidence/RUN-20260604_gpt-pro-full-ready-set-review.md` |
 | FQ-004 | gpt_pro_full_review | P1 | activation draft | `READY-SET-ROW-CLOSURE-ACTIVATION-DRAFT-20260603_hwistock.md` | Activation draft can be applied only after findings are closed or accepted. | Close/accept findings in this intake before completion rewrite. | fixed | This file |
@@ -81,7 +81,7 @@ Open findings after this intake:
 | P1 | `0` | P1 findings fixed or accepted as Go-time preflight constraints |
 | P2 blocking | `0` | P2 traceability item fixed |
 
-This intake does not approve broker/KIS network calls, AI provider calls, paper
-orders, live orders, credential storage, public/LAN dashboard exposure, service
+This intake does not approve broker/KIS network calls, AI provider calls, adapter
+orders, account-affecting orders, credential storage, public/LAN dashboard exposure, service
 control actions, buy/sell controls, fake fills, fake balances, fake PnL, or
 expected-profit claims.

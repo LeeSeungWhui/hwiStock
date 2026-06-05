@@ -1,10 +1,10 @@
 # hwiStock Docs Index
 
 `hwiStock` is a stock day-trading automation project. The initial project
-contract prioritizes safety, observability, paper/sandbox validation, and clear
-approval gates before any live brokerage integration or real-money order flow.
-Before actual live operation, the project must pass an operator-selected
-paper/sandbox observation window with named evidence and an explicit user
+contract prioritizes safety, observability, adapter-backed validation, and clear
+approval gates before any broker adapter integration and account-affecting order flow.
+Before account-affecting operation, the project must pass an operator-selected
+adapter-backed observation window with named evidence and an explicit user
 go/no-go approval. The runtime must not hardcode seven days, one week, or any
 other fixed test duration; the operator decides the observation period.
 The intended runtime target is a 24-hour home-server program/service, not a
@@ -17,9 +17,9 @@ separate branches:
   other permitted public information ingestion.
 - Trading branch: uses simple session context inside 08:00-20:00 KST. KRX
   public regular-session context is 09:00-15:30 KST, while the current
-  conservative KIS paper-order enable window is KRX-only 09:00-15:00 KST.
+  conservative KIS broker-order enable window is KRX-only 09:00-15:00 KST.
   08:00-09:00 / 15:00-20:00 KST remains NXT analysis/session context only.
-  KIS paper broker-facing orders must stay KRX-only; NXT/SOR broker routes
+  KIS broker adapter broker-facing orders must stay KRX-only; NXT/SOR broker routes
   abort before transport unless a later approved unit proves support.
 
 Strategy direction is short-term day trading (`단타`) with a fast intraday
@@ -44,26 +44,26 @@ Broker/API provider direction is now Korea Investment & Securities Open API
 usable for this personal-account automation project unless a future official
 confirmation proves otherwise. hwiStock will not use an internal fake broker
 adapter as the first execution path. The first broker-backed execution path is
-an approved KIS paper/mock-investment KRX path. A bounded owner-approved KIS
-paper/mock REST and websocket smoke passed on 2026-06-04, but ordinary Go rows
+an approved KIS broker-adapter-investment KRX path. A bounded owner-approved KIS
+broker-adapter REST and websocket smoke passed on 2026-06-04, but ordinary Go rows
 still run no-order dry-run validation unless a selected unit explicitly scopes
-KIS paper/mock behavior. A 2026-06-05 runtime recheck confirmed current KIS
-paper/mock REST and WebSocket connectivity; the mock order endpoint was called
-again but rejected with the paper-mode market-not-started class because the run
+KIS broker-adapter behavior. A 2026-06-05 runtime recheck confirmed current KIS
+broker-adapter REST and WebSocket connectivity; the broker order endpoint was called
+again but rejected with the adapter-mode market-not-started class because the run
 occurred before market open
-(`docs/evidence/RUN-20260605_kis-paper-mock-api-runtime-recheck.md`).
+(`docs/evidence/RUN-20260605_kis-broker-adapter-api-runtime-recheck.md`).
 Current-authority UNIT-009 rebaseline Go-Check passed
 on 2026-06-04 as docs-only capability verification: the official endpoint
-families, paper/live separation, and NXT/SOR routing fields are documented in
-the capability matrix, with sanitized bounded KIS paper/mock smoke
-cross-referenced for proven KRX paper paths only. Local KIS references still
-constrain paper/mock proof to the KRX path for several order/realtime APIs.
+families, adapter-mode separation, and NXT/SOR routing fields are documented in
+the capability matrix, with sanitized bounded KIS broker-adapter smoke
+cross-referenced for proven KRX adapter paths only. Local KIS references still
+constrain broker-adapter proof to the KRX path for several order/realtime APIs.
 NXT/SOR remain venue/session parameters in the internal engine and must use
-disabled/fallback behavior in KIS-facing paper runs until a later approved
-real-account/support-confirmation gate. The actual paper balance and exact
+disabled/fallback behavior in KIS-facing operation runs until a later approved
+broker-account/support-confirmation gate. The actual adapter balance and exact
 current rate-limit numbers still require future account evidence. This closure
 does not authorize new KIS/broker/network calls. The
-paper/mock account balance is observed broker evidence only. Risk sizing uses
+broker-adapter account balance is observed broker evidence only. Risk sizing uses
 the hwiStock risk-overlay capital of 2,000,000 KRW unless a future approved
 profile/unit change records a different value.
 
@@ -73,7 +73,7 @@ but the owner-defined runtime target is now precise and file-driven:
 1. 24-hour news/disclosure collection from permitted/free public sources.
 2. Continuous KIS intraday market-data collection during the approved intraday
    window: current price/quote context, ranking/analysis data, and KRX realtime
-   price/orderbook feeds where paper-supported.
+   price/orderbook feeds where adapter-supported.
 3. DeepSeek Pro runs on the top of every hour, reads accumulated news,
    disclosures, and KIS market-data files, and writes the hourly analysis file.
    During market hours the market-regime/session analysis is part of this Pro
@@ -91,40 +91,40 @@ but the owner-defined runtime target is now precise and file-driven:
    and risk notes.
 5. The auto-trading runner watches newly written trade documents and executes
    only deterministic-risk-approved, portfolio-state-compatible KIS KRX
-   paper/mock cash orders.
+   broker-adapter cash orders.
 
 The orchestrator, not the models, moves data between these systems. AI outputs
 create analysis and trade-document artifacts only; deterministic
-strategy/risk/order state machines own executable paper-order decisions.
+strategy/risk/order state machines own executable broker-order decisions.
 
 ## Current Rebaseline Status
 
-Current 2026-06-05 operational paper-trading authority:
+Current 2026-06-05 operational automated-trading authority:
 
 - Operational Ready-Set:
-  `docs/set/READY-SET-COMPLETION-20260605_operational-paper-trading-program_hwistock.md`
+  `docs/set/READY-SET-COMPLETION-20260605_operational-automated-trading-program_hwistock.md`
 - Operational row closure:
-  `docs/set/READY-SET-ROW-CLOSURE-20260605_operational-paper-trading-program_hwistock.md`
+  `docs/set/READY-SET-ROW-CLOSURE-20260605_operational-automated-trading-program_hwistock.md`
 - Operational Go preflight:
-  `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-paper-trading-program_hwistock.md`
+  `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-automated-trading-program_hwistock.md`
 - Operational module:
-  `docs/modules/HWISTOCK-MOD-009_operational-paper-trading-program.md`
+  `docs/modules/HWISTOCK-MOD-009_operational-automated-trading-program.md`
 - Operational unit queue:
   - `docs/units/HWISTOCK-UNIT-011_operational-runtime-supervisor.md`
   - `docs/units/HWISTOCK-UNIT-016_runtime-contract-hardening.md`
   - `docs/units/HWISTOCK-UNIT-012_ai-analysis-runtime.md`
   - `docs/units/HWISTOCK-UNIT-013_signal-to-intent-pipeline.md`
-  - `docs/units/HWISTOCK-UNIT-014_kis-paper-order-execution-reconciliation.md`
+  - `docs/units/HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md`
   - `docs/units/HWISTOCK-UNIT-015_operator-console-observation-prove.md`
 - Operational QA scenarios:
   - `docs/qa/QA-HWISTOCK-UNIT-011_operational-runtime-supervisor.md`
   - `docs/qa/QA-HWISTOCK-UNIT-016_runtime-contract-hardening.md`
   - `docs/qa/QA-HWISTOCK-UNIT-012_ai-analysis-runtime.md`
   - `docs/qa/QA-HWISTOCK-UNIT-013_signal-to-intent-pipeline.md`
-  - `docs/qa/QA-HWISTOCK-UNIT-014_kis-paper-order-execution-reconciliation.md`
+  - `docs/qa/QA-HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md`
   - `docs/qa/QA-HWISTOCK-UNIT-015_operator-console-observation-prove.md`
 - Operational Ready-Set evidence:
-  `docs/evidence/RUN-20260605_ready-set-operational-paper-trading-program.md`
+  `docs/evidence/RUN-20260605_ready-set-operational-automated-trading-program.md`
 - UNIT-011 runtime start Go evidence:
   `docs/evidence/RUN-20260605_unit-011-runtime-start-go.md`
 - Owner architecture rebaseline evidence:
@@ -138,68 +138,111 @@ Current 2026-06-05 operational paper-trading authority:
   - `docs/contracts/hwistock-runtime-contracts.schema.json`
 - Operational UNIT-012 through UNIT-015 local Go-Check evidence:
   `docs/evidence/RUN-20260605_operational-go-check-units-012-015.md`
+- Post-Pro corrective UNIT-011/015 Go-Check evidence:
+  `docs/evidence/RUN-20260605_post-pro-corrective-go-check-unit-011-015.md`
 
-Latest operational Go-Check update: UNIT-012 through UNIT-015 now pass local
+Post-Pro reinforcement: this existing operational Ready-Set remains the current
+authority; it is not replaced by a parallel Ready-Set. The Pro critique is
+folded into the current completion, row closure, preflight, module, unit, and
+profile docs as additional readiness-truth requirements.
+
+Current truth after the Pro critique:
+
+- `implementation_ready: true` only for the
+  `operational_contract_hardened_go_check_queue`;
+- `broker_run_ready: false`;
+- `continuous_runner_ready: false`;
+- `operational_readiness: false`;
+- `broker_runner_ready: false`.
+
+The runtime can be observed through local services, timers, artifacts, the
+dashboard, and the operator snapshot API. That is not the same as a validated
+automated-trading observation run. The current operator snapshot still reports
+`brokerNetworkEnabled: false`, `brokerOrdersSubmitted: false`,
+`operationObservationAccepted: false`, `operationalReadiness: false`, and
+`orderGate: blocked_calendar_unconfigured`.
+
+Corrective reinforcements now attached to the existing queue:
+
+1. `HWISTOCK-UNIT-011`: runtime entrypoint/systemd hardening — local
+   Go-Check passed in
+   `docs/evidence/RUN-20260605_post-pro-corrective-go-check-unit-011-015.md`.
+2. `HWISTOCK-UNIT-015`: dashboard/API readiness truth surface — local
+   Go-Check passed in
+   `docs/evidence/RUN-20260605_post-pro-corrective-go-check-unit-011-015.md`.
+3. `HWISTOCK-UNIT-012`: DeepSeek Pro/Flash timer and artifact truth.
+4. `HWISTOCK-UNIT-013`: source/calendar/KIS six-input readiness without order
+   submission.
+5. `HWISTOCK-UNIT-014`: bounded KRX broker order/reconciliation smoke only after
+   explicit approval and market/session preflight.
+
+Latest operational Go-Check update: UNIT-012 through UNIT-015 passed local
 no-network Go-Check for the owner-selected NAVER/OpenDART + KIS six-input
-scope. Provider network smoke, KIS paper-read transport, KIS KRX paper
+scope. Provider network smoke, KIS broker adapter-read transport, KIS KRX adapter
 order/reconciliation smoke, browser/tunnel Prove, and final operator
 observation-window acceptance remain blocked until explicitly scoped. Therefore
-`paper_run_ready: false`, `continuous_runner_ready: false`, and
-`operational_trading_readiness: false` remain current.
+`broker_run_ready: false`, `continuous_runner_ready: false`, and
+`operational_readiness: false` remain current.
 
-Correction: `HWISTOCK-UNIT-010` is a KIS paper runner foundation and local
+Correction: `HWISTOCK-UNIT-010` is a KIS broker adapter runner foundation and local
 no-network implementation proof, not the whole stock-trading program. The
-current operational architecture queue for an actually runnable paper trading
+current operational architecture queue for an actually runnable automated trading
 program is UNIT-011, UNIT-016, and UNIT-012 through UNIT-015. UNIT-016 has now
 closed the blocking contract-hardening Set gate with schema catalog, fixtures,
 and validator evidence. UNIT-012/013 are responsible for the Pro-hourly,
 Flash-10-minute, KIS-market-data, and trade-document bridge. Current status is
 `go_check_passed_local_no_network_with_side_effect_rows_blocked` only for the
 contract-hardened Go-Check queue. Until the side-effect rows pass Go/Check/Prove,
-`paper_run_ready: false`, `continuous_runner_ready: false`, and
-`operational_trading_readiness: false` remain the correct status.
+`broker_run_ready: false`, `continuous_runner_ready: false`, and
+`operational_readiness: false` remain the correct status.
 
-GPT Pro review correction: the 2026-06-05 external review classified the
+Prior GPT Pro review correction: the 2026-06-05 external review classified the
 architecture as solid in intent but not implementation-ready until runtime
 contracts existed. UNIT-016 now provides those Set-level contracts:
 machine-checkable schemas, deterministic ids, atomic artifact publication,
 `NO_TRADE` sentinel behavior, executor locks, reservation accounting, order
-state machine, freshness TTLs, ambiguous-submit reconciliation, paper-only
+state machine, freshness TTLs, ambiguous-submit reconciliation, adapter-only
 guard, fixtures, and local validation.
+
+Post-Pro correction: after a later Pro critique of the current repository state,
+the project reinforced the existing operational Ready-Set instead of replacing
+it. Service/timer activity, local tests, and visible dashboards cannot be cited
+as operation readiness until the existing operational queue's side-effect rows
+and observation gate are proved.
 
 Runtime start update: on 2026-06-05 UNIT-011 Go started the user systemd runtime
 bundle. API and frontend are running on loopback ports 5001 and 5000. Five
 hwiStock timers are active/waiting: market intelligence, DeepSeek analysis,
-runner evidence, KIS paper health, and KIS paper continuous runner. DeepSeek Pro
-analysis and KIS paper read/reconciliation ticks produced successful sanitized
-evidence. KIS paper cash order submission remains disabled, and the order gate
+runner evidence, KIS broker adapter health, and KIS broker adapter continuous runner. DeepSeek Pro
+analysis and KIS broker adapter read/reconciliation ticks produced successful sanitized
+evidence. KIS broker adapter cash order submission remains disabled, and the order gate
 remains blocked by missing calendar/source configuration.
 
 Current 2026-06-05 correction authority:
 
 - New Ready-Set target:
-  `docs/set/READY-SET-COMPLETION-20260605_continuous-paper-runner_hwistock.md`
+  `docs/set/READY-SET-COMPLETION-20260605_continuous-adapter-runner_hwistock.md`
 - New row closure:
-  `docs/set/READY-SET-ROW-CLOSURE-20260605_continuous-paper-runner_hwistock.md`
+  `docs/set/READY-SET-ROW-CLOSURE-20260605_continuous-adapter-runner_hwistock.md`
 - New Go preflight:
-  `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_continuous-paper-runner_hwistock.md`
+  `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_continuous-adapter-runner_hwistock.md`
 - New module/unit/QA:
-  - `docs/modules/HWISTOCK-MOD-008_continuous-paper-runtime.md`
-  - `docs/units/HWISTOCK-UNIT-010_kis-paper-continuous-runner.md`
-  - `docs/qa/QA-HWISTOCK-UNIT-010_kis-paper-continuous-runner.md`
+  - `docs/modules/HWISTOCK-MOD-008_continuous-adapter-runtime.md`
+  - `docs/units/HWISTOCK-UNIT-010_kis-adapter-continuous-runner.md`
+  - `docs/qa/QA-HWISTOCK-UNIT-010_kis-adapter-continuous-runner.md`
 - New evidence:
-  `docs/evidence/RUN-20260605_ready-set-continuous-paper-runner.md`
+  `docs/evidence/RUN-20260605_ready-set-continuous-adapter-runner.md`
 - Narrow correction: the next runner foundation was a **24-hour continuous KIS
-  paper runner**, not a fixed seven-day program. The project owner/operator
-  chooses the paper/sandbox observation window. The program must not auto-stop,
+  broker-adapter runner**, not a fixed seven-day program. The project owner/operator
+  chooses the adapter-backed observation window. The program must not auto-stop,
   auto-pass, or auto-fail based on a hardcoded duration. Whole-program
   operational readiness is now governed by the UNIT-011, UNIT-016, and
   UNIT-012 through UNIT-015 queue above.
 - Current readiness: `HWISTOCK-UNIT-010` local no-network Go-Check has passed.
-  The continuous KIS paper runner code exists and later UNIT-011 evidence shows
-  service-managed runtime startup, but `paper_run_ready: false`,
-  `continuous_runner_ready: false`, and `operational_trading_readiness: false`
-  remain for the operational program because order-producing Go rows, paper
+  The continuous KIS broker adapter runner code exists and later UNIT-011 evidence shows
+  service-managed runtime startup, but `broker_run_ready: false`,
+  `continuous_runner_ready: false`, and `operational_readiness: false`
+  remain for the operational program because order-producing Go rows, broker
   order evidence, and operator observation-window Prove have not closed.
 
 The current code baseline changed on 2026-06-04 when MyWebTemplate-derived
@@ -211,7 +254,7 @@ Go-Check evidence are now historical, not current Go authorization.
 - Current Ready-Set reissue evidence:
   `docs/evidence/RUN-20260604_ready-set-reissue-after-mywebtemplate-owner-decision.md`
 - Historical 2026-06-04 Ready-Set state marked the
-  `skeleton_sandbox_safe_rebaseline_queue` as implementation-ready only; this
+  `skeleton_adapter_safe_rebaseline_queue` as implementation-ready only; this
   is **not** current operational trading readiness.
 - Current Ready-Set docs:
   - `docs/set/READY-SET-OWNER-DECISION-20260604_rebaseline_hwistock.md`
@@ -233,8 +276,8 @@ Go-Check evidence are now historical, not current Go authorization.
 - Current UNIT-003 rebaseline Go evidence:
   - `docs/evidence/RUN-20260604_unit-003-go-preflight-rebaseline.md`
   - `docs/evidence/RUN-20260604_unit-003-go-check-rebaseline.md`
-- Current UNIT-003 live collector hotfix evidence:
-  - `docs/evidence/RUN-20260605_unit-003-live-collector-hotfix.md`
+- Current UNIT-003 source collector hotfix evidence:
+  - `docs/evidence/RUN-20260605_unit-003-source-collector-hotfix.md`
 - Current UNIT-004 rebaseline Go evidence:
   - `docs/evidence/RUN-20260604_unit-004-go-preflight-rebaseline.md`
   - `docs/evidence/RUN-20260604_unit-004-go-check-rebaseline.md`
@@ -275,7 +318,7 @@ Go-Check evidence are now historical, not current Go authorization.
 Ready-Set has been reissued against the imported MyWebTemplate code baseline.
 MyWebTemplate sample/public quarantine and local-only bind/access enforcement
 are first-row requirements for Go-Check, not optional cleanup. All nine units
-are in the `skeleton_sandbox_safe_rebaseline_queue`; all nine units
+are in the `skeleton_adapter_safe_rebaseline_queue`; all nine units
 (`HWISTOCK-UNIT-001` through `HWISTOCK-UNIT-009`) have current Go-Check PASS
 evidence, including `HWISTOCK-UNIT-007`
 (`docs/evidence/RUN-20260605_unit-007-go-check-rebaseline.md`). Current local
@@ -304,20 +347,20 @@ local config/env/log/cache paths after `.gitignore` cleanup, and no staging or
 commit has been performed
 (`docs/evidence/RUN-20260605_commit-prep-scope-audit.md`).
 Historical GPT/design reviews are supporting constraints only and were not
-re-run after the import. No operational trading, live brokerage, AI provider
+re-run after the import. No operational trading, brokerage, AI provider
 network use, or public dashboard exposure is authorized.
 
-The all-nine-unit skeleton queue is not paper-run readiness. It proves local
+The all-nine-unit skeleton queue is not operation readiness. It proves local
 foundation/skeleton behavior only. `HWISTOCK-UNIT-010` is also not the complete
-program: it is a local no-network KIS paper runner foundation. The current
+program: it is a local no-network KIS broker adapter runner foundation. The current
 operational target is the UNIT-011, UNIT-016, and UNIT-012 through UNIT-015
 queue recorded in the 2026-06-05 operational Ready-Set. UNIT-016 blocks
 order-producing Go rows until runtime contracts are hardened. Operational
-paper-run Prove has not started.
+operation Prove has not started.
 
 UNIT-003 correction note: the 2026-06-04 UNIT-003 Go-Check PASS was only a
 fixture/config-first skeleton and did not mean a 24-hour news/disclosure
-collector was already running. On 2026-06-05 a live collector entrypoint and
+collector was already running. On 2026-06-05 a source collector entrypoint and
 user systemd timer were added and enabled. The timer currently runs every 10
 minutes. A no-key `public_news_rss_search` source now collects public RSS news
 metadata: the 2026-06-05 runtime proof recorded 150 normalized news events, 150
@@ -340,11 +383,11 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
 - `docs/profiles/PROFILE-HWISTOCK.md`: active HWI Work Harness project profile.
 - `docs/sources/HWISTOCK-SOURCE-REGISTRY.md`: market intelligence source
   allowlist and source-status contract.
-- `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md`: KIS API paper/live
-  capability, fallback, and live-verification matrix for local `apiRefer`
+- `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md`: KIS API adapter-mode
+  capability, fallback, and runtime-verification matrix for local `apiRefer`
   spreadsheets.
-- `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`: KRX/NXT calendar
-  source, local alert channel, and operator-controlled paper/sandbox observation
+- `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md`: KRX/NXT calendar
+  source, local alert channel, and operator-controlled adapter-backed observation
   criteria.
 - `docs/set/READY-SET-STRATEGY-DECISION-PACKET-20260602_hwistock.md`: prepared
   user-approval packet for first-pass strategy defaults.
@@ -388,9 +431,9 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
 - `docs/set/READY-SET-GATE-EVIDENCE-MATRIX-20260603_hwistock.md`: historical
   matrix mapping pre-import Ready-Set completion-gate requirements to full queue
   pass evidence.
-- `docs/set/KIS-PAPER-MOCK-API-SMOKE-MATRIX-20260604_hwistock.md`: approved
-  but currently blocked KIS paper/mock API smoke matrix, including mock order,
-  modify, and cancel calls for the KRX paper path.
+- `docs/set/KIS-BROKER-ADAPTER-API-SMOKE-MATRIX-20260604_hwistock.md`: approved
+  but currently blocked KIS broker-adapter API smoke matrix, including broker order,
+  modify, and cancel calls for the KRX adapter path.
 - `docs/set/READY-SET-REVIEW-FINDINGS-INTAKE-20260603_foundation.md`:
   historical normalized ChatGPT Pro external review findings for the narrowed
   foundation-only queue.
@@ -398,21 +441,21 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
   normalized `agy` dashboard design findings for `HWISTOCK-UNIT-007`.
 - `docs/set/READY-SET-REVIEW-FINDINGS-INTAKE-20260604_full.md`: normalized
   ChatGPT Pro external review findings for full queue closure with exclusions.
-- `docs/set/READY-SET-COMPLETION-20260605_continuous-paper-runner_hwistock.md`:
+- `docs/set/READY-SET-COMPLETION-20260605_continuous-adapter-runner_hwistock.md`:
   superseded/narrow Ready-Set completion for `HWISTOCK-UNIT-010` continuous KIS
-  paper runner Go-Check only. It is not operational program readiness.
-- `docs/set/READY-SET-ROW-CLOSURE-20260605_continuous-paper-runner_hwistock.md`:
-  superseded/narrow row closure for the continuous KIS paper runner row.
-- `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_continuous-paper-runner_hwistock.md`:
-  superseded/narrow preflight for implementing the continuous KIS paper runner.
-- `docs/set/READY-SET-COMPLETION-20260605_operational-paper-trading-program_hwistock.md`:
-  current Ready-Set completion for the actual operational paper-trading program;
+  broker-adapter runner Go-Check only. It is not operational program readiness.
+- `docs/set/READY-SET-ROW-CLOSURE-20260605_continuous-adapter-runner_hwistock.md`:
+  superseded/narrow row closure for the continuous KIS broker adapter runner row.
+- `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_continuous-adapter-runner_hwistock.md`:
+  superseded/narrow preflight for implementing the continuous KIS broker adapter runner.
+- `docs/set/READY-SET-COMPLETION-20260605_operational-automated-trading-program_hwistock.md`:
+  current Ready-Set completion for the actual operational automated-trading program;
   currently contract-hardened and implementation-ready only for the next
-  Go-Check queue, not paper-run-ready.
-- `docs/set/READY-SET-ROW-CLOSURE-20260605_operational-paper-trading-program_hwistock.md`:
+  Go-Check queue, not operation-ready.
+- `docs/set/READY-SET-ROW-CLOSURE-20260605_operational-automated-trading-program_hwistock.md`:
   current row closure for UNIT-011, UNIT-016, and UNIT-012 through UNIT-015.
-- `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-paper-trading-program_hwistock.md`:
-  current preflight for implementing the actual operational paper-trading
+- `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-automated-trading-program_hwistock.md`:
+  current preflight for implementing the actual operational automated-trading
   program.
 
 ## Modules
@@ -435,12 +478,12 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
 - `docs/modules/HWISTOCK-MOD-007_data-evidence-storage.md`: date-based data,
   analysis artifact, PostgreSQL storage, trade log, and evidence storage
   contract.
-- `docs/modules/HWISTOCK-MOD-008_continuous-paper-runtime.md`: 24-hour
-  continuous KIS paper runtime contract. This is the runner foundation and
+- `docs/modules/HWISTOCK-MOD-008_continuous-adapter-runtime.md`: 24-hour
+  continuous KIS broker adapter runtime contract. This is the runner foundation and
   explicitly forbids hardcoded seven-day/fixed-duration runner logic.
-- `docs/modules/HWISTOCK-MOD-009_operational-paper-trading-program.md`: current
-  authority for the actual paper-trading program integration across service
-  supervision, AI analysis, signal-to-intent, KIS paper execution,
+- `docs/modules/HWISTOCK-MOD-009_operational-automated-trading-program.md`: current
+  authority for the actual automated-trading program integration across service
+  supervision, AI analysis, signal-to-intent, KIS broker adapter execution,
   reconciliation, and operator observation Prove.
 
 ## Units
@@ -451,7 +494,7 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
   (`docs/evidence/RUN-20260604_unit-001-go-check-rebaseline.md`). MyWebTemplate
   quarantine guardrails are recorded as first-row blockers for affected future
   rows; product-code removal remains out of UNIT-001 scope.
-- `docs/units/HWISTOCK-UNIT-002_home-server-paper-runner.md`:
+- `docs/units/HWISTOCK-UNIT-002_home-server-adapter-runner.md`:
   `go_check_passed` for the bounded local runner/systemd skeleton
   (`docs/evidence/RUN-20260604_unit-002-go-check.md`): loopback-only bind,
   read-only runner status API, no-order intent metadata, calendar/source idle
@@ -482,7 +525,7 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
   compiler, UNIT-004 risk-gate delegation, SOR/AUTO_SESSION route
   normalization-or-blocking, pre-approval order-state transitions through
   `dry_run_recorded`, no-order dry-run records, venue-route metadata, and KIS
-  paper capability flags
+  adapter capability flags
   (`docs/evidence/RUN-20260604_unit-006-go-check-rebaseline.md`).
 - `docs/units/HWISTOCK-UNIT-007_dashboard-operator-console.md`:
   `go_check_passed` read-only dashboard/operator console with tasks/settings
@@ -498,12 +541,12 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
   isolation, typed artifact contracts, and focused tests.
 - `docs/units/HWISTOCK-UNIT-009_kis-api-portal-verification.md`:
   `go_check_passed` for current-authority rebaseline KIS API official portal
-  and capability-matrix verification with sanitized KRX paper smoke
+  and capability-matrix verification with sanitized KRX adapter smoke
   cross-reference and preserved partial-boundary follow-ups
   (`docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md`).
-- `docs/units/HWISTOCK-UNIT-010_kis-paper-continuous-runner.md`:
+- `docs/units/HWISTOCK-UNIT-010_kis-adapter-continuous-runner.md`:
   local no-network Go-Check foundation for a continuous 24-hour KIS KRX
-  paper/mock runner. It is an input to the operational queue, not the complete
+  broker-adapter runner. It is an input to the operational queue, not the complete
   trading program.
 - `docs/units/HWISTOCK-UNIT-011_operational-runtime-supervisor.md`:
   `go_started_check_pending` for installable user systemd supervision,
@@ -516,11 +559,11 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
 - `docs/units/HWISTOCK-UNIT-013_signal-to-intent-pipeline.md`:
   local no-network Go-Check passed for NAVER/OpenDART source-grounded
   candidates, the KIS six-input collector boundary, deterministic risk gates,
-  and `paper_order_intent/v0` queue generation; KIS paper-read transport smoke
+  and `paper_order_intent/v0` queue generation; KIS broker adapter-read transport smoke
   remains blocked (`docs/evidence/RUN-20260605_operational-go-check-units-012-015.md`).
-- `docs/units/HWISTOCK-UNIT-014_kis-paper-order-execution-reconciliation.md`:
+- `docs/units/HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md`:
   local no-network Go-Check passed for preflight/idempotency/realtime-exit
-  behavior; KIS KRX paper order/reconciliation smoke remains blocked
+  behavior; KIS KRX broker order/reconciliation smoke remains blocked
   (`docs/evidence/RUN-20260605_operational-go-check-units-012-015.md`).
 - `docs/units/HWISTOCK-UNIT-015_operator-console-observation-prove.md`:
   local API/frontend Go-Check passed for read-only operator dashboard/API
@@ -532,9 +575,9 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
 - `docs/qa/QA-HWISTOCK-UNIT-001_project-bootstrap.md`:
   set QA to prove that the bootstrap docs, safety gates, and rebaseline
   quarantine guardrails are present before implementation begins.
-- `docs/qa/QA-HWISTOCK-UNIT-002_home-server-paper-runner.md`:
+- `docs/qa/QA-HWISTOCK-UNIT-002_home-server-adapter-runner.md`:
   `go_check_passed` QA for service lifecycle skeleton, health, logging, kill
-  switch, local-only bind, and paper/no-order operation.
+  switch, local-only bind, and adapter/no-order operation.
 - `docs/qa/QA-HWISTOCK-UNIT-003_market-intelligence-ingestion.md`:
   `go_check_passed` QA for allowed-source ingestion, blocked-source
   enforcement, deduplication, rate limiting, event schema, KST timestamp/body-
@@ -549,7 +592,7 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
   defaults.
 - `docs/qa/QA-HWISTOCK-UNIT-006_trading-engine-order-state.md`:
   `go_check_passed` QA for condition compiler, deterministic buy gate, explicit
-  order states, dry-run-only boundary, KIS paper capability flags, and
+  order states, dry-run-only boundary, KIS broker adapter capability flags, and
   fixture-only broker-evidence representation
   (`docs/evidence/RUN-20260604_unit-006-go-check-rebaseline.md`).
 - `docs/qa/QA-HWISTOCK-UNIT-007_dashboard-operator-console.md`:
@@ -561,15 +604,15 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
   `docs/evidence/RUN-20260605_port-tunnel-5000-5001-sync.md`).
 - `docs/qa/QA-HWISTOCK-UNIT-008_data-evidence-storage.md`:
   `go_check_passed` QA for PostgreSQL isolation, storage separation,
-  system-calculated PnL, hwiStock DB isolation, and operator-selected paper
+  system-calculated PnL, hwiStock DB isolation, and operator-selected operation
   observation evidence linkability.
 - `docs/qa/QA-HWISTOCK-UNIT-009_kis-api-portal-verification.md`:
   `go_check_passed` QA for current-authority rebaseline KIS API portal
   verification with partial-boundary items preserved and no new KIS/broker
   authorization (`docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md`).
-- `docs/qa/QA-HWISTOCK-UNIT-010_kis-paper-continuous-runner.md`:
-  set QA for continuous KIS paper runner behavior, operator-controlled
-  observation windows, KIS paper/live domain separation, KRX-only paper
+- `docs/qa/QA-HWISTOCK-UNIT-010_kis-adapter-continuous-runner.md`:
+  set QA for continuous KIS broker adapter runner behavior, operator-controlled
+  observation windows, KIS broker adapter/unapproved domain separation, KRX-only adapter
   capability, risk overlay, no fake broker state, service lifecycle, and
   read-only/local-only status surfaces.
 - `docs/qa/QA-HWISTOCK-UNIT-011_operational-runtime-supervisor.md`:
@@ -581,9 +624,9 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
 - `docs/qa/QA-HWISTOCK-UNIT-013_signal-to-intent-pipeline.md`:
   local no-network Go-Check QA passed for source-grounded candidate generation,
   KIS six-input boundary, and deterministic `paper_order_intent/v0` gating; KIS
-  paper-read transport smoke remains blocked.
-- `docs/qa/QA-HWISTOCK-UNIT-014_kis-paper-order-execution-reconciliation.md`:
-  local no-network Go-Check QA passed for KIS paper domain guard, preflight,
+  adapter-read transport smoke remains blocked.
+- `docs/qa/QA-HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md`:
+  local no-network Go-Check QA passed for KIS adapter domain guard, preflight,
   restart idempotency, realtime exit checks, and no-fake-broker behavior; order
   smoke remains blocked.
 - `docs/qa/QA-HWISTOCK-UNIT-015_operator-console-observation-prove.md`:
@@ -618,12 +661,12 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
   supporting design constraints only until a current dashboard Check/review runs.
 - `docs/evidence/RUN-20260604_full-ready-set-owner-decisions-presend.md`:
   owner decision receipt and pre-send evidence for the full expansion review.
-- `docs/evidence/RUN-20260604_kis-paper-mock-api-smoke-approval-preflight.md`:
-  owner approval and blocked environment preflight for KIS paper/mock API smoke
-  including mock orders.
-- `docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md`: sanitized KIS
-  paper/mock REST and websocket smoke evidence; token, quote, balance, buyable,
-  mock buy order, cancel, daily order/fill, websocket fill-notice ACK, and token
+- `docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke-approval-preflight.md`:
+  owner approval and blocked environment preflight for KIS broker-adapter API smoke
+  including broker orders.
+- `docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md`: sanitized KIS
+  broker-adapter REST and websocket smoke evidence; token, quote, balance, buyable,
+  broker buy order, cancel, daily order/fill, websocket fill-notice ACK, and token
   revoke passed.
 - `docs/evidence/RUN-20260604_unit-003-go-preflight-rebaseline.md`:
   current UNIT-003 rebaseline Go preflight evidence after the MyWebTemplate
@@ -645,7 +688,7 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
   current UNIT-006 rebaseline Go-Check evidence for `condition_card/v0`
   validation, deterministic compiler, UNIT-004 risk-gate delegation,
   SOR/AUTO_SESSION route normalization-or-blocking, dry-run-only order-state
-  transitions, KIS paper capability flags, fixture-only evidence
+  transitions, KIS broker adapter capability flags, fixture-only evidence
   representation, and focused unittest coverage.
 - `docs/evidence/RUN-20260604_git-init-ready-set-delta-sync.md`: Git
   initialization, PF-13 resolution, `.env` ignore policy, and Ready-Set delta
@@ -666,8 +709,8 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
   current authority.
 - `docs/evidence/RUN-20260604_unit-006-go-check.md`: UNIT-006 Go-Check evidence
   for condition_card/v0 validation, compiler skeleton, pre-approval order-state
-  transitions, no-order dry-run records, KIS paper capability flags, focused
-  tests, and rule-gates without broker-backed paper authorization; invalidated
+  transitions, no-order dry-run records, KIS broker adapter capability flags, focused
+  tests, and rule-gates without broker-backed broker-adapter authorization; invalidated
   as current implementation evidence by the MyWebTemplate import.
 - `docs/evidence/RUN-20260604_unit-004-go-preflight.md`: UNIT-004 historical
   selected-row Go preflight evidence superseded by the rebaseline queue.
@@ -702,7 +745,7 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
   capability-matrix refinement and broker/KIS-network denial preservation.
 - `docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md`: UNIT-009
   current-authority rebaseline Go-Check evidence with docs-only PASS verdict,
-  sanitized KRX paper smoke cross-reference, historical worker/fallback
+  sanitized KRX adapter smoke cross-reference, historical worker/fallback
   context, and preserved partial boundaries.
 - `docs/evidence/RUN-20260604_unit-009-go-preflight.md`: UNIT-009 historical
   selected-row Go preflight evidence for docs-only KIS capability matrix scope;
@@ -715,7 +758,7 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
   historical external ChatGPT Pro review evidence for the narrowed
   foundation-only queue.
 - `docs/evidence/RUN-20260602_ready-set-architecture.md`: latest docs-only
-  Ready-Set architecture evidence after the AI, dashboard, paper/mock budget,
+  Ready-Set architecture evidence after the AI, dashboard, broker-adapter budget,
   KIS verification, and minimal risk-policy brainstorming pass.
 - `docs/evidence/RUN-20260602_unit-008-data-evidence-storage-set.md`: Set
   evidence for choosing PostgreSQL storage with hwiStock-specific
@@ -724,12 +767,12 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
   evidence for DART-first market-intelligence ingestion, conditional Naver news
   API use, and deferred/blocked source handling.
 - `docs/evidence/RUN-20260602_unit-009-kis-api-portal-verification-set.md`: Set
-  evidence for KIS official endpoint-family verification, paper/live separation,
-  paper-constrained API behavior, fallback needs, and remaining broker-smoke
+  evidence for KIS official endpoint-family verification, adapter-mode separation,
+  adapter-constrained API behavior, fallback needs, and remaining broker-smoke
   items.
 - `docs/evidence/RUN-20260602_unit-006-trading-engine-order-state-set.md`: Set
   evidence for condition schema, order state machine, no-order dry-run, KIS KRX
-  paper adapter capability, and reconciliation/fallback behavior.
+  broker adapter capability, and reconciliation/fallback behavior.
 - `docs/evidence/RUN-20260602_unit-005-ai-orchestration-layer-set.md`: Set
   evidence for AI job registry, schemas, GPT cutoff, tool-use disabled policy,
   AI network disabled defaults, and fallback behavior.
@@ -739,13 +782,13 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
 - `docs/evidence/RUN-20260602_unit-004-strategy-risk-rulebook-set.md`: Set
   evidence for reserve-floor sizing, maximum simultaneous holdings 5, and
   AI-assisted stop policy capped by deterministic maximum -5% loss.
-- `docs/evidence/RUN-20260602_unit-002-home-server-paper-runner-set.md`: Set
+- `docs/evidence/RUN-20260602_unit-002-home-server-adapter-runner-set.md`: Set
   evidence for systemd runner lifecycle, source-unconfigured idle behavior, and
   local-only health/API surfaces.
 - `docs/evidence/RUN-20260604_unit-002-go-preflight.md`: Go preflight evidence
   for the bounded UNIT-002 runner/systemd skeleton row.
 - `docs/evidence/RUN-20260604_unit-002-go-check.md`: Go-Check evidence for
-  the UNIT-002 local-only paper runner skeleton, no-order status API,
+  the UNIT-002 local-only broker-adapter runner skeleton, no-order status API,
   loopback-only bind, `--once` runner entrypoint, and worker/review closure.
 - `docs/evidence/RUN-20260602_unit-007-dashboard-operator-console-set.md`: Set
   evidence for read-only dashboard scope, local-only access, no-design fallback,
@@ -784,28 +827,28 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
   scope audit. It records the read-only Cursor worker audit, `.gitignore`
   cleanup for local config/test-config/log artifacts, `git add -A --dry-run`
   candidate count, excluded path classes, and Korean commit-message suggestion.
-- `docs/evidence/RUN-20260605_ready-set-continuous-paper-runner.md`:
+- `docs/evidence/RUN-20260605_ready-set-continuous-adapter-runner.md`:
   superseded/narrow docs-only evidence for correcting the runner foundation to
-  a continuous KIS paper runner with operator-selected observation windows and
+  a continuous KIS broker adapter runner with operator-selected observation windows and
   no hardcoded fixed-duration program behavior.
-- `docs/evidence/RUN-20260605_ready-set-operational-paper-trading-program.md`:
-  current Ready-Set evidence for the actual operational paper-trading program
-  queue: service supervision, AI runtime, signal-to-intent, KIS paper
+- `docs/evidence/RUN-20260605_ready-set-operational-automated-trading-program.md`:
+  current Ready-Set evidence for the actual operational automated-trading program
+  queue: service supervision, AI runtime, signal-to-intent, KIS broker adapter
   execution/reconciliation, and operator observation Prove.
 - `docs/evidence/RUN-20260605_unit-011-runtime-start-go.md`: current Go evidence
   that the user systemd runtime bundle was installed/enabled/started, API and
-  frontend run on loopback, DeepSeek Pro analysis produced evidence, KIS paper
-  read/reconciliation ticks produced evidence, and paper cash order submission
+  frontend run on loopback, DeepSeek Pro analysis produced evidence, KIS broker adapter
+  read/reconciliation ticks produced evidence, and broker cash order submission
   remains disabled.
 - `docs/evidence/RUN-20260605_unit-010-go-check.md`: current local no-network
-  Go-Check evidence for the continuous KIS paper runner implementation,
+  Go-Check evidence for the continuous KIS broker adapter runner implementation,
   including adapter, ledger, runner CLI, read-only status API, systemd user
   templates, focused tests, and explicit no-KIS-call/no-secret/no-order
   boundaries.
-- `docs/evidence/RUN-20260602_calendar-alert-paper-gate-set.md`: historical Set
+- `docs/evidence/RUN-20260602_calendar-alert-operation-gate-set.md`: historical Set
   evidence for KRX/NXT calendar source hierarchy, local-only alert channel, and
-  earlier paper/sandbox criteria. Current active policy is updated in
-  `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`.
+  earlier adapter-backed criteria. Current active policy is updated in
+  `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md`.
 - `docs/evidence/RUN-20260602_ready-set-decision-review-packets.md`: Set
   evidence for preparing the strategy decision packet, final external review
   packet, and dashboard design review packet without sending external data.
@@ -870,7 +913,7 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
 - Broker/API provider direction is selected as KIS. KB Securities is blocked as
   a practical personal API candidate unless future official confirmation proves
   otherwise. Internal fake broker execution is not used. First broker-backed
-  execution is KIS KRX paper/mock only after KIS API portal verification and an
+  execution is KIS KRX broker-adapter only after KIS API portal verification and an
   explicitly approved broker-network smoke; before that, only no-order dry-run
   validation is allowed.
 - Market scope: Korea domestic stocks (`국장`) first.
@@ -896,13 +939,13 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
   simultaneous holdings 5, and AI-assisted per-entry stop price capped by
   deterministic maximum -5% loss rules. Broad daily/account-level loss
   management is intentionally not selected for the first pass.
-- Broker-visible paper/mock balance is observed evidence only and does not
+- Broker-visible broker-adapter balance is observed evidence only and does not
   expand hwiStock's 2,000,000 KRW risk-overlay capital. UNIT-009 Go-Check
-  confirms paper/live endpoint separation and documents KRX-bounded paper proof
+  confirms adapter/unapproved endpoint separation and documents KRX-bounded adapter proof
   via the capability matrix and sanitized smoke cross-reference, but not a
-  sizing-budget change. KIS paper proof is KRX-limited where the local API
+  sizing-budget change. KIS adapter proof is KRX-limited where the local API
   references mark NXT/SOR, integrated realtime, holiday, sellable quantity, or
-  helper lookup APIs as paper-unsupported.
+  helper lookup APIs as adapter-unsupported.
 - UI/dashboard scope is selected as read-only status, reports, logs, AI
   conversation, and operator visibility. Direct buy/sell controls are excluded.
   Default access is local-only `127.0.0.1` through local browser, SSH tunnel, or
@@ -912,15 +955,15 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
   Gemini Pro design review before dashboard Go. The review packet is prepared
   at `docs/set/READY-SET-DASHBOARD-DESIGN-REVIEW-PACKET-20260602_hwistock.md`.
 - Home-server process manager is selected as `systemd` or an approved service
-  manager for the official continuous paper/sandbox evidence runner. Docker
+  manager for the official continuous adapter-backed evidence runner. Docker
   Compose is deferred; tmux/screen is early-experiment-only.
 - Market calendar source, holiday handling, and exceptional-session handling are
-  selected by `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`: KRX
+  selected by `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md`: KRX
   official trading-days/holidays and notices, NXT official session references,
   local cached runtime calendar, and later KIS `국내휴장일조회` cross-check only
   after approved broker-network integration.
-- Alert channel and paper/sandbox observation criteria are selected by
-  `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`: local-only
+- Alert channel and adapter-backed observation criteria are selected by
+  `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md`: local-only
   alerts through systemd journal, `data/alerts`, dashboard audit panel when
   implemented, and daily close reports. The observation window is chosen by the
   operator and recorded as evidence metadata; P0 safety/evidence criteria and
@@ -934,5 +977,5 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
 - AI provider/model direction is selected for planning: DeepSeek Pro, DeepSeek
   Flash, and ChatGPT Pro morning review. UNIT-005 closes first-pass schedules,
   `*/v0` schemas, normalized-bundle-only inputs, GPT Pro 07:20 cutoff, and
-  network disabled / cost cap 0 defaults. Nonzero live AI API cost/token caps
+  network disabled / cost cap 0 defaults. Nonzero paid AI API cost/token caps
   remain a future approval item.

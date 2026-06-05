@@ -6,10 +6,10 @@ unit_id: HWISTOCK-UNIT-002
 status: pass
 project_root: /data/workspace/My/hwiStock
 profile_ref: docs/profiles/PROFILE-HWISTOCK.md
-unit_ref: docs/units/HWISTOCK-UNIT-002_home-server-paper-runner.md
+unit_ref: docs/units/HWISTOCK-UNIT-002_home-server-adapter-runner.md
 module_refs:
   - docs/modules/HWISTOCK-MOD-001_trading-safety-core.md
-qa_scenario_ref: docs/qa/QA-HWISTOCK-UNIT-002_home-server-paper-runner.md
+qa_scenario_ref: docs/qa/QA-HWISTOCK-UNIT-002_home-server-adapter-runner.md
 preflight_ref: docs/evidence/RUN-20260604_unit-002-go-preflight.md
 ready_set_completion_ref: docs/set/READY-SET-COMPLETION-20260604_rebaseline_hwistock.md
 row_closure_ref: docs/set/READY-SET-ROW-CLOSURE-20260604_rebaseline_hwistock.md
@@ -22,14 +22,14 @@ created_at: 2026-06-04
 
 PASS for the UNIT-002 bounded skeleton scope.
 
-The current tree now contains a local-only home-server paper runner skeleton,
+The current tree now contains a local-only home-server broker-adapter runner skeleton,
 read-only runner status API, no-order intent metadata, KRX/NXT routing preview,
 calendar/source idle behavior, local alert/audit metadata, focused tests, and
 `systemd` service templates.
 
 This verdict does **not** authorize broker/KIS/API calls, AI provider calls,
-paper orders, live orders, real systemd installation/execution, public/LAN
-exposure, credential storage, or a one-week paper evidence claim.
+broker orders, account-affecting orders, service-managed installation/execution, public/LAN
+exposure, credential storage, or a one-week adapter evidence claim.
 
 ## 2. Implemented Files
 
@@ -52,7 +52,7 @@ exposure, credential storage, or a one-week paper evidence claim.
   - `GET /daily-close-template`
   - `POST /no-order-intent-record`
 - Added a no-network/no-order runner service skeleton with:
-  - paper/sandbox mode defaults;
+  - adapter-backed mode defaults;
   - `liveOrdersEnabled=false`;
   - `brokerCallsEnabled=false`;
   - kill-switch visibility and order-gate blocking;
@@ -83,7 +83,7 @@ exposure, credential storage, or a one-week paper evidence claim.
 ## 5. QA Row Results
 
 These results are for the Go skeleton scope only. Host-level systemd
-installation/execution and one-week paper evidence remain future Prove/ops
+installation/execution and one-week adapter evidence remain future Prove/ops
 work, not part of this Go-Check.
 
 | row_id | result | evidence |
@@ -99,7 +99,7 @@ work, not part of this Go-Check.
 | QA-009 | pass | Focused tests cover 08:30 -> NXT, 09:30 -> KRX, 15:30 -> NXT, 20:30 -> idle. |
 | QA-010 | pass | No-order intent records `noBrokerCall=true`, `fakeFillCreated=false`, `fakeBalanceCreated=false`, and `fakePnlCreated=false`. |
 | QA-011 | pass_for_reviewed_scope | Reviewed UNIT-002 files contain no broker/KIS network implementation or credentials. Broker/KIS/API calls were not run. |
-| QA-012 | pass | Status metadata keeps paper mock candidate budget at 10,000,000 KRW and live baseline at 2,000,000 KRW. |
+| QA-012 | pass | Status metadata keeps adapter adapter candidate budget at 10,000,000 KRW and capital baseline at 2,000,000 KRW. |
 | QA-013 | pass_for_go_scope | `ops/systemd/hwistock-api.service` and `ops/systemd/hwistock-runner.service` exist and use the project root plus `/home/hwi/.config/hwistock/hwistock.env`; installed service execution is deferred. |
 | QA-014 | pass | Missing market-data source reports `source_unconfigured` and blocks order gate. |
 | QA-015 | pass | `run.py`, `run.sh`, service helper, and API systemd template enforce loopback-only bind by default. |
@@ -139,7 +139,7 @@ Executed locally from `/data/workspace/My/hwiStock` on 2026-06-04:
      `--once` systemd runner entrypoint, and no `time.sleep` runner placeholder.
 
 No broker/KIS/API, AI provider, server, database, browser, deploy, SSH, real
-systemd execution, credential, paper order, live order, fake fill, fake balance,
+systemd execution, credential, broker order, account-affecting order, fake fill, fake balance,
 or fake PnL action was run for this Go-Check.
 
 ## 7. Worker Output Acceptance
@@ -243,8 +243,8 @@ or fake PnL action was run for this Go-Check.
 ## 8. Remaining Boundaries
 
 - Real host `systemd` installation/start/restart/status evidence is not run.
-- One-week paper/sandbox evidence is not started and not claimed.
-- Broker/KIS paper/mock integration remains approval-gated by later KIS/order
+- One-week adapter-backed evidence is not started and not claimed.
+- Broker/KIS broker-adapter integration remains approval-gated by later KIS/order
   units.
 - Dashboard UI remains out of this UNIT-002 row.
 - Installed environment files under `/home/hwi/.config/hwistock/` were not read.

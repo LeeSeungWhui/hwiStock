@@ -81,9 +81,9 @@ Historical snapshot values:
 - Approve or reject
   `docs/set/READY-SET-STRATEGY-DECISION-PACKET-20260602_hwistock.md` before full
   strategy Go.
-- After paper/backtest evidence, refine liquidity, take-profit, trailing, and
+- After adapter/backtest evidence, refine liquidity, take-profit, trailing, and
   latency parameters if the first-pass defaults are too strict or too loose.
-- Backtest the rulebook before paper runs.
-- Run at least one full week of paper/sandbox testing before any live approval.
+- Backtest the rulebook before operation runs.
+- Run at least one full week of adapter-backed testing before any operation approval.
 - Validate whether the 1-5% target band is realistic after fees, slippage,
   spread, failed entries, and missed exits are modeled.

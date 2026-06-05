@@ -42,10 +42,10 @@ PASS for the foundation-only Go implementation/check scope.
 `HWISTOCK-UNIT-006` now has a stdlib-only trading engine/order-state skeleton with
 `condition_card/v0` validation, deterministic condition compilation, pre-approval
 order-state transitions through `dry_run_recorded`, UNIT-006 no-order dry-run
-decision records, venue-route metadata, and KIS paper capability flags. This is
+decision records, venue-route metadata, and KIS adapter capability flags. This is
 not Prove evidence and does not authorize broker, KIS network calls, AI provider
-calls, paper orders, live orders, executable submitted/accepted/fill transitions,
-fake fills, fake balances, fake PnL, or broker-backed paper reconciliation.
+calls, broker orders, account-affecting orders, executable submitted/accepted/fill transitions,
+fake fills, fake balances, fake PnL, or broker-backed adapter reconciliation.
 
 ## 2. Route
 
@@ -67,9 +67,9 @@ fake fills, fake balances, fake PnL, or broker-backed paper reconciliation.
     `dry_run_recorded` with post-approval states blocked in foundation scope;
   - UNIT-006 `no_order_dry_run` decision recorder/validator with
     `no_broker_call=true` and `no_simulated_fill=true`;
-  - venue-route metadata and KIS paper capability flags with NXT/SOR/helper
+  - venue-route metadata and KIS adapter capability flags with NXT/SOR/helper
     branches disabled or `local_fallback` only;
-  - fixture-only KIS paper evidence-shape representation and unsupported-helper
+  - fixture-only KIS adapter evidence-shape representation and unsupported-helper
     records without network calls or broker state application.
 - `backend/tests/test_trading_engine_order_state.py`
   - focused unittest coverage for QA-001 through QA-010 in local scope.
@@ -79,7 +79,7 @@ fake fills, fake balances, fake PnL, or broker-backed paper reconciliation.
 
 - No implementation path reads environment variables or credential files.
 - No implementation path imports network client modules.
-- No implementation path places paper/live orders or transitions into
+- No implementation path places adapter/account-affecting orders or transitions into
   `submitted`, `accepted`, `partial_fill`, `filled`, cancel/retry, or
   reconciliation execution.
 - No fake fill, fake balance, or fake PnL generation in dry-run mode.
@@ -95,9 +95,9 @@ fake fills, fake balances, fake PnL, or broker-backed paper reconciliation.
 | QA-003 | pass | `evaluateEntryRiskGate` delegates to UNIT-004 reserve/holdings/stale-data validators. |
 | QA-004 | pass | `representBrokerEventState` represents accepted/partial_fill/reject/cancel/retry/fail without simulation. |
 | QA-005 | pass | `buildNoOrderDryRunDecisionRecord` enforces `no_broker_call` and `no_simulated_fill`. |
-| QA-006 | pass | KRX/NXT/SOR share transition semantics; NXT/SOR KIS paper branches are `disabled_branch`. |
+| QA-006 | pass | KRX/NXT/SOR share transition semantics; NXT/SOR KIS adapter branches are `disabled_branch`. |
 | QA-007 | pass | Valid/invalid `condition_card/v0` cases covered by validator tests. |
-| QA-008 | pass | `loadKisPaperCapabilityFlags` exposes KRX-only paper support and false NXT/SOR/helper flags. |
+| QA-008 | pass | `loadKisPaperCapabilityFlags` exposes KRX-only adapter support and false NXT/SOR/helper flags. |
 | QA-009 | pass | Supported KRX order/fill/balance/cancel fixture event shapes are represented without applying broker state changes; order/fill/cancel require explicit mapped order states, balance cannot be mislabeled as an order state, and unsupported helpers use `local_fallback`. |
 | QA-010 | pass | Module has no network imports; executable post-approval transitions are blocked. |
 
@@ -169,7 +169,7 @@ Findings: error=0 warning=0 info=0
 - `.env`, `env.sh` contents, broker credentials, tokens, account numbers
 - runtime `data/` artifacts
 - broker/KIS/AI network endpoints
-- paper/live order placement and executable post-approval transitions
+- adapter/account-affecting order placement and executable post-approval transitions
 - fake broker, fake fill, fake balance, fake PnL generation
 
 ## 9. Worker Output Acceptance
@@ -184,7 +184,7 @@ Implementation worker:
   and unrelated module files outside the original `ALLOWED_READS`, so the raw
   worker result is quarantined for formal acceptance.
 - Local takeover: the orchestrator reviewed the diff, found a foundation-boundary
-  issue where KRX paper fixture handling looked like broker state application,
+  issue where KRX adapter fixture handling looked like broker state application,
   and corrected it to representation-only output with `no_broker_call=true` and
   `state_update_executed=false`.
 - Current closure basis before Check review: local diff review, focused tests,

@@ -37,10 +37,10 @@ engine/order-state foundation skeleton in the imported backend tree.
 Validated scope is limited to deterministic local helpers for
 `condition_card/v0`, `compiled_watch/v0`, UNIT-004 risk-gate delegation,
 dry-run-only state validation through `dry_run_recorded`, no-order dry-run
-decision records, KIS paper capability flags, route metadata, SOR/AUTO_SESSION
+decision records, KIS adapter capability flags, route metadata, SOR/AUTO_SESSION
 risk-gate normalization-or-blocking, and fixture-only broker-evidence
 representation. This closure does **not** authorize broker/KIS network calls,
-paper/live orders, executable submitted-or-later state progress, fake fills,
+adapter/account-affecting orders, executable submitted-or-later state progress, fake fills,
 fake balances, fake PnL, secret reads, server start, DB work, or runtime
 artifact writes.
 
@@ -81,9 +81,9 @@ Historical note:
   - `buildNoOrderDryRunDecisionRecord()` /
     `validateNoOrderDryRunDecisionRecord()` with explicit no-broker/
     no-simulated-fill/no-simulated-balance/no-simulated-pnl/
-    no-paper-order/no-live-order flags
+    no-adapter-order/no-unapproved-adapter-order flags
   - `loadKisPaperCapabilityFlags()` and `resolveVenueRoute()` for KRX/NXT/SOR/
-    AUTO_SESSION shared-state-machine metadata with unsupported KIS paper
+    AUTO_SESSION shared-state-machine metadata with unsupported KIS adapter
     branches returning `disabled_branch` or `local_fallback`
   - `representBrokerEventState()` / `representKisPaperEvidenceEvent()` for
     fixture-only order/fill/balance/cancel/helper evidence representation
@@ -112,7 +112,7 @@ Historical note:
 - No dry-run record can carry broker order ids, submitted/accepted/fill fields,
   or fake fill/balance/PnL markers.
 - Balance evidence cannot be mislabeled as an order state.
-- Unsupported KIS paper helper branches are explicit `local_fallback` or
+- Unsupported KIS adapter helper branches are explicit `local_fallback` or
   `disabled_branch` records only.
 
 ## 5. QA Row Coverage
@@ -123,10 +123,10 @@ Historical note:
 | QA-002 | pass | `natural_language` / `looks good` style watch conditions are rejected. |
 | QA-003 | pass | `evaluateEntryRiskGate()` delegates to UNIT-004 `validateEntryIntent()` with explicit requested-route preservation plus risk-gate venue normalization/blocking metadata. |
 | QA-004 | pass | Order-state skeleton explicitly represents submitted, accepted, partial fill, rejected, cancel requested/cancelled, retrying, and failed late states while still blocking executable progress in foundation mode. |
-| QA-005 | pass | Dry-run decision records enforce no broker call, no simulated fill, no simulated balance, no simulated PnL, no paper order, and no live order. |
-| QA-006 | pass | KRX/NXT/SOR/AUTO_SESSION share one state machine; SOR normalizes to KRX for foundation risk gating, unresolved AUTO_SESSION blocks clearly, and KIS paper NXT/SOR branches remain `disabled_branch`. |
+| QA-005 | pass | Dry-run decision records enforce no broker call, no simulated fill, no simulated balance, no simulated PnL, no broker order, and no account-affecting order. |
+| QA-006 | pass | KRX/NXT/SOR/AUTO_SESSION share one state machine; SOR normalizes to KRX for foundation risk gating, unresolved AUTO_SESSION blocks clearly, and KIS adapter NXT/SOR branches remain `disabled_branch`. |
 | QA-007 | pass | `condition_card/v0` validator accepts required valid shape and rejects missing/expired/unknown/vague inputs. |
-| QA-008 | pass | KIS paper capability flags expose KRX-only order/realtime support with unsupported helper flags set false. |
+| QA-008 | pass | KIS adapter capability flags expose KRX-only order/realtime support with unsupported helper flags set false. |
 | QA-009 | pass | Order/fill/cancel fixture evidence requires explicit semantically compatible mapped states; balance/helper/disabled/local fallback cannot impersonate order state. |
 | QA-010 | pass | Foundation smoke confirms stdlib/local-only import boundary and no executable submitted-or-later path without explicit adapter approval metadata. |
 
@@ -197,7 +197,7 @@ git diff --check
 Secret marker scan:
 
 ```text
-known KIS paper credential/account/id markers in UNIT-006 changed code/evidence/docs
+known KIS adapter credential/account/id markers in UNIT-006 changed code/evidence/docs
 => no matches
 ```
 
@@ -253,7 +253,7 @@ Accepted Carson follow-up findings remediated in this patch:
 
 ## 10. Remaining Boundaries / Follow-Up
 
-- Broker/KIS paper/live runtime integration remains out of scope until a later
+- Broker/KIS adapter-mode runtime integration remains out of scope until a later
   explicitly approved unit expands the adapter boundary.
 - Submitted-or-later states are still representation metadata only for current
   foundation scope.

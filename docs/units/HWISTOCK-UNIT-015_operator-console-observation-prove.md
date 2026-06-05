@@ -5,7 +5,8 @@ type: unit
 domain: frontend_backend_ops
 name: Operator console and observation Prove
 status: go_check_local_passed
-implementation_status: go_check_passed_local_api_frontend_browser_prove_blocked
+implementation_status: go_check_passed_readiness_truth_tunnel_smoke_browser_visual_prove_blocked
+post_pro_reinforcement_status: go_check_passed
 priority: P0
 source_of_truth: user_intent
 owner: hwi
@@ -33,15 +34,23 @@ code_paths:
 qa_scenario_refs:
   - docs/qa/QA-HWISTOCK-UNIT-015_operator-console-observation-prove.md
 evidence_refs:
-  - docs/evidence/RUN-20260605_ready-set-operational-paper-trading-program.md
+  - docs/evidence/RUN-20260605_ready-set-operational-automated-trading-program.md
   - docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
+  - docs/evidence/RUN-20260605_post-pro-corrective-go-check-unit-011-015.md
 ---
 
 # Operator Console And Observation Prove
 
+> Post-Pro corrective note (2026-06-05): this unit must make false readiness
+> impossible to miss. A rendered dashboard is not proof that automated trading is
+> ready, especially while `operationalReadiness=false`.
+> Corrective API/frontend/tunnel Go-Check passed in
+> `docs/evidence/RUN-20260605_post-pro-corrective-go-check-unit-011-015.md`;
+> browser visual Prove remains a later evidence row.
+
 ## 1. Goal
 
-Make the owner able to tell whether the paper program is actually running,
+Make the owner able to tell whether the trading program is actually running,
 blocked, trading, reconciling, or safe-stopped.
 
 This unit is read-only from the dashboard perspective. Local API/frontend
@@ -56,35 +65,35 @@ and evidence, but it must not expose direct buy/sell controls.
   - latest market-intelligence tick;
   - latest AI analysis artifacts;
   - latest signal/intent state;
-  - latest KIS paper health/runner tick;
+  - latest KIS broker adapter health/runner tick;
   - order gate and block reasons;
   - kill-switch state;
   - observation-window start/end/operator note;
-  - daily/final paper observation reports.
+  - daily/final operation observation reports.
 - Evidence writer for daily and final observation summaries.
 - Browser/tunnel Prove route over loopback/SSH forwarding.
 - Clear distinction between:
   - running service;
-  - paper network enabled;
-  - paper orders submitted;
-  - paper observation accepted;
-  - live readiness.
+  - adapter network enabled;
+  - broker orders submitted;
+  - operation observation accepted;
+  - operation readiness.
 
 ## 3. Excluded Scope
 
 - Dashboard buy/sell buttons.
-- Dashboard live toggle.
+- Dashboard adapter toggle.
 - Public/LAN bind.
 - Raw account numbers, raw KIS responses, credentials, or full article bodies.
-- Profit guarantee or "live-ready" claims.
+- Profit guarantee or "operation-ready" claims.
 
 ## 4. Acceptance Criteria
 
 | ac_id | priority | criterion | observable_result |
 | --- | --- | --- | --- |
 | AC-01 | P0 | Runtime status is visible | API/dashboard show installed/running/failed timers and latest tick paths. |
-| AC-02 | P0 | Paper vs live readiness is separated | UI can show paper-run progress while `operational_trading_readiness` remains false until explicit live approval. |
-| AC-03 | P0 | Dashboard is read-only | No buy/sell, live-order, or service-control buttons are visible. |
+| AC-02 | P0 | Adapter readiness is separated | UI can show operation progress while `operational_readiness` remains false until explicit operation approval. |
+| AC-03 | P0 | Dashboard is read-only | No buy/sell, adapter-order, or service-control buttons are visible. |
 | AC-04 | P0 | Sensitive data is masked | Account-like values and raw broker/provider data are absent or masked. |
 | AC-05 | P0 | Observation reports are operator-window based | Reports include start/end/runtime chosen by the operator and no hardcoded duration. |
 | AC-06 | P0 | Browser Prove can verify the state | Chrome/tunnel evidence confirms dashboard/API status and no public exposure. |

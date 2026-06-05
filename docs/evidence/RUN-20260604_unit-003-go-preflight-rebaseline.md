@@ -32,7 +32,7 @@ skeleton scope.
 This preflight authorizes only local source-registry loading, in-memory fixture
 ingestion, normalized event shaping, duplicate linking, summary/health output,
 blocked-source guards, focused tests, and docs/evidence synchronization. It
-does not authorize live OpenDART calls, Naver calls, KRX/KIND automated
+does not authorize network OpenDART calls, Naver calls, KRX/KIND automated
 collection, KIS/broker data calls, AI provider calls, orders, credential
 storage, HTML scraping, runtime schedulers, server operations, browser QA,
 deploy, or runtime `data/` artifact commits.
@@ -66,7 +66,7 @@ baseline. This rebaseline preflight uses:
   - database connections and migration execution
   - server/deploy/browser/systemd/git mutation
   - runtime `data/` artifact commits
-  - fake fills, fake balances, fake PnL, paper orders, live orders
+  - fake fills, fake balances, fake PnL, broker orders, account-affecting orders
 
 ## 4. Selected Row Scope
 
@@ -79,7 +79,7 @@ Included implementation/check surface:
 
 Excluded surface:
 
-- live OpenDART API calls
+- network OpenDART API calls
 - Naver API calls
 - KRX/KIND automated collection
 - KIS/broker market/realtime/news calls

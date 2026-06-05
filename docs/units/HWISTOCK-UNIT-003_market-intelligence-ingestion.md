@@ -92,7 +92,7 @@ evidence_refs:
   - docs/evidence/RUN-20260604_unit-003-go-check.md
   - docs/evidence/RUN-20260604_unit-003-go-preflight-rebaseline.md
   - docs/evidence/RUN-20260604_unit-003-go-check-rebaseline.md
-  - docs/evidence/RUN-20260605_unit-003-live-collector-hotfix.md
+  - docs/evidence/RUN-20260605_unit-003-source-collector-hotfix.md
 links:
   - HWISTOCK-MOD-002
   - docs/sources/HWISTOCK-SOURCE-REGISTRY.md
@@ -132,7 +132,7 @@ Initial creation of `HWISTOCK-MOD-002`.
 
 ## 4. Excluded Scope
 
-- Live trading.
+- Account-affecting operation.
 - Broker API integration.
 - Strategy scoring.
 - Full article republishing.
@@ -162,18 +162,18 @@ Foundation-only first Go mode:
 
 - Build the source registry, configuration loader, normalized event schema,
   fixture ingestion path, dedupe behavior, health output, and evidence output.
-- Keep live OpenDART network calls disabled by default.
+- Keep network OpenDART network calls disabled by default.
 - Do not require or read `DART_API_KEY` in the first foundation Go unless a
   later explicit source API config approval records the key name, rate cap,
   storage policy, and evidence expectations.
 - Do not call KIS/broker, Naver, KRX/KIND, unofficial finance APIs, or general
   media HTML scraping sources.
 
-Future live-source mode, after explicit source API config approval:
+Future operation-source mode, after explicit source API config approval:
 
-- `dart_openapi_disclosures`: first live-source candidate. Use `DART_API_KEY`
+- `dart_openapi_disclosures`: first operation-source candidate. Use `DART_API_KEY`
   only after explicit source API config approval.
-- `public_news_rss_search`: approved no-key live news metadata source. Store
+- `public_news_rss_search`: approved no-key operation news metadata source. Store
   title/link/source/published timestamp/query metadata/RSS summary only. Do not
   crawl full article bodies, login pages, paywalled pages, or general HTML
   pages.
@@ -201,7 +201,7 @@ Current rebaseline Go-Check implementation status:
 - `ingestFixtureRows()` accepts in-memory fixture rows only and returns
   normalized events plus summary/health dictionaries. It writes no runtime
   artifacts.
-- Live OpenDART, Naver, KRX/KIND, KIS/broker, general media HTML scraping, and
+- Network OpenDART, Naver, KRX/KIND, KIS/broker, general media HTML scraping, and
   unofficial API paths remain disabled. Conditional, deferred, forbidden, and
   unknown sources are reported as failures and cannot ingest in foundation mode.
 - Duplicate fixture events are linked deterministically by dedupe key; they are
@@ -217,10 +217,10 @@ Current rebaseline Go-Check implementation status:
   QA-011 foundation smoke coverage. This is Go implementation/check evidence,
   not Prove evidence.
 
-2026-06-05 live collector hotfix status:
+2026-06-05 source collector hotfix status:
 
 - `backend/service/market_intelligence_ingestion.py --once` now provides a
-  bounded live collector entrypoint for approved public information sources.
+  bounded source collector entrypoint for approved public information sources.
 - `public_news_rss_search` now collects no-key public RSS news metadata and
   normalized `news_event` rows.
 - OpenDART disclosure collection runs when `DART_API_KEY` is present in the
@@ -235,7 +235,7 @@ Current rebaseline Go-Check implementation status:
 - `ops/systemd/hwistock-intel-collector.service` and
   `ops/systemd/hwistock-intel-collector.timer` define the 24-hour timer path.
 - hwiServer user systemd timer was enabled on 2026-06-05 and recorded in
-  `docs/evidence/RUN-20260605_unit-003-live-collector-hotfix.md`.
+  `docs/evidence/RUN-20260605_unit-003-source-collector-hotfix.md`.
 - Runtime proof on 2026-06-05: public RSS source `pass`, 150 normalized news
   events, 150 unique event ids, 0 duplicate JSONL rows, and service exit
   `0/SUCCESS`.
@@ -244,7 +244,7 @@ Current evidence:
 
 - `docs/evidence/RUN-20260604_unit-003-go-preflight-rebaseline.md`
 - `docs/evidence/RUN-20260604_unit-003-go-check-rebaseline.md`
-- `docs/evidence/RUN-20260605_unit-003-live-collector-hotfix.md`
+- `docs/evidence/RUN-20260605_unit-003-source-collector-hotfix.md`
 
 The earlier `RUN-20260604_unit-003-go-preflight.md` and
 `RUN-20260604_unit-003-go-check.md` files remain historical after the

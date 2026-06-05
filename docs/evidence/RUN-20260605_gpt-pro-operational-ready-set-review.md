@@ -63,9 +63,9 @@ The sanitized prompt described:
 - Flash reading latest Pro, new news/disclosures, KIS price/ranking/realtime
   snapshots, previous trade-document chain, and current portfolio/order-state
   snapshot;
-- executor watching trade documents and submitting only KIS KRX paper/mock cash
+- executor watching trade documents and submitting only KIS KRX broker-adapter cash
   orders after deterministic gates; and
-- live trading, credentials, AI direct broker calls, margin/credit/misu,
+- account-affecting operation, credentials, AI direct broker calls, margin/credit/misu,
   hardcoded seven-day runtime, duplicate/conflicting positions, and portfolio
   conflicts as forbidden.
 
@@ -78,7 +78,7 @@ GPT Pro verdict:
 Condensed interpretation:
 
 - Architecture direction is sound: Pro hourly, Flash per market minute,
-  executor with deterministic gates, KIS paper/mock only, AI isolated from
+  executor with deterministic gates, KIS broker-adapter only, AI isolated from
   broker APIs, cash-only constraints, and same-artifact market-regime analysis
   are the right structure.
 - Current design is still policy-rich and contract-thin.
@@ -97,11 +97,11 @@ Condensed interpretation:
 | P0 | Ambiguous broker-submit failure path is missing. | Write intent log before submit, enter unknown state after timeout/crash, reconcile broker order/fill evidence before retry. |
 | P0 | Formal order state machine is missing. | Define states, legal transitions, owning process, and recovery rules. |
 | P0 | Freshness TTLs are not contractual. | Define TTLs and fail-closed behavior by input class: market, orderbook, Pro, Flash, portfolio, order state, source event, and session. |
-| P0 | Live-trading prohibition is policy-level only. | Add paper/mock account allowlist, KIS paper URL allowlist, paper TR-ID allowlist, startup self-test, and fatal abort on live/unknown config. |
-| P0 | Broker adapter capability map is incomplete for implementation readiness. | Record endpoint, websocket, order route, TR ID, account type, KRX-only flag, paper support status, fallback, and failure behavior. |
+| P0 | Operation-trading prohibition is policy-level only. | Add broker-adapter account allowlist, KIS adapter URL allowlist, adapter TR-ID allowlist, startup self-test, and fatal abort on unapproved/unknown config. |
+| P0 | Broker adapter capability map is incomplete for implementation readiness. | Record endpoint, websocket, order route, TR ID, account type, KRX-only flag, adapter support status, fallback, and failure behavior. |
 | P0 | AI prose could be confused with executable instruction. | Split analysis text from schema-validated executable intents; executor reads only validated executable fields. |
 | P1 | Public-source terms, prompt-injection handling, websocket degradation, fill reconciliation, deterministic gate AC, rejection audit, order sizing, order type/price validation, runtime lifecycle, secret boundaries, and operator controls need explicit contracts. | Add source registry fields, untrusted input labels, heartbeat/stale flags, scheduled REST reconciliation, gate checklist, rejection codes, sizing rules, order validation, 24h service controls, secret scans, and operator modes. |
-| P2 | Wording risks overclaiming "realtime" and "24h collection." | Use conditional wording: best-effort public-source collection and realtime only when paper-supported and health-checked fresh. |
+| P2 | Wording risks overclaiming "realtime" and "24h collection." | Use conditional wording: best-effort public-source collection and realtime only when adapter-supported and health-checked fresh. |
 
 ## 5. Codex Response
 
@@ -130,10 +130,10 @@ Updated current-authority docs:
 
 - `docs/profiles/PROFILE-HWISTOCK.md`;
 - `docs/index.md`;
-- `docs/modules/HWISTOCK-MOD-009_operational-paper-trading-program.md`;
-- `docs/set/READY-SET-COMPLETION-20260605_operational-paper-trading-program_hwistock.md`;
-- `docs/set/READY-SET-ROW-CLOSURE-20260605_operational-paper-trading-program_hwistock.md`;
-- `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-paper-trading-program_hwistock.md`.
+- `docs/modules/HWISTOCK-MOD-009_operational-automated-trading-program.md`;
+- `docs/set/READY-SET-COMPLETION-20260605_operational-automated-trading-program_hwistock.md`;
+- `docs/set/READY-SET-ROW-CLOSURE-20260605_operational-automated-trading-program_hwistock.md`;
+- `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-automated-trading-program_hwistock.md`.
 
 ## 6. Result
 
@@ -151,6 +151,6 @@ Current correct status:
 - `live_orders_enabled: false`.
 
 Next required work is row-by-row Go/Check using the UNIT-016 contracts, not a
-paper-run or live-ready claim. UNIT-012, UNIT-013, UNIT-014, and UNIT-015 still
-need their own implementation and evidence before continuous paper trading can
+operation or operation-ready claim. UNIT-012, UNIT-013, UNIT-014, and UNIT-015 still
+need their own implementation and evidence before continuous automated trading can
 be called ready.

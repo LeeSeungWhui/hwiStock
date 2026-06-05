@@ -36,18 +36,18 @@ Current status:
 - No broker network call is approved.
 - No AI provider network call is approved.
 - ChatGPT Pro external review has run for the narrowed foundation-only queue.
-- No live or paper order placement is approved.
+- No operation or broker order placement is approved.
 
 ## 2. Decisions Already Closed
 
 These do not need a new owner decision unless the policy changes:
 
 - Capital mode is cash-only.
-- Live starting capital baseline is 2,000,000 KRW.
+- Starting capital baseline is 2,000,000 KRW.
 - KIS is the selected broker direction; KB is blocked for now.
 - No internal fake broker fills, fake balances, or fake PnL.
-- KIS paper/mock target budget is 10,000,000 KRW until account evidence proves
-  the actual paper balance.
+- KIS broker-adapter target budget is 10,000,000 KRW until account evidence proves
+  the actual adapter balance.
 - Maximum simultaneous holdings is 5.
 - There is no fixed per-symbol maximum allocation in the first policy.
 - Every buy must preserve `minimum_cash_reserve_ratio = 0.25` of total capital.
@@ -75,10 +75,10 @@ Recommended approval phrase:
 
 > Approve the first-pass strategy defaults in
 > `docs/set/READY-SET-STRATEGY-DECISION-PACKET-20260602_hwistock.md` for
-> paper/sandbox planning only. Keep broker and AI network calls disabled until
+> adapter-backed planning only. Keep broker and AI network calls disabled until
 > later explicit approval.
 
-This does not approve broker calls, AI calls, paper orders, live orders, or
+This does not approve broker calls, AI calls, broker orders, account-affecting orders, or
 claims of expected profit.
 
 ### Choice B: Further External Review Route
@@ -122,8 +122,8 @@ approval for:
 - broker network calls
 - token issuance
 - account/balance calls
-- paper order placement
-- live order placement
+- broker order placement
+- account-affecting order placement
 - AI provider network calls
 - external review sending
 - full-queue expansion

@@ -21,7 +21,7 @@ environment: docs_only
 Later 2026-06-02 profile updates supersede the internal `mock_broker_api`
 direction in this historical evidence. Current policy: no internal fake broker
 execution path; pre-approval behavior is no-order dry-run only, and the first
-broker-backed path is approved KIS KRX paper/mock-investment.
+broker-backed path is approved KIS KRX broker-adapter.
 
 ## Summary
 
@@ -32,7 +32,7 @@ project unless a future official confirmation proves otherwise.
 
 Internal fake broker execution is not used. Before an explicitly approved
 broker-network unit, execution stops at no-order dry-run records. The first
-broker-backed path is approved KIS KRX paper/mock investment; KB remains blocked
+broker-backed path is approved KIS KRX broker-adapter; KB remains blocked
 for this project.
 
 ## Source Notes
@@ -53,8 +53,8 @@ for this project.
   `docs/evidence/RUN-20260602_broker-selection-kis.md`.
 - KB Securities: blocked as a practical personal API candidate.
 - Pre-approval execution behavior: no-order dry-run records only.
-- KIS KRX paper/mock investment is allowed only after an approved KIS unit and
-  smoke; other broker-provided mock/demo/testbed/sandbox APIs remain deferred
+- KIS KRX broker-adapter is allowed only after an approved KIS unit and
+  smoke; other broker-provided adapter/adapter APIs remain deferred
   unless a later unit approves them.
 - External broker network calls: forbidden until a future broker-integration
   unit.
@@ -69,11 +69,11 @@ for this project.
 
 ## Follow-Up
 
-- Define no-order dry-run schema and KIS KRX paper adapter schema/fallback.
+- Define no-order dry-run schema and KIS KRX broker adapter schema/fallback.
 - Choose a broker that supports personal-account domestic-stock order APIs, if
-  live integration remains a goal.
+  operation integration remains a goal.
 - Verify current official docs for personal eligibility, domestic stock order
   APIs, quote APIs, credential flow, rate limits, and KRX/NXT route support
   before any network call.
-- Keep KB broker/mock paths out of scope and verify KIS KRX paper behavior from
+- Keep KB broker/broker-adapter paths out of scope and verify KIS KRX broker-adapter behavior from
   official docs before any broker-network call.

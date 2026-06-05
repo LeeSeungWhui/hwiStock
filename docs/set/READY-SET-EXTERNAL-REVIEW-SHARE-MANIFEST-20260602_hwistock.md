@@ -46,7 +46,7 @@ Do not share:
 - broker app keys, app secrets, account ids, tokens, approval keys, or access
   tokens
 - DeepSeek/OpenAI/AI provider API keys
-- real balances, real account identifiers, or unredacted private records
+- real balances, broker account identifiers, or unredacted private records
 - full copyrighted article bodies
 - generated runtime data under future `data/` directories
 - implementation code, if later created, unless a future review scope explicitly
@@ -99,5 +99,5 @@ temporary file or environment variable immediately before the actual send.
 ## 6. Review Scope Reminder
 
 The external reviewer should review readiness and risks only. They should not
-request or receive credentials, env files, live account data, or broker network
+request or receive credentials, env files, broker account data, or broker network
 evidence.

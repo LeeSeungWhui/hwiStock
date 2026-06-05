@@ -43,7 +43,7 @@ Authorized scope is limited to:
 - current-authority evidence/doc status updates for UNIT-006
 
 This preflight does **not** authorize broker/KIS network calls, AI provider
-calls, paper/live order placement, executable `submitted`/`accepted`/fill
+calls, adapter/account-affecting order placement, executable `submitted`/`accepted`/fill
 transitions, fake fill/balance/PnL generation, secret/config reads, server run,
 DB work, or runtime artifact writes under `data/`.
 
@@ -73,15 +73,15 @@ Included implementation:
 - UNIT-004 strategy/risk rulebook delegation for entry-intent validation
 - explicit state-machine validation through `dry_run_recorded`
 - no-order dry-run decision record build/validation
-- KIS paper capability flags and route metadata
-- fixture-only KIS paper evidence representation without broker-state updates
+- KIS adapter capability flags and route metadata
+- fixture-only KIS adapter evidence representation without broker-state updates
 - focused unittest coverage for QA-001 through QA-010
 
 Excluded:
 
 - broker adapter implementation
 - KIS/API/provider/browser/network calls
-- paper/live order placement
+- adapter/account-affecting order placement
 - executable `submitted`/`accepted`/fill state progress in foundation mode
 - fake fill/balance/PnL simulation
 - dashboard/service/systemd/runtime integration
@@ -95,8 +95,8 @@ Excluded:
 | PF-03 | pass | Allowed writes are limited to local backend library/test files plus current-authority UNIT-006 docs/evidence. |
 | PF-04 | pass | UNIT-004 risk-rulebook helpers already exist and can be imported locally without parameter changes. |
 | PF-05 | pass | No broker/KIS/API/browser/server/DB action is required for this Go scope. |
-| PF-06 | pass | Residual denials still block paper/live orders, fake fill/balance/PnL, and submitted-or-later execution in foundation mode. |
-| PF-07 | pass | KIS paper capability work is metadata/fixture-only; no broker-network approval expansion is implied. |
+| PF-06 | pass | Residual denials still block adapter/account-affecting orders, fake fill/balance/PnL, and submitted-or-later execution in foundation mode. |
+| PF-07 | pass | KIS adapter capability work is metadata/fixture-only; no broker-network approval expansion is implied. |
 | PF-08 | pass | Current-go evidence can be produced through local compile/tests/docs updates only. |
 
 ## 5. Go Boundary
@@ -104,7 +104,7 @@ Excluded:
 Proceed only with stdlib-only local helpers and focused tests. Any need for:
 
 - broker/KIS calls
-- real/paper order placement
+- real/broker order placement
 - runtime market/session resolution
 - submitted-or-later execution
 - secret/config inspection

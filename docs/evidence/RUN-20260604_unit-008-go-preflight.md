@@ -26,7 +26,7 @@ scope.
 
 This verdict authorizes only local backend/storage skeleton files, migrations,
 typed schema helpers, tests, and evidence. It does not authorize broker/KIS
-network calls, AI provider calls, paper orders, live orders, credential storage,
+network calls, AI provider calls, broker orders, account-affecting orders, credential storage,
 runtime data artifact commits, dashboard UI, or operational trading readiness.
 
 ## 2. Delegation Guard
@@ -64,7 +64,7 @@ Included implementation:
 
 Excluded:
 
-- actual PostgreSQL connection or migration execution against a live DB
+- actual PostgreSQL connection or migration execution against a operational DB
 - external source ingestion
 - AI API execution
 - broker API execution
@@ -86,7 +86,7 @@ Excluded:
 | PF-09 | pass | Dashboard UI is out of scope; storage may prepare dashboard query surfaces only. |
 | PF-10 | pass | Selected action is no-network, no-order, no-credential-storage local storage skeleton work. |
 | PF-11 | pass | Full expansion owner decisions are recorded in the completion report evidence chain. |
-| PF-12 | not_applicable | Current queue is the full skeleton/sandbox-safe queue. |
+| PF-12 | not_applicable | Current queue is the full skeleton/adapter-safe queue. |
 | PF-13 | pass | Git initialized on `main`; baseline commit `540a1c3` exists; `.env` and runtime `data/` are ignored. |
 
 ## 5. Pre-Go Action

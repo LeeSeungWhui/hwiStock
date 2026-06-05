@@ -27,11 +27,11 @@ bundle, not a manual Codex shell run.
 
 | row_id | priority | mode | steps | expected_result | evidence |
 | --- | --- | --- | --- | --- | --- |
-| QA-001 | P0 | unit-file | Inspect every `ops/systemd/user/hwistock-*` file | No env values, live endpoints, public bind, or shell-only assumptions | unit-file audit |
+| QA-001 | P0 | unit-file | Inspect every `ops/systemd/user/hwistock-*` file | No env values, unapproved endpoints, public bind, or shell-only assumptions | unit-file audit |
 | QA-002 | P0 | install | Sync selected unit files into user systemd and run daemon reload | Units are visible to `systemctl --user` | status output |
 | QA-003 | P0 | local-only | Start API/frontend non-order services | Ports 5000/5001 bind only to 127.0.0.1 | port/status smoke |
 | QA-004 | P0 | timers | Enable/start non-order timers first | Intel, AI, runner-tick, and health timers are listed with next/last times | timer list |
-| QA-005 | P0 | broker-boundary | Verify KIS paper runner is not accidentally started by UNIT-011 | No paper order call occurs in supervisor-only scope | systemd + evidence |
+| QA-005 | P0 | broker-boundary | Verify KIS broker-adapter runner is not accidentally started by UNIT-011 | No broker order call occurs in supervisor-only scope | systemd + evidence |
 | QA-006 | P0 | restart | Restart non-order services/timers | Services recover without duplicate intents/orders | restart smoke |
 | QA-007 | P0 | health | Query read-only runtime status | Calendar/kill/source/order blocks are visible and classified | API/evidence |
 

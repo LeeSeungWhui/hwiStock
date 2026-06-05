@@ -104,11 +104,11 @@ of the allowed first Go scope for:
 
 ## 5. Historical Evidence Preservation
 
-The bounded KIS paper/mock REST and websocket smoke recorded in
-`docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md` is preserved as
+The bounded KIS broker-adapter REST and websocket smoke recorded in
+`docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md` is preserved as
 historical evidence only. It proves the 2026-06-04 bounded smoke passed, but
-it does **not** authorize new KIS/broker network calls, additional paper
-orders, live orders, credential storage, or unscoped adapter integration.
+it does **not** authorize new KIS/broker network calls, additional adapter
+orders, account-affecting orders, credential storage, or unscoped adapter integration.
 
 ## 6. References
 

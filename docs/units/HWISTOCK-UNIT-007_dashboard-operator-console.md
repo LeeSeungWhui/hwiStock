@@ -45,7 +45,7 @@ Define the read-only web dashboard and AI conversation surface for hwiStock.
 
 ## 2. Included Scope
 
-- Current holdings and paper/live mode state.
+- Current holdings and adapter-mode mode state.
 - Today PnL and daily summary.
 - Candidate cards and risk flags.
 - News/disclosure timeline.
@@ -72,7 +72,7 @@ Define the read-only web dashboard and AI conversation surface for hwiStock.
 - Direct buy/sell buttons.
 - Credential display.
 - Broker adapter toggles, risk-parameter changes, prompt/model changes, service
-  lifecycle controls, or live-readiness approval controls.
+  lifecycle controls, or operation-readiness approval controls.
 - MyWebTemplate `docs/` copy.
 - Public internet exposure without access control.
 

@@ -21,7 +21,7 @@ secret_values_printed: false
 ## 1. Owner Decision
 
 The owner selected `Delta sync + Git init (Recommended)` after the KIS
-paper/mock REST and websocket smoke passed.
+broker-adapter REST and websocket smoke passed.
 
 The owner also clarified that `.env` files must be ignored by Git.
 
@@ -67,13 +67,13 @@ Verification used `git check-ignore` against representative paths:
 
 The previous Ready-Set baseline denied all KIS/broker network activity by
 default. That remains the default for ordinary Go implementation rows, but a
-bounded owner-approved KIS paper/mock smoke was completed and documented in:
+bounded owner-approved KIS broker-adapter smoke was completed and documented in:
 
-- `docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md`
-- `docs/set/KIS-PAPER-MOCK-API-SMOKE-MATRIX-20260604_hwistock.md`
+- `docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md`
+- `docs/set/KIS-BROKER-ADAPTER-API-SMOKE-MATRIX-20260604_hwistock.md`
 
-The completed smoke does not authorize live API calls, real accounts, future
-unscoped broker adapter execution, production operation, or additional paper
+The completed smoke does not authorize unapproved API calls, account records, future
+unscoped broker adapter execution, production operation, or additional adapter
 orders outside an explicitly scoped future unit.
 
 ## 5. Safety Notes

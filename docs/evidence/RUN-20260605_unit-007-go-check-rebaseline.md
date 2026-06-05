@@ -36,7 +36,7 @@ display, and local-only/public exposure boundary enforcement.
 
 This closure does **not** authorize buy/sell controls, broker/KIS/API calls,
 AI-provider runtime calls, browser/screenshot/server smoke, public/LAN dashboard
-exposure, operational trading readiness, or one-week paper/sandbox proof.
+exposure, operational trading readiness, or one-week adapter-backed proof.
 
 ## 2. Worker / Failure History
 
@@ -157,4 +157,4 @@ exact conflict-marker scan => no matches
 - No browser/screenshot/server smoke was run for this closure.
 - No broker/KIS/API/AI-provider call was run for this closure.
 - Public/LAN exposure, operational trading readiness, and one-week
-  paper/sandbox proof remain future approval scopes.
+  adapter-backed proof remain future approval scopes.

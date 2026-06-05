@@ -1,6 +1,6 @@
 ---
 schema_version: hwi.run-evidence/v0
-id: RUN-20260605-unit-003-live-collector-hotfix
+id: RUN-20260605-unit-003-operation-collector-hotfix
 stage: go/prove-hotfix
 unit_id: HWISTOCK-UNIT-003
 status: pass_public_rss_timer_active_api_keys_missing_for_dart_naver
@@ -21,7 +21,7 @@ kis_order_calls_made: false
 live_orders_placed: false
 ---
 
-# UNIT-003 Live Collector Hotfix — 2026-06-05
+# UNIT-003 Operation Collector Hotfix — 2026-06-05
 
 ## 1. Verdict
 

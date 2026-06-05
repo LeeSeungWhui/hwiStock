@@ -53,7 +53,7 @@ Confirmed:
 - The dashboard no longer displayed `HTTP_500_INTERNAL`.
 - The first authenticated dashboard screen remained read-only and masked
   account-like values.
-- No KIS, broker, order, live trading, deploy, public/LAN exposure, or git
+- No KIS, broker, order, account-affecting operation, deploy, public/LAN exposure, or git
   mutation was run.
 
 ## 2. Implementation Route / Worker Audit
@@ -206,7 +206,7 @@ Captured browser assertions:
 
 - The dashboard still shows `degraded` service state and fixture-style data
   source labels. That is acceptable for this local skeleton/browser Prove and
-  is not an authorization for live broker operation.
+  is not an authorization for broker operation.
 - Frontend dev runtime still warns about the Next middleware-to-proxy migration,
   slow filesystem, and Node `DEP0205`. These are not the login/API 500 blocker
   but remain cleanup candidates.
@@ -216,8 +216,8 @@ Captured browser assertions:
 This evidence does not authorize:
 
 - KIS/broker/API calls;
-- paper or live order placement;
-- live trading;
+- adapter or account-affecting order placement;
+- account-affecting operation;
 - public/LAN dashboard exposure;
 - deployment;
 - git stage or commit.

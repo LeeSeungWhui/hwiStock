@@ -58,7 +58,7 @@ Local interpretation:
   design requirements remain in the module, unit, and QA contracts.
 - Dashboard implementation remains not approved.
 - Public/LAN exposure, buy/sell controls, broker/KIS calls, AI provider calls,
-  paper orders, live orders, credential storage, and Go implementation remain
+  broker orders, account-affecting orders, credential storage, and Go implementation remain
   denied.
 
 ## 4. Closure Result

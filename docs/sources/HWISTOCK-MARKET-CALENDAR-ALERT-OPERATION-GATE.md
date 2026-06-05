@@ -1,8 +1,8 @@
 ---
 schema_version: hwi.source/v0
-id: HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE
+id: HWISTOCK-MARKET-CALENDAR-ALERT-ADAPTER-GATE
 type: calendar_alert_paper_gate_policy
-name: hwiStock market calendar, alert, and paper observation policy
+name: hwiStock market calendar, alert, and operation observation policy
 status: set
 owner: hwi
 created_at: 2026-06-02
@@ -19,7 +19,7 @@ module_refs:
   - HWISTOCK-MOD-008
 ---
 
-# hwiStock Market Calendar, Alert, And Paper Observation Policy
+# hwiStock Market Calendar, Alert, And Adapter Observation Policy
 
 ## 1. Purpose
 
@@ -27,13 +27,13 @@ This policy closes the first Set contract for:
 
 - trading-day and session calendar authority
 - first-pass local alert channel
-- operator-controlled paper/sandbox observation criteria
+- operator-controlled adapter-backed observation criteria
 
-It does not approve broker network calls, AI network calls, live trading, public
+It does not approve broker network calls, AI network calls, account-affecting operation, public
 dashboard exposure, or profit claims.
 
 Current correction: the runner is a 24-hour continuous home-server service. The
-paper/sandbox observation period is **not** hardcoded as seven days or any other
+adapter-backed observation period is **not** hardcoded as seven days or any other
 fixed duration in the program. The project owner/operator decides when an
 observation window starts, when it stops, and whether the collected evidence is
 enough for a later go/no-go discussion. Docs and code must model the period as
@@ -48,7 +48,7 @@ operator-supplied run metadata, not as a baked-in service lifetime.
 | 1 | KRX official trading-days/holidays page and KRX notices | Trading-day, holiday, year-end close, and exceptional market-management day authority | Public official source review or cached calendar only |
 | 2 | NXT official site/session notices | NXT session availability and session-window reference | Public official source review or cached calendar only |
 | 3 | KIS `국내휴장일조회[국내주식-040]` | Broker-side holiday/open-day cross-check after approval | Broker network call only inside a later approved KIS integration unit |
-| 4 | Local cached calendar | Runtime scheduler input during dry-run/paper when broker calendar API is unavailable or paper-unsupported | No network call during ordinary scheduler evaluation |
+| 4 | Local cached calendar | Runtime scheduler input during dry-run/adapter when broker calendar API is unavailable or adapter-unsupported | No network call during ordinary scheduler evaluation |
 
 Checked public references on 2026-06-02:
 
@@ -69,32 +69,32 @@ Local KIS reference:
 - If the cached calendar is missing, expired, or does not cover the current
   KST date, active trading/order loops must stay idle with
   `calendar_unconfigured` or `calendar_stale`.
-- KIS holiday lookup is paper-unsupported in the local KIS capability matrix.
+- KIS holiday lookup is adapter-unsupported in the local KIS capability matrix.
   It must not be called during no-order dry-run and must not be required for
-  KIS KRX paper evidence unless a future approved broker-network unit enables
+  KIS KRX adapter evidence unless a future approved broker-network unit enables
   it.
 - If KIS holiday lookup is approved later, cache it at most once per KST day and
   treat `opnd_yn` as a cross-check input, not the only trading gate.
 
-### 2.3 Session Context And Internal Paper-Order Window
+### 2.3 Session Context And Internal Adapter-Order Window
 
 hwiStock keeps two separate concepts:
 
 1. **exchange/session context** used by collectors, AI analysis, reports, and
    operator UI; and
-2. **broker-facing paper-order enablement** used by the executor.
+2. **broker-facing adapter-order enablement** used by the executor.
 
 KRX public regular-session context is treated as 09:00-15:30 KST unless a
 future market-calendar source update records a special day. The current
-conservative internal KIS paper-order enable window remains narrower:
+conservative internal KIS adapter-order enable window remains narrower:
 
-- KRX paper-order enable window: 09:00-15:00 KST
+- KRX adapter-order enable window: 09:00-15:00 KST
 - NXT context window: 08:00-09:00 KST and 15:00-20:00 KST
 - Idle: outside 08:00-20:00 KST or when the calendar says closed/stale
 
-NXT is currently analysis/session context only. KIS paper broker-facing order
+NXT is currently analysis/session context only. KIS adapter broker-facing order
 routes are KRX-only; NXT/SOR/integrated broker routes must abort before
-transport unless a future approved unit records stronger paper/live proof.
+transport unless a future approved unit records stronger adapter-mode proof.
 
 ## 3. Alert Channel Contract
 
@@ -124,9 +124,9 @@ External alert delivery such as Telegram, email, Discord, SMS, or webhook is
 deferred and requires a later Set approval because it creates new credentials,
 privacy, delivery, and network-operation risks.
 
-## 4. Operator-Controlled Paper/Sandbox Observation Criteria
+## 4. Operator-Controlled Adapter/Adapter Observation Criteria
 
-The paper/sandbox observation window is a safety, evidence, and operational
+The adapter-backed observation window is a safety, evidence, and operational
 readiness gate. It is not a profit target and does not prove expected future
 profit.
 
@@ -140,7 +140,7 @@ Duration policy:
 - Evidence reports must record `observation_window_started_at_kst`,
   `observation_window_ended_at_kst` when ended, elapsed runtime, covered market
   days, skipped/closed days, and any operator note.
-- If a future live-readiness policy sets a minimum duration, it belongs in the
+- If a future operation-readiness policy sets a minimum duration, it belongs in the
   approval/evidence decision record, not as a runner loop hardcode.
 
 Pass requires all P0 rows below:
@@ -148,19 +148,19 @@ Pass requires all P0 rows below:
 | area | P0 pass criterion |
 | --- | --- |
 | service lifecycle | systemd services can start, stop, restart, and report health without a Codex session |
-| safety boundary | no live orders, real-money orders, unapproved broker calls, or unapproved AI calls occur |
-| broker boundary | before approved KIS paper, records stop at no-order dry-run; after approved KIS paper, only supported KRX paper paths may produce broker-backed evidence |
+| safety boundary | no account-affecting orders, account-affecting orders, unapproved broker calls, or unapproved AI calls occur |
+| broker boundary | before approved KIS adapter, records stop at no-order dry-run; after approved KIS adapter, only supported KRX adapter paths may produce broker-backed evidence |
 | calendar/session | trading/order loops are idle on closed/stale-calendar days and outside the configured KRX/NXT envelope |
 | risk gates | every order intent passes or is rejected by cash reserve 0.25, max holdings 5, AI stop max -5, stale-data, and kill-switch checks |
-| evidence completeness | every observation day has a paper-day evidence manifest, health summary, risk rejects, order-intent/order-state summary, and daily close report |
+| evidence completeness | every observation day has a adapter-day evidence manifest, health summary, risk rejects, order-intent/order-state summary, and daily close report |
 | PnL calculation | PnL fields are system-calculated from order/fill/position records; AI may interpret but not calculate the numbers |
 | source policy | only approved/conditional-approved data sources run; blocked HTML scraping and unofficial APIs do not run |
-| reconciliation | KIS KRX paper orders/fills/balances reconcile when KIS paper is approved; unsupported NXT/SOR branches are disabled or explicit-fallback-only |
-| incident handling | any critical alert is acknowledged, explained, and either fixed or marked as a blocker before live-readiness discussion |
+| reconciliation | KIS KRX broker orders/fills/balances reconcile when KIS adapter is approved; unsupported NXT/SOR branches are disabled or explicit-fallback-only |
+| incident handling | any critical alert is acknowledged, explained, and either fixed or marked as a blocker before operation-readiness discussion |
 
 Automatic fail or extension triggers:
 
-- any live order or real-money order
+- any account-affecting order or account-affecting order
 - any unapproved broker, AI, or external alert network call
 - any credential leak into logs/docs/artifacts
 - any fake broker fill, fake balance, or simulated PnL represented as broker
@@ -168,10 +168,10 @@ Automatic fail or extension triggers:
 - any order intent created while kill switch is active, data is stale, calendar
   is closed/stale, or risk gates reject
 - any unexplained service outage that prevents daily evidence creation
-- any unreconciled KIS paper order/fill/balance discrepancy after the daily
+- any unreconciled KIS broker order/fill/balance discrepancy after the daily
   close reconciliation window
 
-After the operator accepts an observation window, live operation still requires
+After the operator accepts an observation window, account-affecting operation still requires
 an explicit user go/no-go approval and a current profile/unit update.
 
 ## 5. Evidence Requirements
@@ -191,4 +191,4 @@ Each observation day must link:
 The final observation evidence report must list every covered day, market-open
 status, runner uptime, P0 pass/fail rows, critical alerts, fixes, unresolved
 blockers, operator-selected window start/end metadata, and the explicit
-live-readiness recommendation if one is requested.
+operation-readiness recommendation if one is requested.

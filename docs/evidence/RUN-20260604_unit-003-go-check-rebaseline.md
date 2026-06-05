@@ -31,7 +31,7 @@ links duplicates by dedupe key, exposes summary/health dictionaries, enforces
 KST `+09:00` timestamps, and blocks caller overrides of per-source
 `body_storage_policy`.
 
-This result does not authorize live source collection, broker/KIS calls, AI
+This result does not authorize network source collection, broker/KIS calls, AI
 provider calls, order placement, credential storage, runtime scheduler
 execution, runtime artifact writes under `data/`, browser QA, deploy, server
 operations, or operational trading readiness.
@@ -124,13 +124,13 @@ operations, or operational trading readiness.
 | QA-002 | PASS | Import inspection confirms no broker/order/trading routing imports in UNIT-003 implementation modules. |
 | QA-003 | PASS | Source policy notes and rate/terms text are present in the implementation config. |
 | QA-004 | PASS | Duplicate disclosure fixtures link deterministically by dedupe key. |
-| QA-005 | PASS | Health output exposes source counts, failures, backlog, disabled live sources, blocked source ids, duplicate links, and last fetch timestamps. |
-| QA-006 | PASS | Summary dictionary exposes source counts, duplicate count, failures, disabled live sources, and retention notes without writing runtime evidence files. |
-| QA-007 | PASS | Market-data context fields include venue, interval, OHLCV schema, and latency budget while live chart sources remain disabled/deferred. |
+| QA-005 | PASS | Health output exposes source counts, failures, backlog, disabled network sources, blocked source ids, duplicate links, and last fetch timestamps. |
+| QA-006 | PASS | Summary dictionary exposes source counts, duplicate count, failures, disabled network sources, and retention notes without writing runtime evidence files. |
+| QA-007 | PASS | Market-data context fields include venue, interval, OHLCV schema, and latency budget while network chart sources remain disabled/deferred. |
 | QA-008 | PASS | General HTML scraping and unofficial finance APIs are blocked in foundation mode. |
 | QA-009 | PASS | KIS/broker market/realtime/news source remains deferred and cannot ingest. |
 | QA-010 | PASS | Normalized event schema includes all required UNIT-003 fields; validation rejects non-KST/ambiguous timestamps and caller body-policy overrides. |
-| QA-011 | PASS | Foundation fixture smoke succeeds without credentials, network imports, live source calls, broker/KIS imports, or order-routing imports. |
+| QA-011 | PASS | Foundation fixture smoke succeeds without credentials, network imports, network source calls, broker/KIS imports, or order-routing imports. |
 
 ## 5. Validation Commands
 
@@ -160,12 +160,12 @@ Executed locally from `/data/workspace/My/hwiStock` on 2026-06-04:
 6. `git diff --check -- backend/lib/market_intelligence.py backend/service/market_intelligence_ingestion.py backend/tests/test_market_intelligence_ingestion.py`
    - Result: PASS.
 
-Known KIS app-key, secret, paper account, and HTS id markers were not found in
+Known KIS app-key, secret, adapter account, and HTS id markers were not found in
 UNIT-003 implementation/test/doc evidence files during the local marker check.
 
 ## 6. Residual Boundaries
 
-- Live OpenDART, Naver, KRX/KIND, KIS/broker, general HTML scraping, and
+- Network OpenDART, Naver, KRX/KIND, KIS/broker, general HTML scraping, and
   unofficial API paths remain disabled in this row.
 - This row does not create API routes, runtime scheduler loops, persistent event
   stores, or runtime `data/` artifacts.

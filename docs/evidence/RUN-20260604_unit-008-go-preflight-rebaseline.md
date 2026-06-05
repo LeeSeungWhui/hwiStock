@@ -29,8 +29,8 @@ import baseline under the bounded local storage skeleton scope.
 
 This preflight authorizes only local backend storage contract files, Alembic
 schema skeleton files, focused tests, and docs/evidence synchronization. It
-does not authorize live database migration execution, broker/KIS network calls,
-AI provider calls, paper orders, live orders, credential storage, runtime
+does not authorize operational database migration execution, broker/KIS network calls,
+AI provider calls, broker orders, account-affecting orders, credential storage, runtime
 `data/` artifact commits, dashboard UI, deploy, server operations, browser QA,
 or operational trading readiness.
 
@@ -63,7 +63,7 @@ baseline. This rebaseline preflight uses:
   - database connections and migration execution
   - server/deploy/browser/systemd/git mutation
   - runtime `data/` artifact commits
-  - fake fills, fake balances, fake PnL, paper orders, live orders
+  - fake fills, fake balances, fake PnL, broker orders, account-affecting orders
 
 ## 4. Selected Row Scope
 
@@ -80,7 +80,7 @@ Included implementation/check surface:
 
 Excluded surface:
 
-- live PostgreSQL connection or `alembic upgrade`
+- operational PostgreSQL connection or `alembic upgrade`
 - external source ingestion
 - AI API execution
 - broker API execution

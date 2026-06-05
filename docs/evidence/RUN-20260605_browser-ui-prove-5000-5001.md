@@ -49,7 +49,7 @@ Confirmed positive behavior:
 - The operator console is visually read-only and did not expose visible
   buy/sell/order execution buttons.
 - Visible account-like values were masked in the operator console.
-- No KIS, broker, order, live trading, deploy, public/LAN exposure, or git
+- No KIS, broker, order, account-affecting operation, deploy, public/LAN exposure, or git
   mutation was run.
 
 Blocking product findings:
@@ -236,8 +236,8 @@ when serializing dict item 'dataTemplateList'
 This evidence does not authorize:
 
 - KIS/broker/API calls;
-- paper or live order placement;
-- live trading;
+- adapter or account-affecting order placement;
+- account-affecting operation;
 - public/LAN dashboard exposure;
 - deployment;
 - git stage or commit.

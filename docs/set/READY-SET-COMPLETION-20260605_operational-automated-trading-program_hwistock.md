@@ -1,7 +1,7 @@
 ---
 schema_version: hwi.ready-set-completion/v0
 stage: ready-set
-status: operational_paper_trading_program_local_go_check_passed_with_side_effect_rows_blocked
+status: operational_automated_trading_program_local_go_check_passed_with_side_effect_rows_blocked
 project_root: /data/workspace/My/hwiStock
 docs_base: docs
 profile_id: PROFILE-HWISTOCK
@@ -9,23 +9,24 @@ updated_at: 2026-06-05
 current_authority: true
 implementation_ready: true
 implementation_ready_scope: operational_contract_hardened_go_check_queue
-paper_run_ready: false
+broker_run_ready: false
 continuous_runner_ready: false
-operational_trading_readiness: false
+operational_readiness: false
 supersedes_for_operational_claims:
-  - docs/set/READY-SET-COMPLETION-20260605_continuous-paper-runner_hwistock.md
-row_closure_matrix_ref: docs/set/READY-SET-ROW-CLOSURE-20260605_operational-paper-trading-program_hwistock.md
-go_preflight_checklist_ref: docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-paper-trading-program_hwistock.md
-module_ref: docs/modules/HWISTOCK-MOD-009_operational-paper-trading-program.md
-evidence_ref: docs/evidence/RUN-20260605_ready-set-operational-paper-trading-program.md
+  - docs/set/READY-SET-COMPLETION-20260605_continuous-adapter-runner_hwistock.md
+row_closure_matrix_ref: docs/set/READY-SET-ROW-CLOSURE-20260605_operational-automated-trading-program_hwistock.md
+go_preflight_checklist_ref: docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-automated-trading-program_hwistock.md
+module_ref: docs/modules/HWISTOCK-MOD-009_operational-automated-trading-program.md
+evidence_ref: docs/evidence/RUN-20260605_ready-set-operational-automated-trading-program.md
 owner_rebaseline_evidence_ref: docs/evidence/RUN-20260605_owner-runtime-architecture-10m-trade-document-rebaseline.md
 gpt_pro_review_ref: docs/evidence/RUN-20260605_gpt-pro-operational-ready-set-review.md
 contract_hardening_unit_ref: docs/units/HWISTOCK-UNIT-016_runtime-contract-hardening.md
 contract_hardening_evidence_ref: docs/evidence/RUN-20260605_unit-016-runtime-contract-hardening-set.md
 operational_go_check_evidence_ref: docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
+post_pro_corrective_go_check_evidence_ref: docs/evidence/RUN-20260605_post-pro-corrective-go-check-unit-011-015.md
 ---
 
-# Ready-Set Completion Gate — Operational Paper Trading Program
+# Ready-Set Completion Gate — Operational Automated Trading Program
 
 ## 1. Verdict
 
@@ -36,13 +37,40 @@ Current implementation readiness:
 `operational_contract_hardened_go_check_queue`.
 
 This is the Ready-Set that matches the owner requirement: make the stock trading
-program actually runnable in paper/mock mode. It supersedes the narrower
+program actually runnable in broker-adapter mode. It supersedes the narrower
 continuous-runner Ready-Set for operational completion claims.
 
-This report does not claim the program is already paper-run-ready or live-ready.
+This report does not claim the program is already operation-ready.
 UNIT-012 through UNIT-015 now have local no-network Go-Check evidence, but
-provider, KIS paper-read/order, browser/tunnel, and operator observation-window
+provider, KIS broker adapter-read/order, browser/tunnel, and operator observation-window
 side-effect rows remain blocked until explicitly scoped.
+
+Post-Pro reinforcement: a later Pro critique correctly identified that service
+and timer activity can be misread as operational readiness. This existing
+Ready-Set remains the current authority, but it is reinforced with the explicit
+truth that `implementation_ready: true` applies only to the
+`operational_contract_hardened_go_check_queue`. It is not operation readiness.
+
+Accepted post-Pro corrective gaps:
+
+- dashboard/API must make false readiness, fallback data, adapter-network state,
+  order-submission state, observation-window state, and order-gate block reasons
+  impossible to miss;
+- the imported dashboard implementation is currently JS-only while the profile
+  target says TypeScript, so frontend stack compliance is not yet proven;
+- backend service-managed runtime must not count a development `reload=True`
+  entrypoint as operational hardening;
+- provider, KIS broker adapter-read, broker order/reconciliation, and browser/operator
+  observation side-effect rows remain unproved for operation readiness;
+- the current operator snapshot still reports false adapter/operational readiness
+  and a blocked order gate until calendar/source/session evidence is configured.
+
+Post-Pro UNIT-011/015 corrective Go-Check was completed in
+`docs/evidence/RUN-20260605_post-pro-corrective-go-check-unit-011-015.md`.
+It closes the runtime reload ambiguity and dashboard/API readiness-truth surface
+for the local service-managed runtime. It still does not make the program
+operation-ready because KIS side-effect and observation-window gates remain
+open.
 
 ## 2. Core Correction
 
@@ -64,9 +92,9 @@ The correct target is:
 - DeepSeek Pro hourly aggregate analysis, including market-regime/session
   analysis during market hours;
 - DeepSeek Flash 10-minute trade-document generation during market hours;
-- source-grounded trade-document to paper-intent generation;
+- source-grounded trade-document to order-intent generation;
 - deterministic risk gating;
-- KIS KRX paper order execution;
+- KIS KRX broker order execution;
 - broker-evidence-backed reconciliation;
 - read-only operator console; and
 - operator-selected observation evidence.
@@ -92,8 +120,8 @@ Blocking P0 contract gaps:
 - ambiguous broker-submit failure handling is not defined;
 - formal order state machine is missing;
 - freshness TTLs are not contractual;
-- live-trading prohibition is not yet an enforceable paper-only runtime guard;
-- broker adapter paper capability map is not implementation-complete; and
+- adapter-bound runtime guard is not yet an enforceable adapter-only runtime guard;
+- broker adapter capability map is not implementation-complete; and
 - AI output needs a schema boundary so prose can never become executable input.
 
 The required contract-hardening Set has now been closed by
@@ -106,12 +134,12 @@ only under the contract refs and preflight gates recorded here.
 
 | order | unit_id | row_state | allowed_go_scope |
 | --- | --- | --- | --- |
-| 1 | HWISTOCK-UNIT-011 | go_started_check_pending | Install/sync user systemd runtime supervisor, start non-order local-only services/timers, and prove restart/status evidence. Evidence: `docs/evidence/RUN-20260605_unit-011-runtime-start-go.md`. |
+| 1 | HWISTOCK-UNIT-011 | go_check_passed_post_pro_runtime_entrypoint | Install/sync user systemd runtime supervisor, start non-order local-only services/timers, prove restart/status evidence, and close no-reload entrypoint ambiguity. Evidence: `docs/evidence/RUN-20260605_unit-011-runtime-start-go.md`, `docs/evidence/RUN-20260605_post-pro-corrective-go-check-unit-011-015.md`. |
 | 2 | HWISTOCK-UNIT-016 | set_complete | Runtime data/execution contracts, schema catalog, valid/invalid fixtures, and local validator are defined and validated. Evidence: `docs/evidence/RUN-20260605_unit-016-runtime-contract-hardening-set.md`. |
 | 3 | HWISTOCK-UNIT-012 | go_check_passed_local_no_network_provider_smoke_blocked | DeepSeek Pro/Flash artifact generation, schema validation, `NO_TRADE` safe-blocks, five-symbol action cap, deterministic universe rejection, and no-order boundary passed locally. Provider smoke remains blocked. |
-| 4 | HWISTOCK-UNIT-013 | go_check_passed_local_no_network_kis_paper_read_blocked | NAVER/OpenDART source grounding, exactly six KIS paper-read signal inputs, endpoint safe-blocks, and Flash trade-document to `paper_order_intent/v0` bridge passed locally. KIS paper-read transport smoke remains blocked. |
-| 5 | HWISTOCK-UNIT-014 | go_check_passed_local_no_network_order_smoke_blocked | Intent preflight, idempotency, duplicate-consumption block, realtime stop/take-profit/trailing exit decision, and no-fake-broker behavior passed locally. KIS paper order/reconciliation smoke remains blocked. |
-| 6 | HWISTOCK-UNIT-015 | go_check_passed_local_api_frontend_browser_prove_blocked | Read-only operator API, dashboard data normalization, masked values, and operator-window report generation passed local API/frontend tests. Browser/tunnel Prove remains blocked. |
+| 4 | HWISTOCK-UNIT-013 | go_check_passed_local_no_network_kis_adapter_read_blocked | NAVER/OpenDART source grounding, exactly six KIS broker adapter-read signal inputs, endpoint safe-blocks, and Flash trade-document to `paper_order_intent/v0` bridge passed locally. KIS broker adapter-read transport smoke remains blocked. |
+| 5 | HWISTOCK-UNIT-014 | go_check_passed_local_no_network_order_smoke_blocked | Intent preflight, idempotency, duplicate-consumption block, realtime stop/take-profit/trailing exit decision, and no-fake-broker behavior passed locally. KIS broker order/reconciliation smoke remains blocked. |
+| 6 | HWISTOCK-UNIT-015 | go_check_passed_readiness_truth_tunnel_smoke_browser_visual_prove_blocked | Read-only operator API, dashboard data normalization, masked values, operator-window report generation, and prominent readiness-truth banner passed local API/frontend/tunnel smoke. Browser visual Prove remains blocked. |
 
 ## 5. External Reference Check
 
@@ -120,9 +148,9 @@ Ready-Set used current official references on 2026-06-05:
 - DeepSeek official docs list `deepseek-v4-flash` and `deepseek-v4-pro`, and
   mark `deepseek-chat` / `deepseek-reasoner` for deprecation on 2026-07-24.
 - KIS official sample repository describes Open API service application, app
-  key/app secret setup, paper/live credential separation, and domestic-stock
+  key/app secret setup, adapter-mode credential separation, and domestic-stock
   sample categories. KIS samples are reference material, not proof that
-  hwiStock is live-safe.
+  hwiStock is adapter-safe.
 - OpenDART official API is the primary disclosure source. NAVER Developers
   Search News API is the selected first-runtime news source. Public RSS is a
   fallback-only no-key metadata source, not a parallel first-runtime collector
@@ -132,21 +160,21 @@ Ready-Set used current official references on 2026-06-05:
 
 The following remain false until Go/Check/Prove evidence proves otherwise:
 
-- `paper_run_ready`
+- `broker_run_ready`
 - `continuous_runner_ready`
-- `operational_trading_readiness`
-- `live_runner_ready`
-- `live_orders_enabled`
+- `operational_readiness`
+- `broker_runner_ready`
+- `broker_orders_enabled`
 
 `implementation_ready` is true only for the contract-hardened Go-Check queue.
-It does not mean paper-run-ready, continuous-runner-ready, operationally
-complete, or live-ready.
+It does not mean operation-ready, continuous-runner-ready, operationally
+complete, or operation-ready.
 
 ## 7. Hard Exclusions
 
-- Live KIS endpoint calls.
-- Real-money orders.
-- Real account login.
+- Unapproved KIS endpoint calls.
+- Account-affecting orders.
+- Broker account login.
 - Credential printing or commits.
 - Fake fills, fake balances, fake positions, or fake PnL.
 - Public/LAN dashboard binding.
@@ -167,7 +195,7 @@ The queue can be called operationally complete only after every row has:
 4. focused Go smoke evidence;
 5. Check/review verdict;
 6. QA row matrix disposition; and
-7. Prove evidence for the operator-selected paper observation window.
+7. Prove evidence for the operator-selected operation observation window.
 
 Any future session that cites this Ready-Set as "done" without those layers is
 misreporting the program state.

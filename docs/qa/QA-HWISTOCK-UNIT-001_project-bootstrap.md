@@ -27,7 +27,7 @@ evidence_refs:
 ## 1. Purpose
 
 Verify that the empty `hwiStock` project root has enough Hwi Work Harness
-structure to begin planning without accidentally implying live-trading readiness.
+structure to begin planning without accidentally implying operation readiness.
 
 ## 2. Scope
 
@@ -48,26 +48,26 @@ Out of scope:
 - broker/API calls
 - credentials
 - trading strategy validation
-- live or paper order execution
+- operation or broker order execution
 
 ## 3. Scenario Rows
 
 | row_id | priority | mode | steps | expected_result | evidence |
 | --- | --- | --- | --- | --- | --- |
 | QA-001 | P0 | docs | Inspect `AGENTS.md` | Profile path and harness routing are present | file path |
-| QA-002 | P0 | docs | Inspect profile approval policy | Broker/live order/real-money gates require explicit approval | file path |
-| QA-003 | P0 | docs | Inspect module doc | Safety module states no live orders by default | file path |
+| QA-002 | P0 | docs | Inspect profile approval policy | Broker/account-affecting order/account-affecting gates require explicit approval | file path |
+| QA-003 | P0 | docs | Inspect module doc | Safety module states no account-affecting orders by default | file path |
 | QA-004 | P1 | docs | Inspect QA scenario | Scenario references bootstrap unit/module/profile | file path |
-| QA-005 | P1 | docs | Inspect index/profile/unit | Selected broker, stack, strategy/risk, paper-boundary, source registry, closed Ready-Set state, and remaining Go/operational restrictions are visible | file path |
-| QA-006 | P0 | docs | Inspect profile/module/unit | Live operation requires operator-selected paper/sandbox observation evidence before go/no-go approval | file path |
+| QA-005 | P1 | docs | Inspect index/profile/unit | Selected broker, stack, strategy/risk, adapter-boundary, source registry, closed Ready-Set state, and remaining Go/operational restrictions are visible | file path |
+| QA-006 | P0 | docs | Inspect profile/module/unit | Account-affecting operation requires operator-selected adapter-backed observation evidence before go/no-go approval | file path |
 | QA-007 | P0 | docs | Inspect profile/module/unit | Capital policy is cash-only and leveraged capital is forbidden by default | file path |
 
 ## 4. PASS / FAIL / BLOCKED Rules
 
-- PASS: all required docs exist, live-trading side effects remain explicitly
-  forbidden, the operator-selected paper/sandbox observation gate is documented,
+- PASS: all required docs exist, operation-trading side effects remain explicitly
+  forbidden, the operator-selected adapter-backed observation gate is documented,
   and capital is cash-only by default.
-- FAIL: docs imply real-money trading or broker side effects may happen without
+- FAIL: docs imply account-affecting trading or broker side effects may happen without
   approval.
 - BLOCKED: required docs cannot be read.
 

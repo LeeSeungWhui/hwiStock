@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+from configparser import ConfigParser
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -20,6 +21,7 @@ if baseDir not in sys.path:
     sys.path.insert(0, baseDir)
 
 from service import HwiStockRunnerService as runner  # noqa: E402
+import run as backendRun  # noqa: E402
 
 KST = ZoneInfo("Asia/Seoul")
 OPS_SYSTEMD = Path(repoRoot) / "ops" / "systemd"
@@ -50,6 +52,22 @@ def test_run_py_defaults_to_local_bind():
     assert "127.0.0.1" in text
     assert 'host="0.0.0.0"' not in text
     assert "resolve_bind_host" in text
+    assert "reload=True" not in text
+    assert "resolveReloadEnabled" in text
+
+
+def test_run_py_reload_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("HWISTOCK_BACKEND_RELOAD", raising=False)
+    config = ConfigParser()
+    config.add_section("SERVER")
+    assert backendRun.resolveReloadEnabled(config) is False
+
+
+def test_run_py_reload_requires_explicit_env(monkeypatch):
+    config = ConfigParser()
+    config.add_section("SERVER")
+    monkeypatch.setenv("HWISTOCK_BACKEND_RELOAD", "true")
+    assert backendRun.resolveReloadEnabled(config) is True
 
 
 def test_run_sh_defaults_to_local_bind():
@@ -267,6 +285,8 @@ def test_systemd_api_service_template():
     assert "/data/workspace/My/hwiStock" in text
     assert "EnvironmentFile=/home/hwi/.config/hwistock/hwistock.env" in text
     assert "127.0.0.1" in text
+    assert "--reload" not in text
+    assert "reload=True" not in text
 
 
 def test_systemd_runner_service_template():

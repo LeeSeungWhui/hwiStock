@@ -8,7 +8,7 @@ profile_id: PROFILE-HWISTOCK
 updated_at: 2026-06-04
 current_authority: true
 implementation_ready: true
-implementation_ready_scope: skeleton_sandbox_safe_rebaseline_queue
+implementation_ready_scope: skeleton_adapter_safe_rebaseline_queue
 operational_trading_readiness: false
 owner_decision_ref: docs/set/READY-SET-OWNER-DECISION-20260604_rebaseline_hwistock.md
 rebaseline_evidence_ref: docs/evidence/RUN-20260604_ready-set-rebaseline-after-mywebtemplate-import.md
@@ -25,20 +25,20 @@ external_review_evidence_ref: docs/evidence/RUN-20260604_gpt-pro-full-ready-set-
 external_review_evidence_status: historical_before_mywebtemplate_import_supporting_context
 dashboard_design_review_evidence_ref: docs/evidence/RUN-20260604_dashboard-design-review.md
 dashboard_design_review_evidence_status: historical_before_mywebtemplate_import_constraints_only
-kis_paper_smoke_evidence_ref: docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md
+kis_paper_smoke_evidence_ref: docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md
 git_init_delta_sync_ref: docs/evidence/RUN-20260604_git-init-ready-set-delta-sync.md
 reviewed_after_latest_set_closure: false
 post_import_external_review_status: not_run_local_skeleton_rebaseline_only
 open_external_findings_count: 0
 open_external_findings_scope: historical_pre_import_review_findings
-selected_queue_scope: full_queue_skeleton_sandbox_safe
+selected_queue_scope: full_queue_skeleton_adapter_safe
 ---
 
 # Ready-Set Completion Gate — Rebaseline 2026-06-04
 
 > **Scope notice**: `implementation_ready: true` in this report applies **only**
 > to a `skeleton_sandbox_safe_rebaseline_queue`. This is **not** operational
-> trading readiness. No live order, broker-backed execution, or public
+> trading readiness. No account-affecting order, broker-backed execution, or public
 > dashboard exposure is authorized.
 
 ## 1. Verdict
@@ -51,7 +51,7 @@ This report authorizes Go-Check implementation against the imported
 MyWebTemplate code baseline under the condition that every selected row's
 first Go scope includes MyWebTemplate sample/public quarantine and local-only
 bind/access enforcement. It does **not** authorize operational trading,
-live brokerage integration, real-money order flow, AI provider runtime calls,
+brokerage integration, account-affecting order flow, AI provider runtime calls,
 or public/LAN dashboard exposure.
 
 ## 2. What This Report Does Not Authorize
@@ -59,18 +59,18 @@ or public/LAN dashboard exposure.
 The following remain explicitly denied until later explicit owner approval and
 matching profile/module/unit updates:
 
-- Broker network calls outside explicitly scoped approved KIS paper/mock units.
-- Additional KIS token/account/balance/quote/realtime/order/modify/cancel/WebSocket calls outside the completed bounded smoke or future explicitly scoped approved KIS paper/mock units.
+- Broker network calls outside explicitly scoped approved KIS broker-adapter units.
+- Additional KIS token/account/balance/quote/realtime/order/modify/cancel/WebSocket calls outside the completed bounded smoke or future explicitly scoped approved KIS broker-adapter units.
 - AI provider network calls.
-- Paper order placement outside explicitly scoped approved KIS paper/mock units.
-- Live order placement.
+- Broker order placement outside explicitly scoped approved KIS broker-adapter units.
+- Account-affecting broker order placement.
 - Credential storage in the repo or unscoped secret loading.
 - Public or LAN dashboard exposure.
 - Dashboard service-control actions or buy/sell controls.
 - Internal fake broker fills, fake balances, or fake PnL.
 - Expected-profit claims.
 
-The one-week paper/sandbox evidence gate remains future Prove work and is not
+The one-week adapter-backed evidence gate remains future Prove work and is not
 satisfied by this Ready-Set closure.
 
 ## 3. Rebaseline Basis
@@ -86,10 +86,10 @@ This completion gate is issued after:
 - Direct-CWD worker reissue evidence:
   `docs/evidence/RUN-20260604_ready-set-reissue-after-mywebtemplate-owner-decision.md`.
 - Historical owner decisions, external review evidence, dashboard design review
-  evidence, and KIS paper/mock smoke preserved as supporting context, not as
+  evidence, and KIS broker-adapter smoke preserved as supporting context, not as
   post-import external review or current operational authorization.
 - No fresh post-import external review was run for this reissue. The current
-  readiness claim is narrowed to local skeleton/sandbox-safe Go-Check with
+  readiness claim is narrowed to local skeleton/adapter-safe Go-Check with
   MyWebTemplate quarantine as a first-row requirement.
 
 ## 4. Set Unit Inventory
@@ -147,8 +147,8 @@ capabilities remain intentionally excluded or future-gated:
 
 - additional broker/KIS network use requires later explicit unit scope, approval, and evidence;
 - AI provider network use requires later explicit approval and cost/network configuration;
-- additional paper orders and all live orders require later explicit approval;
-- live readiness requires the one-week paper/sandbox gate and explicit go/no-go;
+- additional broker orders and all account-affecting orders require later explicit approval;
+- operation readiness requires the one-week adapter-backed gate and explicit go/no-go;
 - code edits require a newly issued selected-row Go preflight.
 
 ## 9. Go-Check Queue
@@ -172,11 +172,11 @@ Every selected row must still run Go preflight immediately before file edits.
 The following historical safety boundaries remain active constraints for the
 rebaseline queue:
 
-- broker network calls outside explicitly scoped approved KIS paper/mock units: denied;
+- broker network calls outside explicitly scoped approved KIS broker-adapter units: denied;
 - additional KIS token/account/balance/quote/realtime/WebSocket calls outside bounded smoke: denied;
 - additional KIS order/modify/cancel calls outside bounded smoke: denied;
-- paper order placement outside explicitly scoped approved KIS paper/mock units: denied;
-- live order placement: denied;
+- broker order placement outside explicitly scoped approved KIS broker-adapter units: denied;
+- account-affecting order placement: denied;
 - AI provider network calls: denied;
 - credential storage: denied;
 - public or LAN dashboard exposure: denied;

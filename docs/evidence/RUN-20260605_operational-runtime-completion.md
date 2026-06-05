@@ -1,25 +1,31 @@
-# RUN-20260605 operational paper/mock runtime completion
+# RUN-20260605 operational broker-adapter runtime completion
+
+> Correction / supersession note (2026-06-05): after the post-Pro Ready-Set
+> rebaseline, this evidence must be read as "runtime/artifact smoke completed",
+> not as proof that the program is operation-ready. Current authority remains
+> `docs/set/READY-SET-COMPLETION-20260605_operational-automated-trading-program_hwistock.md`,
+> reinforced with explicit non-readiness and dashboard/runtime truth requirements.
 
 Date: 2026-06-05 KST
 Workspace: `/data/workspace/My/hwiStock`
 
 ## Scope
 
-Implemented and smoke-checked the paper/mock operational loop:
+Implemented and smoke-checked the broker-adapter operational loop:
 
-1. KIS paper-read market collector
+1. KIS broker adapter-read market collector
 2. compiled-watch candidate generation
 3. DeepSeek Pro hourly market analysis
 4. DeepSeek Flash trade document generation
-5. paper order intent generation
-6. continuous KIS paper runner consuming latest intent queue
+5. broker order intent generation
+6. continuous KIS broker adapter runner consuming latest intent queue
 7. user systemd timers/services with daily file logs
 
-Live brokerage domain and real-money orders remain disabled.
+Unapproved brokerage domain and account-affecting orders remain disabled.
 
 ## Changed runtime behavior
 
-- KIS market collector now performs the six approved paper-read inputs when
+- KIS market collector now performs the six approved adapter-read inputs when
   `HWISTOCK_KIS_MARKET_READ_NETWORK_ENABLED=true`.
 - KIS market collector writes:
   - `data/kis-market/<YYYY-MM-DD>/kis-market-snapshot-latest.json`
@@ -32,14 +38,14 @@ Live brokerage domain and real-money orders remain disabled.
 - Flash runner calls DeepSeek, validates the deterministic bounded trade
   document, then writes:
   - `data/trade-documents/<YYYY-MM-DD>/flash-trade-document-latest.json`
-  - `data/intents/<YYYY-MM-DD>/paper-order-intents-latest.jsonl`
-- Paper runner now auto-loads the latest intent queue when no explicit intent
+  - `data/intents/<YYYY-MM-DD>/broker-order-intents-latest.jsonl`
+- Broker-adapter runner now auto-loads the latest intent queue when no explicit intent
   file is supplied.
-- Paper runner marks intents consumed only after a passed KIS paper cash-order
+- Broker-adapter runner marks intents consumed only after a passed KIS broker adapter cash-order
   response.
-- Paper runner blocks broker order submission outside KRX regular session even
+- Broker-adapter runner blocks broker order submission outside KRX regular session even
   while the 24-hour service remains running.
-- Shared KIS paper token cache was added outside the repo at
+- Shared KIS broker adapter token cache was added outside the repo at
   `/home/hwi/.config/hwistock/runtime/kis-paper-token-cache.json` to avoid
   tokenP/rate-limit churn. Token values are never printed in evidence.
 
@@ -72,7 +78,7 @@ Commands were run in this order with secrets loaded only through env files:
 1. KIS market collector
 2. Pro hourly analysis
 3. Flash trade document
-4. Paper runner
+4. Broker-adapter runner
 
 Sanitized result summary:
 
@@ -81,9 +87,9 @@ Sanitized result summary:
 | KIS market collector | `status=ok`, `candidate_count=5`, token cache hit |
 | Pro hourly | `validation_status=accepted`, `document_kind=MARKET_ANALYSIS`, `provider_status=ok`, `market_mode=RISK_OFF` |
 | Flash 10m | `validation_status=accepted`, `document_kind=TRADE_ACTIONS`, `provider_status=ok`, `accepted_count=5` |
-| Paper runner at 16:24 KST | intent loaded from latest queue, broker order not called, blocked by `kis_paper_order_requires_krx_regular_session` |
+| Broker-adapter runner at 16:24 KST | intent loaded from latest queue, broker order not called, blocked by `kis_paper_order_requires_krx_regular_session` |
 
-Runner after-hours block is expected: the service remains 24-hour, but KIS paper
+Runner after-hours block is expected: the service remains 24-hour, but KIS broker adapter
 orders are allowed only during KRX regular session.
 
 ## Verification
@@ -106,13 +112,16 @@ python3 -m pytest backend/tests
 ```
 
 The 12 failures are in legacy MyWebTemplate auth/logout/refresh tests returning
-403 and are outside the hwiStock paper/mock runtime scope.
+403 and are outside the hwiStock broker-adapter runtime scope.
 
 ## Residual risk / next watch item
 
-- During KRX regular session, the next paper runner tick should submit only if a
+- During KRX regular session, the next broker-adapter runner tick should submit only if a
   fresh non-expired Flash intent exists and the risk overlay passes.
 - If KIS returns `EGW00201`, treat it as a rate-limit signal and keep the shared
   token cache plus call-gap throttle enabled.
-- The current system is paper/mock operational-test ready, not live-trading
-  approved.
+- Superseded wording: this evidence previously overstated the current system as
+  ready for a broker-adapter operation test. The post-Pro Ready-Set rebaseline narrows
+  that to runtime/artifact smoke only; the current system is not operation-ready
+  or operational-trading-ready until the corrective queue and observation gate
+  pass.

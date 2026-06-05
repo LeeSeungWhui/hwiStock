@@ -87,7 +87,7 @@ evidence_refs:
 links:
   - HWISTOCK-MOD-004
 operational_runtime_authority:
-  superseded_by_module_ref: docs/modules/HWISTOCK-MOD-009_operational-paper-trading-program.md
+  superseded_by_module_ref: docs/modules/HWISTOCK-MOD-009_operational-automated-trading-program.md
   superseded_by_unit_ref: docs/units/HWISTOCK-UNIT-012_ai-analysis-runtime.md
   note: UNIT-005 remains the AI safety foundation; operational Pro/Flash runtime and Flash trade-document contract are governed by UNIT-012.
 ---
@@ -124,7 +124,7 @@ docs-only until a future Go unit creates code.
 - 06:50 GPT prompt generation from overnight analysis artifacts.
 - 07:00 GPT Pro morning review with fallback cutoff.
 - 20:00 daily close report using system-calculated PnL.
-- Audit and paper-run evidence requirements.
+- Audit and operation evidence requirements.
 
 ## 4. Excluded Scope
 
@@ -132,9 +132,9 @@ docs-only until a future Go unit creates code.
 - Creating AI API keys or env files.
 - Calling an AI API.
 - Broker/order implementation.
-- Routing to KIS/external broker endpoints or broker-provided paper/mock/demo/testbed
+- Routing to KIS/external broker endpoints or broker-provided broker-adapter/demo/testbed
   endpoints.
-- Live trading.
+- Account-affecting operation.
 - Profit expectation.
 
 ## 5. Acceptance Criteria
@@ -149,7 +149,7 @@ docs-only until a future Go unit creates code.
 | AC-06 | P1 | AI failure is safe | Timeout/unavailable/malformed AI produces reject/no-new-entry behavior | failure test | QA-006 |
 | AC-07 | P1 | AI calls are auditable | Model, prompt/schema version, input bundle ids, latency, and output are logged | audit log | QA-007 |
 | AC-08 | P0 | AI draft order intents are non-executable | Draft `order_intent` cannot bypass schema or deterministic policy gates | schema/policy test | QA-009 |
-| AC-09 | P0 | Approved intents respect broker boundary | Before KIS paper approval, policy-approved intent becomes no-order dry-run only; after approval it may target only the approved KIS KRX paper path | adapter test | QA-010 |
+| AC-09 | P0 | Approved intents respect broker boundary | Before KIS adapter approval, policy-approved intent becomes no-order dry-run only; after approval it may target only the approved KIS KRX broker-adapter path | adapter test | QA-010 |
 | AC-10 | P0 | Scheduled AI jobs are role-bounded | Pro hourly aggregate analysis, Flash minute trade documents, GPT Pro morning, and daily close jobs have separate schemas/logs; market-regime/session analysis is inside the Pro hourly artifact for operational runtime | schedule/schema review | QA-011 |
 | AC-11 | P0 | AI tool use is disabled first-pass | AI receives normalized bundles only and cannot browse, retrieve, or call tools directly | boundary/config review | QA-015 |
 | AC-12 | P0 | AI network is disabled by default | Config defaults keep AI calls off and cost cap at 0 until explicit approval | config review | QA-016 |
@@ -164,10 +164,10 @@ docs-only until a future Go unit creates code.
   it still must pass deterministic risk gates.
 - AI may produce a draft `order_intent`, but it remains recommendation-only until
   deterministic gates approve it.
-- Before KIS paper approval, the first approved execution sink is no-order
+- Before KIS adapter approval, the first approved execution sink is no-order
   dry-run only. It records decisions but does not simulate broker fills or fake
   balances. After approval, the first broker-backed sink is the approved KIS KRX
-  paper/mock path.
+  broker-adapter path.
 - If a future provider supports tool use, restrict tools to retrieval and
   summarization. Broker/order tools are forbidden.
 
@@ -238,7 +238,7 @@ current provider pricing.
 
 ## 8. Remaining Open Questions
 
-- Exact nonzero token/cost caps for live AI API calls require future current
+- Exact nonzero token/cost caps for paid AI API calls require future current
   provider-pricing verification and explicit approval.
 - Exact prompt file paths remain implementation details, but must use the
   `*/v0` schema names and job ids above.
@@ -256,5 +256,5 @@ UNIT-004 risk-gate handoff, no-order dry-run records, audit records, fallback
 reports, daily-close system-PnL source checks, and tool-use-disabled behavior.
 
 This Go-Check does not authorize AI provider calls, browser automation, nonzero
-AI cost caps, broker/KIS calls, paper/live orders, fake fills, fake balances,
+AI cost caps, broker/KIS calls, adapter/account-affecting orders, fake fills, fake balances,
 fake PnL, server start, DB work, or credential reads.

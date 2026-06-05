@@ -24,7 +24,7 @@ narrowed foundation-only queue. The result is recorded in
 ## 2. Do Not Share
 
 - Broker app keys, app secrets, account ids, tokens, or env files.
-- Real balances, real account identifiers, or unredacted private records.
+- Real balances, broker account identifiers, or unredacted private records.
 - Full copyrighted article bodies.
 - Any file under `/home/hwi/.config/hwistock/`.
 
@@ -39,13 +39,13 @@ for the planned Go queue, with findings first:
   preserves a superseded brainstorming assumption
 - profile approval gates and forbidden operations
 - module/unit/QA consistency
-- broker boundary and KIS paper/live separation
-- no-order dry-run boundary before approved KIS paper smoke
+- broker boundary and KIS adapter-mode separation
+- no-order dry-run boundary before approved KIS broker-adapter smoke
 - cash-only and minimum reserve policy
 - AI cannot place orders or override deterministic gates
 - data/evidence storage readiness
 - dashboard read-only boundary
-- one-week paper/sandbox gate
+- one-week adapter-backed gate
 - owner-decision state and explicit approval boundaries
 - owner decision receipt checklist and whether approval-driven closure is
   protected from ambiguous owner messages
@@ -79,7 +79,7 @@ as the include/exclude source of truth before any actual send.
 ## 5. Reviewer Questions
 
 1. Are any P0 safety gates missing before implementation starts?
-2. Are broker/paper/live boundaries internally consistent?
+2. Are broker/adapter-mode boundaries internally consistent?
 3. Are AI roles safely separated from broker/order permissions?
 4. Does the reviewer see any conflict where an older evidence note appears to
    override the current profile/module/unit/completion/snapshot state?
@@ -87,7 +87,7 @@ as the include/exclude source of truth before any actual send.
    stop-loss, or liquidity risk?
 6. Is it acceptable to narrow the first Go queue to foundation rows while
    trading/dashboard rows remain pending approval/review?
-7. Are the QA scenarios strong enough to prove the one-week paper/sandbox run?
+7. Are the QA scenarios strong enough to prove the one-week adapter-backed run?
 8. Does
    `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260602_hwistock.md` contain the
    right pre-Go hard stops?

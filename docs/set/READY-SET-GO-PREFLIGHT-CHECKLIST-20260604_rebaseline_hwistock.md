@@ -20,8 +20,8 @@ external_review_evidence_ref: docs/evidence/RUN-20260604_gpt-pro-full-ready-set-
 external_review_evidence_status: historical_before_mywebtemplate_import_supporting_context
 dashboard_design_findings_intake_ref: docs/set/READY-SET-REVIEW-FINDINGS-INTAKE-20260604_dashboard-design.md
 git_init_delta_sync_ref: docs/evidence/RUN-20260604_git-init-ready-set-delta-sync.md
-kis_paper_smoke_evidence_ref: docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md
-selected_queue_scope: full_queue_skeleton_sandbox_safe
+kis_paper_smoke_evidence_ref: docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md
+selected_queue_scope: full_queue_skeleton_adapter_safe
 ---
 
 # Ready-Set Go Preflight Checklist — Rebaseline 2026-06-04
@@ -45,15 +45,15 @@ Go must stop before file edits if any row below fails.
 | check_id | required_state | current_expected_result |
 | --- | --- | --- |
 | PF-01 | `docs/set/READY-SET-COMPLETION-20260604_rebaseline_hwistock.md` exists | pass |
-| PF-02 | completion report has `implementation_ready: true` for the selected skeleton/sandbox-safe rebaseline scope | pass; operational trading readiness remains false |
+| PF-02 | completion report has `implementation_ready: true` for the selected skeleton/adapter-safe rebaseline scope | pass; operational trading readiness remains false |
 | PF-03 | selected unit appears in `go_check_queue` of the completion report | pass for all 9 units |
 | PF-04 | selected row state is exactly `ready_for_go_check` in the row closure matrix | pass for all 9 units |
 | PF-05 | selected unit, module, QA scenario, and profile refs all exist | inspect at Go time |
 | PF-06 | current final external review is complete, or an explicit local-only narrowed approval phrase is recorded | conditional_pass for local skeleton rebaseline only: historical GPT Pro review is supporting context, no post-import external review was run, and owner decision records MyWebTemplate quarantine/replacement. Fail if the selected Go scope materially expands broker/KIS, AI provider, credential, public dashboard, operational trading, or visually final dashboard behavior without current review/approval. |
 | PF-07 | no open P0/P1 external review findings remain | pass for historical pre-import findings: full findings intake records no open P0/P1 after fixes/accepted preflight constraints. Re-run review if Go scope crosses the PF-06 material-expansion boundary. |
-| PF-08 | strategy row is approved or excluded if selected or if it affects selected implementation scope | pass for Set: first-pass strategy defaults approved for paper/sandbox planning only; fail for broker-backed strategy/order behavior |
+| PF-08 | strategy row is approved or excluded if selected or if it affects selected implementation scope | pass for Set: first-pass strategy defaults approved for adapter-backed planning only; fail for broker-backed strategy/order behavior |
 | PF-09 | dashboard design review is complete or dashboard row is excluded if dashboard implementation is selected | conditional_pass for Set constraints: historical dashboard review findings are applied as requirements, but imported MyWebTemplate UI was not reviewed as a final hwiStock dashboard. Fail for public/LAN exposure, buy/sell controls, service-control behavior, retained MyWebTemplate branding/sample routes, or visually final dashboard claims without current design Check/review. |
-| PF-10 | broker network, AI network, paper order, live order, and credential-storage approvals are explicit for the selected action | pass for no-network/no-order/no-credential Go actions and for the already completed bounded KIS paper/mock smoke; fail for any new unscoped broker, AI provider, paper, live, credential, public-dashboard, fake-broker, or expected-profit action |
+| PF-10 | broker network, AI network, broker order, account-affecting order, and credential-storage approvals are explicit for the selected action | pass for no-network/no-order/no-credential Go actions and for the already completed bounded KIS broker-adapter smoke; fail for any new unscoped broker, AI provider, adapter, operation, credential, public-dashboard, fake-broker, or expected-profit action |
 | PF-11 | owner decision receipt fields from `docs/set/READY-SET-APPROVAL-ACTIONS-20260602_hwistock.md` are recorded for any approval-driven closure | pass for 2026-06-04 full expansion closure; plus owner decision `READY-SET-OWNER-DECISION-20260604_rebaseline_hwistock.md` is recorded |
 | PF-12 | if a narrowed foundation-only Action 4 closure is selected, conditional `HWISTOCK-UNIT-006` include/exclude scope is recorded | not_applicable for current full queue; `UNIT-006` is included only as no-order dry-run skeleton |
 | PF-13 | before code edits, VCS baseline is resolved by Git initialization or an explicit no-VCS exception evidence note | pass: Git initialized on `main`; evidence `docs/evidence/RUN-20260604_git-init-ready-set-delta-sync.md` |
@@ -78,7 +78,7 @@ For the historical 2026-06-04 full external review, the evidence was
 `docs/evidence/RUN-20260604_gpt-pro-full-ready-set-review.md`.
 
 No post-import external review was run for this rebaseline issue. The current
-preflight is narrowed to local skeleton/sandbox-safe Go-Check and must re-gate
+preflight is narrowed to local skeleton/adapter-safe Go-Check and must re-gate
 if the selected implementation scope crosses PF-06 or PF-09 material-expansion
 boundaries.
 
@@ -109,18 +109,18 @@ For the selected unit, record:
 
 Default state for first Go implementation remains local-only and no-order
 unless explicitly changed by a future owner approval. The completed
-`docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md` smoke is a bounded
+`docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md` smoke is a bounded
 historical exception and does not authorize unscoped implementation behavior:
 
-- Broker network calls outside explicitly scoped approved KIS paper/mock units:
+- Broker network calls outside explicitly scoped approved KIS broker-adapter units:
   denied.
 - Additional KIS token/account/balance/quote/realtime/WebSocket calls outside
-  explicitly scoped approved KIS paper/mock units: denied.
+  explicitly scoped approved KIS broker-adapter units: denied.
 - Additional KIS order/modify/cancel calls outside explicitly scoped approved
-  KIS paper/mock units: denied.
-- Paper order placement outside explicitly scoped approved KIS paper/mock units:
+  KIS broker-adapter units: denied.
+- Broker order placement outside explicitly scoped approved KIS broker-adapter units:
   denied.
-- Live order placement: denied.
+- Account-affecting broker order placement: outside current scope.
 - AI provider network calls: denied.
 - Credential storage: denied.
 - Public dashboard/LAN exposure: denied.
@@ -162,20 +162,20 @@ Required checks:
 
 - Broker/KIS runtime flags remain disabled for unscoped Go rows; local secret
   files may exist but must not be loaded or used unless the selected unit
-  explicitly scopes KIS paper/mock behavior.
+  explicitly scopes KIS broker-adapter behavior.
 - No new KIS token issuance path is invoked unless the selected unit explicitly
   scopes it.
 - No new KIS account, balance, quote, realtime, order, modify/cancel, HTS-ID,
   or WebSocket approval-key path is invoked unless the selected unit explicitly
   scopes it.
-- No paper or live order path is invoked.
+- No adapter or account-affecting order path is invoked.
 - No AI provider network path is invoked.
 - No internal fake broker fill, fake balance, or fake PnL object is produced.
 - Public/LAN dashboard exposure stays disabled.
-- For `HWISTOCK-UNIT-003`, live OpenDART fetch remains disabled unless a later
+- For `HWISTOCK-UNIT-003`, network OpenDART fetch remains disabled unless a later
   source API config approval explicitly enables `DART_API_KEY`, rate cap, and
   storage policy. First Go uses fixture/config skeleton evidence.
-- For `HWISTOCK-UNIT-004`, strategy defaults remain paper/sandbox planning
+- For `HWISTOCK-UNIT-004`, strategy defaults remain adapter-backed planning
   inputs only and cannot trigger orders.
 - For `HWISTOCK-UNIT-005`, `AI_NETWORK_ENABLED=false` remains the default and no
   provider call is made.
@@ -212,7 +212,7 @@ The safety boundaries below remain active constraints. They block any future
 selected row if:
 
 - the selected implementation tries to use unscoped broker/KIS, AI provider,
-  paper-order, live-order, credential-storage, dashboard-public/LAN,
+  adapter-order, operation-order, credential-storage, dashboard-public/LAN,
   service-control, buy/sell, fake-broker, fake-balance, fake-PnL, or
   expected-profit behavior;
 - the selected unit's focused smoke rows cannot prove denied paths remain

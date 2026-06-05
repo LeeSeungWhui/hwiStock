@@ -54,6 +54,64 @@ const SummaryRow = ({ label, children }) => (
   </div>
 );
 
+const formatBooleanState = (value) => (value ? "true" : "false");
+
+const ReadinessTruthBanner = ({ readinessTruth, usesFallback }) => {
+  const truth = readinessTruth || {};
+  const ready = truth.operationalTradingReadiness
+    && truth.paperNetworkEnabled
+    && truth.paperOrdersSubmitted
+    && truth.paperObservationAccepted
+    && !usesFallback;
+  const blockerList = Array.isArray(truth.blockers) ? truth.blockers : [];
+  return (
+    <section
+      role="alert"
+      aria-labelledby="operator-readiness-heading"
+      className={`rounded-lg border px-4 py-3 shadow-sm ${
+        ready
+          ? "border-green-300 bg-green-50 text-green-900"
+          : "border-red-300 bg-red-50 text-red-950"
+      }`}
+      data-testid="operator-readiness-truth"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide">
+            {LANG_KO.view.readiness.title}
+          </p>
+          <h2 id="operator-readiness-heading" className="mt-0.5 text-base font-bold">
+            {ready ? LANG_KO.view.readiness.ready : LANG_KO.view.readiness.notReady}
+          </h2>
+          <p className="mt-1 text-sm">
+            {truth.operatorMessage || LANG_KO.view.readiness.serviceVisibilityWarning}
+          </p>
+        </div>
+        <Badge variant={ready ? "success" : "danger"} size="md">
+          {truth.headline || (ready ? "READY" : "NOT_READY_FOR_PAPER_TRADING")}
+        </Badge>
+      </div>
+      <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
+        <div><strong>{LANG_KO.view.readiness.paperNetwork}</strong>: {formatBooleanState(truth.paperNetworkEnabled)}</div>
+        <div><strong>{LANG_KO.view.readiness.paperOrders}</strong>: {formatBooleanState(truth.paperOrdersSubmitted)}</div>
+        <div><strong>{LANG_KO.view.readiness.observation}</strong>: {formatBooleanState(truth.paperObservationAccepted)}</div>
+        <div><strong>{LANG_KO.view.readiness.operational}</strong>: {formatBooleanState(truth.operationalTradingReadiness)}</div>
+        <div><strong>{LANG_KO.view.readiness.orderGate}</strong>: {truth.orderGate || "unknown"}</div>
+      </div>
+      {usesFallback ? (
+        <p className="mt-2 text-xs font-semibold">{LANG_KO.view.readiness.fallbackWarning}</p>
+      ) : null}
+      {blockerList.length ? (
+        <div className="mt-2 flex flex-wrap gap-1" aria-label={LANG_KO.view.readiness.blockers}>
+          {blockerList.map((blocker) => (
+            <Badge key={blocker} variant="danger" size="sm">{blocker}</Badge>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+};
+
 const OperatorConsoleView = ({
   initialDataObj = {},
   initialErrorObj = {},
@@ -156,6 +214,13 @@ const OperatorConsoleView = ({
             ) : null}
           </div>
         </section>
+      ) : null}
+
+      {!loading ? (
+        <ReadinessTruthBanner
+          readinessTruth={snapshot.readinessTruth}
+          usesFallback={usesFallback}
+        />
       ) : null}
 
       <section

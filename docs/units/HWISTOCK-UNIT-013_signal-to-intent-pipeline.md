@@ -3,9 +3,10 @@ schema_version: hwi.unit/v0
 id: HWISTOCK-UNIT-013
 type: unit
 domain: backend
-name: Signal to paper intent pipeline
+name: Signal to order intent pipeline
 status: go_check_local_passed
-implementation_status: go_check_passed_local_no_network_kis_paper_read_blocked
+implementation_status: go_check_passed_local_no_network_kis_adapter_read_blocked
+post_pro_reinforcement_status: corrective_gap_recorded
 priority: P0
 source_of_truth: user_intent
 owner: hwi
@@ -40,40 +41,44 @@ code_paths:
 qa_scenario_refs:
   - docs/qa/QA-HWISTOCK-UNIT-013_signal-to-intent-pipeline.md
 evidence_refs:
-  - docs/evidence/RUN-20260605_ready-set-operational-paper-trading-program.md
+  - docs/evidence/RUN-20260605_ready-set-operational-automated-trading-program.md
   - docs/evidence/RUN-20260605_gpt-pro-operational-ready-set-review.md
   - docs/evidence/RUN-20260605_owner-selected-naver-kis6-scope.md
   - docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
 ---
 
-# Signal To Paper Intent Pipeline
+# Signal To Order Intent Pipeline
+
+> Post-Pro corrective note (2026-06-05): this unit must prove source/calendar
+> and KIS six-input freshness/readiness without order submission before any
+> trade document can be treated as order-intent eligible.
 
 ## 1. Goal
 
 Create the missing bridge between real-time source collection, KIS intraday
-market data, DeepSeek Flash trade documents, and the KIS paper runner.
+market data, DeepSeek Flash trade documents, and the KIS broker adapter runner.
 
 Current Go status: local no-network Go-Check passed on 2026-06-05 for the
-owner-selected NAVER/OpenDART + KIS six-input scope. KIS paper-read network
+owner-selected NAVER/OpenDART + KIS six-input scope. KIS broker adapter-read network
 transport smoke remains blocked until explicitly scoped and approved.
 
-The program must be able to generate paper order intents from newly written
+The program must be able to generate broker order intents from newly written
 trade documents without relying on a human-written intent file for every test.
 The intent still must be source-grounded, KIS-market-data-confirmed,
-session-confirmed, portfolio/order-state-compatible, risk-checked, and non-live.
+session-confirmed, portfolio/order-state-compatible, risk-checked, and adapter-validated.
 
 Source-authority correction: `docs/sources/HWISTOCK-SOURCE-REGISTRY.md` now
-splits public 24-hour market-intelligence sources from KIS paper-read market
-data. UNIT-013 may perform only KIS paper/mock **market-data reads** needed for
+splits public 24-hour market-intelligence sources from KIS broker adapter-read market
+data. UNIT-013 may perform only KIS broker-adapter **market-data reads** needed for
 signal confirmation and snapshot artifacts. UNIT-013 must not call KIS order,
-cancel, balance-changing, or live endpoints.
+cancel, balance-changing, or unapproved endpoints.
 
 ## 2. Included Scope
 
 - Build a trade-action pipeline from:
   - normalized OpenDART disclosure events and NAVER Search News API events;
   - KIS intraday WebSocket snapshots for realtime trade price/orderbook where
-    paper-supported;
+    adapter-supported;
   - KIS REST ranking/analysis snapshots refreshed every 1-3 minutes, including
     volume rank, volume power, fluctuation rank, and program-trading aggregate
     status where the capability matrix proves support;
@@ -84,16 +89,16 @@ cancel, balance-changing, or live endpoints.
     symbol master data;
   - deterministic candidate-universe artifacts built before Flash runs.
 - Implement or wire the KIS intraday market-data collector for exactly six
-  first-scope paper-read inputs:
+  first-scope adapter-read inputs:
   - KRX realtime trade price WebSocket;
   - KRX realtime orderbook WebSocket;
   - REST `volume-rank`;
   - REST `ranking/volume-power` or equivalent execution-strength upper-rank
     endpoint;
   - REST `ranking/fluctuation`;
-  - REST program-trading aggregate status where paper-supported.
+  - REST program-trading aggregate status where adapter-supported.
   Unsupported NXT/SOR/integrated broker-facing market-data branches must produce
-  disabled/fallback evidence and cannot be treated as paper-proven.
+  disabled/fallback evidence and cannot be treated as adapter-proven.
 - Produce deterministic `condition_card/v0` and `compiled_watch/v0` records.
 - `compiled_watch/v0` is the deterministic candidate universe. Flash may score,
   rank, reject, or explain only symbols already present in that universe. If
@@ -116,7 +121,7 @@ cancel, balance-changing, or live endpoints.
     stop-loss, trailing-stop percent, position-size cap, and action reason;
   - AI invalidation/stop notes are present;
   - deterministic strategy/risk gates pass;
-  - live endpoint, margin, all-in, fake broker, and stale-data checks pass.
+  - unapproved endpoint, margin, all-in, fake broker, and stale-data checks pass.
 - Write the intent queue to a durable data path consumed by UNIT-014.
 - Persist rejected actions with reasons so the dashboard and daily report can
   explain why no trade happened.
@@ -128,13 +133,13 @@ cancel, balance-changing, or live endpoints.
 ## 3. Excluded Scope
 
 - Direct KIS order calls.
-- KIS cancel/modify/order submission calls, even when paper/mock credentials are
+- KIS cancel/modify/order submission calls, even when broker-adapter credentials are
   present.
 - KIS signal inputs outside the owner-selected six-input UNIT-013 scope,
   including REST current-price, intraday bars, intraday executions, top-interest
   stocks, fill notices, balances, buyable cash, or helper APIs unless a future
   approved unit explicitly moves them into scope.
-- Live trading.
+- Unapproved adapter operation.
 - Fake fills/balances/PnL.
 - News-only automatic orders.
 - AI-only orders.
@@ -156,8 +161,8 @@ cancel, balance-changing, or live endpoints.
 | AC-09 | P0 | Portfolio conflicts are blocked | Held symbols, pending orders, active exits, cooldowns, and prior valid trade-doc decisions block conflicting new intents unless a scale-in/exit action is explicitly permitted by deterministic rules. |
 | AC-10 | P0 | UNIT-016 contracts are applied | Intent generation consumes only schema-valid, manifest-complete, fresh, idempotent, reservation-safe artifacts defined by UNIT-016. |
 | AC-11 | P0 | Pending waits are superseded safely | A new accepted trade document cancels prior unfilled `WAIT_BUY` orders unless renewed explicitly and still gate-valid. |
-| AC-12 | P0 | UNIT-013 is paper-read only | KIS order/cancel/modify endpoints are not called by this unit; unsupported NXT/SOR broker-facing branches write disabled/fallback evidence. |
-| AC-13 | P0 | Flash cannot invent candidate symbols | A Flash action whose ticker is absent from deterministic `compiled_watch/v0` is rejected and produces no paper intent. |
+| AC-12 | P0 | UNIT-013 is adapter-read only | KIS order/cancel/modify endpoints are not called by this unit; unsupported NXT/SOR broker-facing branches write disabled/fallback evidence. |
+| AC-13 | P0 | Flash cannot invent candidate symbols | A Flash action whose ticker is absent from deterministic `compiled_watch/v0` is rejected and produces no order intent. |
 | AC-14 | P0 | KIS signal collector is six-input bounded | UNIT-013 attempts only KRX realtime trade price, KRX realtime orderbook, volume rank, execution-strength/volume-power rank, fluctuation rank, and program-trading aggregate status; any other KIS signal endpoint is safe-blocked. |
 
 ## 5. Go Notes

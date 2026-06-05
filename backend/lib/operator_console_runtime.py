@@ -59,6 +59,52 @@ def timelineFromLatest(latestArtifactPaths: Dict[str, Optional[str]]) -> list[Di
     return timelineRows
 
 
+def buildReadinessTruthPanel(
+    *,
+    runnerStatus: Dict[str, Any],
+    latestArtifactPaths: Dict[str, Optional[str]],
+    paperNetworkEnabled: bool = False,
+    paperOrdersSubmitted: bool = False,
+    paperObservationAccepted: bool = False,
+    operationalTradingReadiness: bool = False,
+) -> Dict[str, Any]:
+    fallbackArtifactKeys = [
+        artifactKey
+        for artifactKey, artifactPath in latestArtifactPaths.items()
+        if not artifactPath
+    ]
+    blockerList = []
+    if not paperNetworkEnabled:
+        blockerList.append("paper_network_disabled")
+    if not paperOrdersSubmitted:
+        blockerList.append("paper_orders_not_submitted")
+    if not paperObservationAccepted:
+        blockerList.append("paper_observation_not_accepted")
+    if not operationalTradingReadiness:
+        blockerList.append("operational_trading_readiness_false")
+    orderGate = runnerStatus.get("orderGate")
+    if orderGate and orderGate != "no_order_dry_run_only":
+        blockerList.append(str(orderGate))
+    if fallbackArtifactKeys:
+        blockerList.append("artifact_missing_or_safe_blocked")
+    return {
+        "headline": "NOT_READY_FOR_PAPER_TRADING",
+        "severity": "danger",
+        "operatorMessage": (
+            "서비스/타이머/대시보드가 보여도 모의매매 관찰 준비 완료가 아닙니다. "
+            "paper network, order submission, observation acceptance, order gate를 모두 확인해야 합니다."
+        ),
+        "blockers": blockerList,
+        "paperNetworkEnabled": paperNetworkEnabled,
+        "paperOrdersSubmitted": paperOrdersSubmitted,
+        "paperObservationAccepted": paperObservationAccepted,
+        "operationalTradingReadiness": operationalTradingReadiness,
+        "orderGate": orderGate,
+        "fallbackArtifactKeys": fallbackArtifactKeys,
+        "serviceVisibilityIsNotReadiness": True,
+    }
+
+
 def buildOperatorConsoleSnapshot(
     atKst: Optional[str] = None,
     *,
@@ -70,6 +116,18 @@ def buildOperatorConsoleSnapshot(
     runnerStatus = baseRunner.get_runner_status(snapshotAt.strftime("%Y-%m-%dT%H:%M:%S"))
     latestArtifactPaths = latestRuntimePaths(runtimeRoot, dayKey)
     readiness = runnerStatus["readiness"]
+    paperNetworkEnabled = False
+    paperOrdersSubmitted = False
+    paperObservationAccepted = readiness["paperObservationAccepted"]
+    operationalTradingReadiness = readiness["liveRunnerReady"]
+    readinessTruth = buildReadinessTruthPanel(
+        runnerStatus=runnerStatus,
+        latestArtifactPaths=latestArtifactPaths,
+        paperNetworkEnabled=paperNetworkEnabled,
+        paperOrdersSubmitted=paperOrdersSubmitted,
+        paperObservationAccepted=paperObservationAccepted,
+        operationalTradingReadiness=operationalTradingReadiness,
+    )
     return {
         "schema_version": "operator_console_snapshot/v0",
         "snapshot_at_kst": snapshotAt.isoformat(),
@@ -91,11 +149,12 @@ def buildOperatorConsoleSnapshot(
             "riskRejects": 0,
             "aiJobStatus": pathStatus(latestArtifactPaths.get("ai")),
             "reportStatus": "operator_window_required",
-            "paperNetworkEnabled": False,
-            "paperOrdersSubmitted": False,
-            "paperObservationAccepted": readiness["paperObservationAccepted"],
-            "operationalTradingReadiness": readiness["liveRunnerReady"],
+            "paperNetworkEnabled": paperNetworkEnabled,
+            "paperOrdersSubmitted": paperOrdersSubmitted,
+            "paperObservationAccepted": paperObservationAccepted,
+            "operationalTradingReadiness": operationalTradingReadiness,
         },
+        "readinessTruth": readinessTruth,
         "runtime": {
             "serviceTimers": [
                 {"name": "hwistock-intel-collector.timer", "scope": "user", "status": "configured_or_external"},
@@ -122,13 +181,14 @@ def buildOperatorConsoleSnapshot(
         "auditLog": [
             {"at": snapshotAt.strftime("%H:%M"), "level": "info", "code": "ORDER_GATE", "message": runnerStatus["orderGate"]},
             {"at": snapshotAt.strftime("%H:%M"), "level": "info", "code": "READ_ONLY", "message": "dashboard exposes no buy/sell/live controls"},
+            {"at": snapshotAt.strftime("%H:%M"), "level": "warn", "code": "NOT_PAPER_READY", "message": ",".join(readinessTruth["blockers"])},
         ],
         "readiness": {
             "runningServiceVisible": True,
-            "paperNetworkEnabled": False,
-            "paperOrdersSubmitted": False,
-            "paperObservationAccepted": False,
-            "operationalTradingReadiness": False,
+            "paperNetworkEnabled": paperNetworkEnabled,
+            "paperOrdersSubmitted": paperOrdersSubmitted,
+            "paperObservationAccepted": paperObservationAccepted,
+            "operationalTradingReadiness": operationalTradingReadiness,
             "liveReadinessRequiresExplicitApproval": True,
         },
         "safety": {

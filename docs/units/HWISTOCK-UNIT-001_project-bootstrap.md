@@ -66,7 +66,7 @@ qa_scenario_refs:
 risk:
   tier: 1
   reasons:
-    - Financial automation project, but current unit is docs-only and forbids live trading.
+    - Financial automation project, but current unit is docs-only and forbids account-affecting operation.
 last_set:
   status: set
   report_id: RUN-20260602-unit-001-project-bootstrap-set
@@ -93,9 +93,9 @@ links:
 ## 1. Goal
 
 Prepare the empty `/data/workspace/My/hwiStock` root for a stock day-trading
-automation project using Hwi Work Harness, while explicitly blocking live trading
-and broker side effects until future Set contracts approve them. Actual live
-operation must be preceded by an operator-selected paper/sandbox observation
+automation project using Hwi Work Harness, while explicitly blocking account-affecting operation
+and broker side effects until future Set contracts approve them. Actual operation
+operation must be preceded by an operator-selected adapter-backed observation
 window with named evidence and explicit go/no-go approval. The runner must not
 hardcode the observation duration.
 
@@ -125,8 +125,8 @@ Initial creation of `HWISTOCK-MOD-001`.
 - Credential storage.
 - Market data integration.
 - Backtest engine.
-- Paper/sandbox order execution.
-- Live account access or live orders.
+- Adapter/adapter order execution.
+- Broker account access or account-affecting orders.
 - UI/dashboard implementation.
 
 ## 5. Acceptance Criteria
@@ -134,17 +134,17 @@ Initial creation of `HWISTOCK-MOD-001`.
 | ac_id | priority | criterion | observable_result | evidence | linked_qa_rows |
 | --- | --- | --- | --- | --- | --- |
 | AC-01 | P0 | Root instructions identify the hwiStock profile and harness route | `AGENTS.md` exists with profile path | file review | QA-001 |
-| AC-02 | P0 | Profile blocks live brokerage/order operations by default | approval policy includes broker/live order gates | file review | QA-002 |
+| AC-02 | P0 | Profile blocks brokerage/order operations by default | approval policy includes broker/account-affecting order gates | file review | QA-002 |
 | AC-03 | P0 | Initial safety module exists | `HWISTOCK-MOD-001` exists | file review | QA-003 |
 | AC-04 | P1 | Bootstrap QA scenario exists | QA file exists and references this unit | file review | QA-004 |
-| AC-05 | P1 | Decisions and remaining Go/operational boundaries are listed | selected broker, stack, strategy/risk, paper-boundary, source registry, closed Ready-Set state, and remaining Go/operational restrictions are visible | file review | QA-005 |
-| AC-06 | P0 | Live operation requires an observation evidence gate | profile/module mention operator-selected paper/sandbox observation evidence before live | file review | QA-006 |
+| AC-05 | P1 | Decisions and remaining Go/operational boundaries are listed | selected broker, stack, strategy/risk, adapter-boundary, source registry, closed Ready-Set state, and remaining Go/operational restrictions are visible | file review | QA-005 |
+| AC-06 | P0 | Account-affecting operation requires an observation evidence gate | profile/module mention operator-selected adapter-backed observation evidence before operation | file review | QA-006 |
 | AC-07 | P0 | Capital policy is cash-only | profile/module forbid credit, margin, 미수, borrowed funds, and leveraged capital by default | file review | QA-007 |
 
 ## 6. Implementation Notes
 
 This is a docs-only bootstrap. Future product-code units must pass Ready-Set
-before Go and must not treat this bootstrap as permission to implement live
+before Go and must not treat this bootstrap as permission to implement operation
 trading.
 
 ## 7. Open Questions
@@ -165,7 +165,7 @@ Closed by later Set docs:
 
 Closed by rebaseline Ready-Set completion (2026-06-04):
 
-- Strategy decision-packet approval was recorded for paper/sandbox planning
+- Strategy decision-packet approval was recorded for adapter-backed planning
   defaults.
 - Dashboard design review was executed and its Set-level findings were applied.
 - Historical pre-import closure is recorded in
@@ -176,7 +176,7 @@ Closed by rebaseline Ready-Set completion (2026-06-04):
   `docs/set/READY-SET-OWNER-DECISION-20260604_rebaseline_hwistock.md`, and
   `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260604_rebaseline_hwistock.md`.
 - The current Ready-Set gate is `implementation_ready: true` only for the
-  `skeleton_sandbox_safe_rebaseline_queue`. It is not live or operational
+  `skeleton_sandbox_safe_rebaseline_queue`. It is not operation or operational
   trading readiness.
 - MyWebTemplate sample/public/template quarantine is a documented first-row
   blocker for affected future units; UNIT-001 verified guardrails only and did
@@ -196,7 +196,7 @@ Still future strategy/provider follow-up, not permission to infer during Go:
 | --- | --- | --- | --- |
 | module | sufficient | `HWISTOCK-MOD-001` covers safety, approvals, runtime, broker boundary, risk invariants, and verification families | no |
 | unit | sufficient | docs-only bootstrap contract and boundaries are explicit | no |
-| qa_scenario | sufficient | docs-only QA rows cover profile, module, operator-selected paper observation gate, and capital policy | no |
+| qa_scenario | sufficient | docs-only QA rows cover profile, module, operator-selected operation observation gate, and capital policy | no |
 | smoke | minimal_exception | docs-only unit; smoke is file/content review | no |
 | prove_full_run | minimal_exception | docs-only unit; no browser/API/product flow exists | no |
 
@@ -211,5 +211,5 @@ evidence is historical only.
 The broader rebaseline queue has `implementation_ready: true` for
 `skeleton_sandbox_safe_rebaseline_queue`, but this unit still does not authorize
 product-code implementation beyond its docs-only scope, broker/KIS/AI network
-calls, paper orders, live orders, credential storage, MyWebTemplate surface
+calls, broker orders, account-affecting orders, credential storage, MyWebTemplate surface
 removal, or operational trading readiness.

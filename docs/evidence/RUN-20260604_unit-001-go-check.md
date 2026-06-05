@@ -28,7 +28,7 @@ Original pre-rebaseline verdict (superseded): PASS for docs-only bootstrap
 verification against `READY-SET-COMPLETION-20260602_hwistock.md`.
 
 This historical result does not authorize product-code implementation outside the
-docs-only unit, broker/KIS network calls, AI provider calls, paper orders, live
+docs-only unit, broker/KIS network calls, AI provider calls, broker orders, operation
 orders, credential storage, or operational trading readiness.
 
 ## 2. Go Changes
@@ -38,7 +38,7 @@ orders, credential storage, or operational trading readiness.
 - Replaced stale "full Ready-Set completion still blocking" language with the
   current full-queue closure state and residual operational restrictions.
 - Updated `docs/modules/HWISTOCK-MOD-001_trading-safety-core.md` to distinguish
-  the completed owner-approved bounded KIS paper/mock smoke from ordinary
+  the completed owner-approved bounded KIS broker-adapter smoke from ordinary
   future Go behavior.
 - Updated `docs/qa/QA-HWISTOCK-UNIT-001_project-bootstrap.md` and
   `docs/index.md` with UNIT-001 Go-Check evidence references.
@@ -54,11 +54,11 @@ orders, credential storage, or operational trading readiness.
 | row_id | result | evidence |
 | --- | --- | --- |
 | QA-001 | pass | `AGENTS.md` exists and identifies `docs/profiles/PROFILE-HWISTOCK.md` plus Hwi Work Harness routing. |
-| QA-002 | pass | Profile approval policy keeps broker/live order/real-money operations approval-gated. |
-| QA-003 | pass | `HWISTOCK-MOD-001` states no live orders by default and keeps order placement disabled unless an active unit explicitly approves it. |
+| QA-002 | pass | Profile approval policy keeps broker/account-affecting order/account-affecting operations approval-gated. |
+| QA-003 | pass | `HWISTOCK-MOD-001` states no account-affecting orders by default and keeps order placement disabled unless an active unit explicitly approves it. |
 | QA-004 | pass | QA scenario references `HWISTOCK-UNIT-001`, `HWISTOCK-MOD-001`, and `PROFILE-HWISTOCK`. |
 | QA-005 | pass | Index/profile/unit/module show KIS direction, stack/risk decisions, closed Ready-Set state, bounded KIS smoke, and residual operational restrictions. |
-| QA-006 | pass | Profile/module/unit preserve the one full week paper/sandbox evidence gate before live go/no-go. |
+| QA-006 | pass | Profile/module/unit preserve the one full week adapter-backed evidence gate before operation go/no-go. |
 | QA-007 | pass | Profile/module/unit preserve cash-only/no-leverage policy. |
 
 ## 5. Validation Commands

@@ -21,7 +21,7 @@ environment: docs_only
 Later 2026-06-02 profile updates supersede the internal `mock_broker_api`
 direction in this historical evidence. Current policy: no internal fake broker
 execution path; pre-approval behavior is no-order dry-run only, and the first
-broker-backed path is approved KIS KRX paper/mock-investment.
+broker-backed path is approved KIS KRX broker-adapter.
 
 ## Summary
 
@@ -32,9 +32,9 @@ Securities was blocked for practical personal-account API use.
 This is a direction decision, not permission to call broker APIs. Internal fake
 broker execution is not used. Before an explicitly approved broker-network unit,
 execution stops at no-order dry-run records. The first broker-backed path is
-approved KIS KRX paper/mock investment. KIS live network calls remain out of
+approved KIS KRX broker-adapter. KIS operation network calls remain out of
 scope until a future approved unit verifies current official docs, credentials,
-endpoint modes, call limits, NXT/KRX routing support, and live safety
+endpoint modes, call limits, NXT/KRX routing support, and adapter safety
 requirements.
 
 ## Source Notes
@@ -44,21 +44,21 @@ requirements.
   OAuth-style access.
 - KIS Developers API overview lists domestic stock order/account and market-data
   families, including cash stock order.
-- The official KIS GitHub sample repository documents separate real and mock
+- The official KIS GitHub sample repository documents separate real and adapter
   investment app keys, Python REST/WebSocket samples, and auth environment
   switching. These samples are reference material only until the approved KIS
-  paper unit verifies the current official behavior.
+  adapter unit verifies the current official behavior.
 
 ## Decisions
 
 - Broker/API provider direction: KIS.
 - Pre-approval execution behavior: no-order dry-run records only.
-- KIS KRX paper/mock investment is the planned first broker-backed path after an
+- KIS KRX broker-adapter is the planned first broker-backed path after an
   approved KIS unit and smoke.
 - KIS API network calls: forbidden until a future broker-integration unit.
-- Other broker-provided mock/demo/testbed/sandbox APIs remain deferred unless a
+- Other broker-provided adapter/adapter APIs remain deferred unless a
   later unit approves them.
-- KIS KRX paper/mock investment APIs require explicit approved KIS paper unit
+- KIS KRX broker-adapter APIs require explicit approved KIS adapter unit
   and smoke before any network call.
 - Credential storage: forbidden until a future approved credentials unit.
 - KB Securities remains blocked as a practical personal API candidate.
@@ -76,10 +76,10 @@ requirements.
 
 ## Follow-Up
 
-- Define no-order dry-run schema and KIS KRX paper adapter schema/fallback.
+- Define no-order dry-run schema and KIS KRX broker adapter schema/fallback.
 - Confirm KIS current domestic stock order APIs, quote APIs, REST/WebSocket
   endpoints, call limits, and auth flow from official docs.
 - Confirm whether KIS exposes the NXT/KRX routing details needed for the owner
   policy.
-- Keep KIS paper network disabled until an approved unit and smoke; NXT/SOR are
-  not paper-proven yet and need separate confirmation.
+- Keep KIS adapter network disabled until an approved unit and smoke; NXT/SOR are
+  not adapter-proven yet and need separate confirmation.

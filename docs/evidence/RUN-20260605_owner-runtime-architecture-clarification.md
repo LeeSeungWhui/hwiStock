@@ -9,8 +9,8 @@ docs_base: docs
 current_authority: false
 updated_at: 2026-06-05
 profile_ref: docs/profiles/PROFILE-HWISTOCK.md
-module_ref: docs/modules/HWISTOCK-MOD-009_operational-paper-trading-program.md
-ready_set_ref: docs/set/READY-SET-COMPLETION-20260605_operational-paper-trading-program_hwistock.md
+module_ref: docs/modules/HWISTOCK-MOD-009_operational-automated-trading-program.md
+ready_set_ref: docs/set/READY-SET-COMPLETION-20260605_operational-automated-trading-program_hwistock.md
 superseded_by:
   - docs/evidence/RUN-20260605_owner-runtime-architecture-10m-trade-document-rebaseline.md
   - docs/evidence/RUN-20260605_owner-selected-naver-kis6-scope.md
@@ -21,12 +21,12 @@ superseded_by:
 ## 1. Clarified Target
 
 The owner clarified that the intended hwiStock program is a file-driven,
-continuously running paper-trading pipeline:
+continuously running automated-trading pipeline:
 
 1. 24-hour news/disclosure collection from permitted/free public sources.
 2. Continuous KIS intraday market-data collection during the approved intraday
    window, including price/quote context, ranking/analysis data, and
-   paper-supported KRX realtime price/orderbook feeds.
+   adapter-supported KRX realtime price/orderbook feeds.
 3. DeepSeek Pro runs on the top of every hour and writes an aggregate analysis
    file. During market hours, market-regime/session analysis belongs inside this
    Pro artifact.
@@ -37,7 +37,7 @@ continuously running paper-trading pipeline:
    notes.
 5. The auto-trading runner watches newly written trade documents, validates them
    through deterministic risk gates plus current holdings/pending-order/active
-   exit checks, and submits only approved KIS KRX paper/mock cash orders.
+   exit checks, and submits only approved KIS KRX broker-adapter cash orders.
 
 Additional owner clarification: Flash must avoid conflicts with the current
 portfolio. It must read the previous trade-document chain and/or current
@@ -47,7 +47,7 @@ conflicts immediately before KIS submission because holdings and pending orders
 can change after Flash writes the document.
 
 This replaces any design implication that market-regime analysis is a detached
-subsystem or that the current KIS paper runner foundation alone is the complete
+subsystem or that the current KIS broker-adapter runner foundation alone is the complete
 program.
 
 ## 2. Source Recommendations Captured
@@ -72,9 +72,9 @@ KIS intraday collection scope:
 - REST ranking/analysis:
   `volume-rank`, `ranking/fluctuation`, `ranking/volume-power`,
   `ranking/top-interest-stock`.
-- WebSocket/realtime, where paper-supported:
+- WebSocket/realtime, where adapter-supported:
   KRX realtime trade price `H0STCNT0`, KRX realtime orderbook `H0STASP0`, and
-  paper fill notice `H0STCNI9`.
+  adapter fill notice `H0STCNI9`.
 
 Historical note: this broad KIS list is not the current UNIT-013 signal scope.
 Current UNIT-013 signal scope is the six-input allowlist recorded in
@@ -84,16 +84,16 @@ Current UNIT-013 signal scope is the six-input allowlist recorded in
 
 - `docs/profiles/PROFILE-HWISTOCK.md`
 - `docs/index.md`
-- `docs/modules/HWISTOCK-MOD-009_operational-paper-trading-program.md`
-- `docs/set/READY-SET-COMPLETION-20260605_operational-paper-trading-program_hwistock.md`
-- `docs/set/READY-SET-ROW-CLOSURE-20260605_operational-paper-trading-program_hwistock.md`
-- `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-paper-trading-program_hwistock.md`
+- `docs/modules/HWISTOCK-MOD-009_operational-automated-trading-program.md`
+- `docs/set/READY-SET-COMPLETION-20260605_operational-automated-trading-program_hwistock.md`
+- `docs/set/READY-SET-ROW-CLOSURE-20260605_operational-automated-trading-program_hwistock.md`
+- `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-automated-trading-program_hwistock.md`
 - `docs/units/HWISTOCK-UNIT-012_ai-analysis-runtime.md`
 - `docs/units/HWISTOCK-UNIT-013_signal-to-intent-pipeline.md`
-- `docs/units/HWISTOCK-UNIT-014_kis-paper-order-execution-reconciliation.md`
+- `docs/units/HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md`
 - `docs/qa/QA-HWISTOCK-UNIT-012_ai-analysis-runtime.md`
 - `docs/qa/QA-HWISTOCK-UNIT-013_signal-to-intent-pipeline.md`
-- `docs/qa/QA-HWISTOCK-UNIT-014_kis-paper-order-execution-reconciliation.md`
+- `docs/qa/QA-HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md`
 
 ## 4. Readiness Statement
 
@@ -104,5 +104,5 @@ Current correct status remains:
 
 - `paper_run_ready: false`
 - `operational_trading_readiness: false`
-- live trading: forbidden
-- KIS live orders: forbidden
+- account-affecting operation: forbidden
+- KIS account-affecting orders: forbidden

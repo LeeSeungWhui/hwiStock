@@ -27,7 +27,7 @@ intelligence ingestion skeleton scope.
 
 This verdict authorizes only local source-registry loading, fixture ingestion,
 normalized event shaping, deduplication, health/summary output, blocked-source
-guards, tests, and evidence. It does not authorize live OpenDART calls, Naver
+guards, tests, and evidence. It does not authorize network OpenDART calls, Naver
 calls, KRX/KIND automated collection, KIS/broker data calls, AI provider calls,
 orders, credential storage, HTML scraping, or runtime data artifact commits.
 
@@ -42,7 +42,7 @@ orders, credential storage, HTML scraping, or runtime data artifact commits.
 - Supersession note: the original no_delegation preflight line is superseded by
   the explicit owner/orchestrator worker contract for this Go pass. The
   implementation worker remains bounded to the UNIT-003 fixture/config-first
-  scope and does not authorize any live source, broker, AI, or order operation.
+  scope and does not authorize any network source, broker, AI, or order operation.
 - Allowed writes:
   - `backend/**`
   - `docs/units/HWISTOCK-UNIT-003_market-intelligence-ingestion.md`
@@ -51,7 +51,7 @@ orders, credential storage, HTML scraping, or runtime data artifact commits.
   - `docs/index.md`
   - `docs/evidence/RUN-20260604_unit-003-*.md`
 - Forbidden:
-  - live source or broker network calls
+  - network source or broker network calls
   - broker/KIS/AI credentials, tokens, or account identifiers
   - order placement, fake fills, fake balances, fake PnL
   - general media HTML scraping and unofficial finance APIs
@@ -71,7 +71,7 @@ Included implementation:
 
 Excluded:
 
-- live OpenDART API calls
+- network OpenDART API calls
 - Naver API calls
 - KRX/KIND automated collection
 - KIS/broker market/realtime/news calls
@@ -95,7 +95,7 @@ Excluded:
 | PF-09 | pass | Dashboard UI is out of scope. |
 | PF-10 | pass | Selected action is no-network, no-order, no-credential-storage local fixture/config work. |
 | PF-11 | pass | Full expansion owner decisions are recorded in the completion report evidence chain. |
-| PF-12 | not_applicable | Current queue is the full skeleton/sandbox-safe queue. |
+| PF-12 | not_applicable | Current queue is the full skeleton/adapter-safe queue. |
 | PF-13 | pass | Git initialized on `main`; baseline commit `540a1c3` exists; `.env` and runtime `data/` are ignored. |
 
 ## 5. Pre-Go Action

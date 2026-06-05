@@ -1,6 +1,6 @@
 ---
 schema_version: hwi.evidence-summary/v0
-id: RUN-20260605-ready-set-operational-paper-trading-program
+id: RUN-20260605-ready-set-operational-automated-trading-program
 type: evidence
 stage: ready-set
 status: superseded_by_10m_trade_document_rebaseline
@@ -25,12 +25,12 @@ superseded_by:
   - RUN-20260605-owner-runtime-architecture-10m-trade-document-rebaseline
 ---
 
-# Ready-Set Evidence — Operational Paper Trading Program
+# Ready-Set Evidence — Operational Automated Trading Program
 
 ## 1. Trigger
 
 The owner clarified that Ready-Set must target an actually runnable stock
-trading program, not merely a skeleton or one isolated KIS paper runner file.
+trading program, not merely a skeleton or one isolated KIS broker-adapter runner file.
 
 ## 2. Local Runtime Findings
 
@@ -38,15 +38,15 @@ Observed on 2026-06-05:
 
 - Earlier Ready-Set inspection found only partial service wiring. Later
   UNIT-011 runtime-start evidence shows API/frontend plus market-intelligence,
-  DeepSeek analysis, runner evidence, KIS paper health, and KIS paper continuous
+  DeepSeek analysis, runner evidence, KIS adapter health, and KIS adapter continuous
   runner timers active under user systemd.
-- The KIS paper runner can perform paper read/reconciliation ticks, but paper
+- The KIS broker-adapter runner can perform adapter read/reconciliation ticks, but adapter
   cash order submission remains disabled unless explicitly enabled.
 - The base runner currently reports `blocked_calendar_unconfigured`, so order
   execution must remain blocked until the calendar/session layer is configured.
 - The repository contains AI/KIS/systemd runner parts, but no end-to-end KIS
   intraday market-data -> Flash trade-document -> source-grounded
-  signal-to-paper-intent pipeline is active.
+  signal-to-order-intent pipeline is active.
 
 ## 3. External Reference Findings
 
@@ -59,7 +59,7 @@ Checked on 2026-06-05:
   `deepseek-v4-pro` in the example model list.
 - KIS official `koreainvestment/open-trading-api` repository identifies itself
   as the Korea Investment & Securities Open API sample repository, includes
-  domestic-stock categories, and documents separate real/paper app key and app
+  domestic-stock categories, and documents separate real/adapter app key and app
   secret setup in sample configuration guidance.
 - The owner clarified that market-regime analysis is part of the hourly Pro
   analysis during market hours; it is not a separate detached subsystem.
@@ -84,7 +84,7 @@ Accepted blocking findings include:
 - missing ambiguous broker-submit recovery;
 - missing order state machine;
 - missing freshness TTLs; and
-- missing enforceable paper-only broker guard.
+- missing enforceable adapter-bound broker guard.
 
 Follow-up on 2026-06-05: `HWISTOCK-UNIT-016` closed the Set-level runtime
 contract hardening pass. The current authority is now the updated Ready-Set
@@ -97,22 +97,22 @@ completion plus:
 
 ## 4. Ready-Set Outputs Created
 
-- `docs/modules/HWISTOCK-MOD-009_operational-paper-trading-program.md`
+- `docs/modules/HWISTOCK-MOD-009_operational-automated-trading-program.md`
 - `docs/units/HWISTOCK-UNIT-011_operational-runtime-supervisor.md`
 - `docs/units/HWISTOCK-UNIT-016_runtime-contract-hardening.md`
 - `docs/units/HWISTOCK-UNIT-012_ai-analysis-runtime.md`
 - `docs/units/HWISTOCK-UNIT-013_signal-to-intent-pipeline.md`
-- `docs/units/HWISTOCK-UNIT-014_kis-paper-order-execution-reconciliation.md`
+- `docs/units/HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md`
 - `docs/units/HWISTOCK-UNIT-015_operator-console-observation-prove.md`
 - `docs/qa/QA-HWISTOCK-UNIT-011_operational-runtime-supervisor.md`
 - `docs/qa/QA-HWISTOCK-UNIT-016_runtime-contract-hardening.md`
 - `docs/qa/QA-HWISTOCK-UNIT-012_ai-analysis-runtime.md`
 - `docs/qa/QA-HWISTOCK-UNIT-013_signal-to-intent-pipeline.md`
-- `docs/qa/QA-HWISTOCK-UNIT-014_kis-paper-order-execution-reconciliation.md`
+- `docs/qa/QA-HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md`
 - `docs/qa/QA-HWISTOCK-UNIT-015_operator-console-observation-prove.md`
-- `docs/set/READY-SET-COMPLETION-20260605_operational-paper-trading-program_hwistock.md`
-- `docs/set/READY-SET-ROW-CLOSURE-20260605_operational-paper-trading-program_hwistock.md`
-- `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-paper-trading-program_hwistock.md`
+- `docs/set/READY-SET-COMPLETION-20260605_operational-automated-trading-program_hwistock.md`
+- `docs/set/READY-SET-ROW-CLOSURE-20260605_operational-automated-trading-program_hwistock.md`
+- `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-automated-trading-program_hwistock.md`
 - `docs/evidence/RUN-20260605_owner-runtime-architecture-clarification.md`
 - `docs/evidence/RUN-20260605_gpt-pro-operational-ready-set-review.md`
 
@@ -136,7 +136,7 @@ Current operational verdict remains:
 - `operational_trading_readiness: false`
 - `live_runner_ready: false`
 
-No new KIS order, AI provider call, paper order, or live trading operation was
-performed by this GPT Pro review/contract-hardening update. Paper-run readiness
+No new KIS order, AI provider call, broker order, or account-affecting operation operation was
+performed by this GPT Pro review/contract-hardening update. Adapter-run readiness
 still requires Go/Check/Prove evidence for the order-producing rows and explicit
-paper-order enablement.
+adapter-order enablement.

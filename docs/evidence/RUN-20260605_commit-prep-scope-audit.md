@@ -170,6 +170,6 @@ This run did not perform:
 - git push;
 - KIS/broker/API calls;
 - order placement;
-- live trading;
+- account-affecting operation;
 - deployment;
 - browser/server rerun.

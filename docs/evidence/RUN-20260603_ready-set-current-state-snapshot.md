@@ -31,7 +31,7 @@ foundation-only ChatGPT Pro review and row-closure rewrite on 2026-06-03.
 
 It is a docs-only snapshot. It authorizes only selected-row Go preflight for the
 narrowed foundation-only queue. It does not authorize broker calls, AI provider
-calls, paper orders, live orders, credential storage, or dashboard exposure.
+calls, broker orders, account-affecting orders, credential storage, or dashboard exposure.
 
 ## 2. Authoritative Current State
 
@@ -134,7 +134,7 @@ During this snapshot:
 - No AI provider network call was made.
 - External review was sent only through the sanitized 80-file Markdown planning
   bundle after exact-match and secret-scan checks passed.
-- No paper or live order was placed.
+- No adapter or account-affecting order was placed.
 - No Go implementation was started.
 
 ## 6. Result

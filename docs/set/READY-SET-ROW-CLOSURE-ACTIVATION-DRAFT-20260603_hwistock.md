@@ -69,7 +69,7 @@ reviews/decisions are closed.
 | 5 | HWISTOCK-UNIT-004 | ready_for_go_check | strategy decision packet approved/revised and final review closed | strategy/risk rulebook; no broker/AI network by itself |
 | 6 | HWISTOCK-UNIT-006 | ready_for_go_check | final review closed and strategy boundary accepted | no-order dry-run/order-state work first; broker calls still require later explicit approval |
 | 7 | HWISTOCK-UNIT-005 | ready_for_go_check | final review closed and AI cost/network remains disabled unless separately approved | AI orchestration schemas/jobs; provider network disabled by default |
-| 8 | HWISTOCK-UNIT-002 | ready_for_go_check | final review closed | systemd runner/paper evidence shell; no paper orders unless later approved |
+| 8 | HWISTOCK-UNIT-002 | ready_for_go_check | final review closed | systemd runner/adapter evidence shell; no broker orders unless later approved |
 | 9 | HWISTOCK-UNIT-007 | ready_for_go_check | dashboard design review closed and final review closed | read-only local dashboard; no buy/sell controls |
 
 Completion report may become `implementation_ready: true` only if:
@@ -139,8 +139,8 @@ The activation draft never approves:
 
 - broker network calls
 - KIS token/account/balance/order calls
-- KIS paper order placement
-- live order placement
+- KIS broker order placement
+- account-affecting order placement
 - AI provider network calls
 - public or LAN dashboard exposure
 - internal fake broker fills, fake balances, or fake PnL

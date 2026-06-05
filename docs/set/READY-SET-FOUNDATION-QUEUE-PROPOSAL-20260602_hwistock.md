@@ -32,9 +32,9 @@ intake, completion report rewrite, and row-closure matrix rewrite.
 | --- | --- | --- | --- | --- |
 | 1 | HWISTOCK-UNIT-001 | include_docs_only | Bootstrap/profile verification and docs-only safety boundary | Product code changes |
 | 2 | HWISTOCK-UNIT-008 | include | PostgreSQL schema/migration skeleton, artifact path/schema contracts, redaction-safe storage foundations | Broker calls, AI calls, trading decisions |
-| 3 | HWISTOCK-UNIT-003 | include | Fixture/config-first source registry, DART disclosure schema, dedupe/event schema | Live OpenDART without later source API config approval, Naver without key/query approval, KIS/broker data, HTML scraping |
+| 3 | HWISTOCK-UNIT-003 | include | Fixture/config-first source registry, DART disclosure schema, dedupe/event schema | Network OpenDART without later source API config approval, Naver without key/query approval, KIS/broker data, HTML scraping |
 | 4 | HWISTOCK-UNIT-009 | include_docs_only | KIS capability docs/matrix refinement from local references only | KIS network calls, token issuance, account/balance calls |
-| 5 | HWISTOCK-UNIT-006 | include_no_order_skeleton | No-order dry-run condition/order-state skeleton only | Broker paper/live calls, fake fills, fake balance, fake PnL, strategy-triggered orders, submitted-or-later execution |
+| 5 | HWISTOCK-UNIT-006 | include_no_order_skeleton | No-order dry-run condition/order-state skeleton only | Broker adapter/unapproved calls, fake fills, fake balance, fake PnL, strategy-triggered orders, submitted-or-later execution |
 
 ## 3. Deferred Rows
 
@@ -72,8 +72,8 @@ queue only.
 
 ## 6. Safety Boundaries
 
-- No live trading.
-- No paper order placement.
+- No account-affecting operation.
+- No broker order placement.
 - No broker network calls.
 - No AI provider network calls.
 - No internal fake broker fills, fake balances, or fake PnL.

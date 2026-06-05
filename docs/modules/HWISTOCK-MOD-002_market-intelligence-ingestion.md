@@ -94,7 +94,7 @@ branch.
   feeds over generic scraping.
 - First source allowlist:
   - OPENDART / DART Open API is approved for the first ingestion implementation.
-  - Public news search RSS metadata is approved for the first live collector
+  - Public news search RSS metadata is approved for the first source collector
     path without API keys. It stores feed metadata and RSS summaries/excerpts
     only and must not crawl article bodies, login pages, paywalled pages, or
     general HTML pages.
@@ -123,7 +123,7 @@ branch.
 | surface | names / paths / ids | behavior owned | out of scope | evidence needed |
 | --- | --- | --- | --- | --- |
 | source registry | `backend.lib.market_intelligence.loadSourceRegistryConfig` | allowed sources and limits | unapproved sources | config review |
-| crawler/fetcher | `backend.service.market_intelligence_ingestion.ingestFixtureRows` | fixture-only metadata/events | direct trading/live fetch | logs/tests |
+| crawler/fetcher | `backend.service.market_intelligence_ingestion.ingestFixtureRows` | fixture-only metadata/events | direct trading/operation fetch | logs/tests |
 | disclosure source | DART first; KIND conditional | public disclosure events | private data | source evidence |
 | news source | Public RSS metadata approved; Naver Search API conditional; general HTML scraping forbidden | news/article metadata and permitted RSS summaries/excerpts | full article copying beyond allowed policy | source evidence |
 | chart data source | KRX delayed conditional; KIS realtime deferred | candles/OHLCV/volume/latency | chart image scraping | data evidence |
@@ -147,7 +147,7 @@ the 2026-06-04 UNIT-003 rebaseline Go-Check.
 
 Future interfaces may include:
 
-- live fetch scheduler after explicit source approval
+- operation fetch scheduler after explicit source approval
 - dedupe store
 - normalized event store
 - chart/market-data adapter after source terms/access approval
@@ -159,7 +159,7 @@ Future interfaces may include:
 - Source allowlist is required before implementation.
 - Source registry is `docs/sources/HWISTOCK-SOURCE-REGISTRY.md`.
 - Retention default: keep normalized events, source metadata, and summaries
-  through the operator-selected paper/sandbox observation gate. Longer retention
+  through the operator-selected adapter-backed observation gate. Longer retention
   and compression remain storage-policy questions.
 - Copyright/terms handling is source-specific. Full article body storage is
   forbidden unless the registry explicitly allows it.
@@ -197,7 +197,7 @@ Future interfaces may include:
 - Decision: chart signals must use approved raw market data, not scraped chart
   images.
 - Decision: OPENDART / DART Open API is the first approved disclosure source.
-- Decision: no-key public RSS news metadata search is approved for first live
+- Decision: no-key public RSS news metadata search is approved for first operation
   collection when it stores metadata/excerpts only and does not crawl article
   bodies.
 - Decision: NAVER Search API news is conditional after key/query/rate approval.
@@ -240,7 +240,7 @@ market-intelligence ingestion skeleton scope. The implementation defines a
 deterministic source registry, fixture-only event normalization, duplicate
 linking, summary/health output, blocked-source enforcement, KST `+09:00`
 timestamp validation, registry-controlled body storage policy, and focused
-tests. No live source API call, broker/KIS call, AI provider call, order
+tests. No network source API call, broker/KIS call, AI provider call, order
 placement, credential read, runtime scheduler, runtime artifact write, server
 operation, browser QA, or deploy was performed.
 

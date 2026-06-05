@@ -60,7 +60,7 @@ selection for hwiStock.
 
 - No source-code folders were created in this pass.
 - No broker API, AI API, database, or network call was made.
-- No order placement, paper order, simulated fill, or fake balance was created.
+- No order placement, broker order, simulated fill, or fake balance was created.
 - The stack decision does not make the Ready-Set bundle implementation-ready.
 
 ## 5. Follow-Ups

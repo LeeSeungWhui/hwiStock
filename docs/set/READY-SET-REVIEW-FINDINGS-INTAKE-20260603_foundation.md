@@ -53,9 +53,9 @@ pf12_status: pass
 | GPTR-FND-001 | external_ready_set | P1 | unit / row_closure | `HWISTOCK-UNIT-006`, row closure | First-Go `UNIT-006` scope must stay strictly no-order dry-run skeleton only. | Narrow first-Go scope and row reason. | fixed | `docs/evidence/RUN-20260603_gpt-pro-foundation-ready-set-review.md` |
 | GPTR-FND-002 | external_ready_set | P1 | evidence / workflow | completion, preflight | No-VCS baseline needs a first-Go sequencing decision. | Require Git initialization or explicit no-VCS exception before code edits. | fixed | `docs/evidence/RUN-20260603_gpt-pro-foundation-ready-set-review.md` |
 | GPTR-FND-003 | external_ready_set | P1 | QA / network | preflight, selected QA docs | Selected queue needs proof broker/AI/order networks remain disabled. | Add selected-queue network-boundary smoke. | fixed | `docs/evidence/RUN-20260603_gpt-pro-foundation-ready-set-review.md` |
-| GPTR-FND-004 | external_ready_set | P1 | source ingestion | `HWISTOCK-UNIT-003`, QA | DART/source first-Go mode must distinguish fixture from live API. | First foundation Go uses fixture/config skeleton; live OpenDART needs later source API config approval. | fixed | `docs/evidence/RUN-20260603_gpt-pro-foundation-ready-set-review.md` |
+| GPTR-FND-004 | external_ready_set | P1 | source ingestion | `HWISTOCK-UNIT-003`, QA | DART/source first-Go mode must distinguish fixture from unapproved API. | First foundation Go uses fixture/config skeleton; network OpenDART needs later source API config approval. | fixed | `docs/evidence/RUN-20260603_gpt-pro-foundation-ready-set-review.md` |
 | GPTR-FND-005 | external_ready_set | P2 | evidence | docs index/evidence | Historical evidence can be noisy. | Keep current source-of-truth priority; optional superseded index later. | deferred | current profile/index source-of-truth order |
-| GPTR-FND-006 | external_ready_set | P2 | strategy | `HWISTOCK-UNIT-004` | Strategy defaults need later operational halt metrics before paper orders. | Defer with strategy row. | deferred | first queue excludes `HWISTOCK-UNIT-004` |
+| GPTR-FND-006 | external_ready_set | P2 | strategy | `HWISTOCK-UNIT-004` | Strategy defaults need later operational halt metrics before broker orders. | Defer with strategy row. | deferred | first queue excludes `HWISTOCK-UNIT-004` |
 | GPTR-FND-007 | external_ready_set | P2 | QA | completion/preflight | Selected units need focused Go checklist mapping. | Completion/preflight require focused smoke rows before each Go. | fixed | completion and preflight refs |
 
 ## 3. Verdict Mapping
@@ -67,7 +67,7 @@ Local interpretation:
 - The narrowed foundation-only queue may proceed to Go-Check after row closure,
   completion report, and Go preflight are updated.
 - The full queue remains not ready.
-- No broker, AI, paper-order, live-order, dashboard-public, or credential
+- No broker, AI, adapter-order, operation-order, dashboard-public, or credential
   approval was granted.
 
 ## 4. Closure Result

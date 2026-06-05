@@ -42,7 +42,7 @@ PASS for the local-only Go implementation/check scope.
 `HWISTOCK-UNIT-004` now has a stdlib-only strategy/risk rulebook skeleton with
 approved config constants, deterministic entry-intent validators, and no-order
 dry-run records only. This is not Prove evidence and does not authorize broker,
-KIS, AI provider, paper order, live order, fake fill, fake balance, or fake PnL
+KIS, AI provider, broker order, account-affecting order, fake fill, fake balance, or fake PnL
 behavior.
 
 ## 2. Route
@@ -77,7 +77,7 @@ behavior.
 - No implementation path imports broker, KIS, trading-engine, or order-routing
   modules beyond the explicit `no_order_dry_run` contract.
 - Approved strategy parameters were not changed beyond the already-approved
-  first-pass paper/sandbox planning defaults.
+  first-pass adapter-backed planning defaults.
 - No runtime artifacts were written under `data/`.
 
 ## 5. QA Row Coverage
@@ -221,4 +221,4 @@ Check review:
   future work.
 - QA-007 and QA-010 are intentionally deferred to later trading-engine units.
 - No approved strategy parameter was changed beyond implementing the approved
-  first-pass paper/sandbox planning defaults.
+  first-pass adapter-backed planning defaults.

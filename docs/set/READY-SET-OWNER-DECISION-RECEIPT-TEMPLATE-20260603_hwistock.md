@@ -24,8 +24,8 @@ approval, exclusion, review-run instruction, or local-only narrowed-queue
 instruction.
 
 It is a template only. It does not record any actual owner approval and does not
-authorize Go, external review sending, broker calls, AI provider calls, paper
-orders, live orders, or credential storage.
+authorize Go, external review sending, broker calls, AI provider calls, adapter
+orders, account-affecting orders, or credential storage.
 
 ## 2. Receipt Header
 
@@ -46,7 +46,7 @@ received:
 | candidate_exact_match_result | required for Action 3; must be `pass` before external send |
 | candidate_secret_scan_result | required for Action 3; fail-closed scan must be `no_matches` before external send |
 | approvals_granted | list only approvals actually granted by the owner message |
-| approvals_not_granted | broker calls, AI calls, paper orders, live orders, credential storage, public/LAN dashboard exposure, and Go remain denied unless explicitly granted |
+| approvals_not_granted | broker calls, AI calls, broker orders, account-affecting orders, credential storage, public/LAN dashboard exposure, and Go remain denied unless explicitly granted |
 | docs_to_update | completion report, row closure matrix, completion audit, review findings intake, Go preflight, or evidence refs supported by the decision |
 | pf11_effect | `fail` / `pass_candidate` / `not_applicable`; only `pass_candidate` can later become PF-11 pass after the receipt is written |
 | still_blocked_by | remaining owner/review blockers after this decision |
@@ -55,7 +55,7 @@ received:
 
 - `no_match`: continuation, enthusiasm, vague "go", "continue", "looks good",
   or partial wording that does not clearly match an approval action.
-- `Action 1`: strategy defaults are approved for paper/sandbox planning only.
+- `Action 1`: strategy defaults are approved for adapter-backed planning only.
 - `Action 2`: dashboard design review may be run; dashboard implementation is
   still not approved.
 - `Action 3`: current final external Ready-Set review may be run only after a
@@ -75,8 +75,8 @@ denied:
 
 - broker network calls
 - KIS token/account/balance/order calls
-- KIS paper order placement
-- live order placement
+- KIS broker order placement
+- account-affecting order placement
 - AI provider network calls
 - credential storage
 - public or LAN dashboard exposure

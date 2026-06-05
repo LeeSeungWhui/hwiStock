@@ -68,6 +68,7 @@ describe("hwiStock operator console view", () => {
     expect(screen.getByTestId("operator-pane-summary")).toBeInTheDocument();
     expect(screen.getByTestId("operator-pane-data")).toBeInTheDocument();
     expect(screen.getByTestId("operator-pane-review")).toBeInTheDocument();
+    expect(screen.getByTestId("operator-readiness-truth")).toBeInTheDocument();
     expect(screen.getByTestId("operator-holdings")).toBeInTheDocument();
     expect(screen.getByTestId("operator-candidates")).toBeInTheDocument();
     expect(screen.getByTestId("operator-intelligence")).toBeInTheDocument();
@@ -76,6 +77,8 @@ describe("hwiStock operator console view", () => {
     expect(screen.getByText("hwiStock 운영 콘솔")).toBeInTheDocument();
     expect(screen.queryByText("업무 바로가기")).not.toBeInTheDocument();
     expect(screen.queryByText("MyWebTemplate")).not.toBeInTheDocument();
+    expect(screen.getByText("모의매매 관찰 준비 아님")).toBeInTheDocument();
+    expect(screen.getByText("NOT_READY_FOR_PAPER_TRADING")).toBeInTheDocument();
   });
 
   test("매수/매도/주문 실행 버튼이 없다", () => {
@@ -173,8 +176,25 @@ describe("hwiStock operator console view", () => {
       resolveOperator({
         result: {
           schema_version: "operator_console_snapshot/v0",
-          status: { mode: "paper_sandbox", serviceHealth: "observable" },
-          summary: { accountId: "paper_account_alias:masked", operationalTradingReadiness: false },
+          status: { mode: "paper_sandbox", serviceHealth: "observable", orderGate: "blocked_calendar_unconfigured" },
+          summary: {
+            accountId: "paper_account_alias:masked",
+            paperNetworkEnabled: false,
+            paperOrdersSubmitted: false,
+            paperObservationAccepted: false,
+            operationalTradingReadiness: false,
+          },
+          readinessTruth: {
+            headline: "NOT_READY_FOR_PAPER_TRADING",
+            operatorMessage: "서비스가 떠 있어도 모의매매 준비 완료가 아닙니다.",
+            blockers: ["paper_network_disabled", "blocked_calendar_unconfigured"],
+            paperNetworkEnabled: false,
+            paperOrdersSubmitted: false,
+            paperObservationAccepted: false,
+            operationalTradingReadiness: false,
+            orderGate: "blocked_calendar_unconfigured",
+            serviceVisibilityIsNotReadiness: true,
+          },
           holdings: [
             { symbol: "005930", name: "삼성전자", qty: 0, pnl: "system", weight: "0%" },
           ],
@@ -186,5 +206,6 @@ describe("hwiStock operator console view", () => {
       expect(screen.getByText("삼성전자")).toBeInTheDocument();
     });
     expect(screen.getByTestId("operator-ai-thread")).toBeInTheDocument();
+    expect(screen.getByText("blocked_calendar_unconfigured")).toBeInTheDocument();
   });
 });

@@ -60,7 +60,7 @@ Foundation-only first Go may implement only:
 - No-order dry-run decision recorder.
 - Order-state enum/transition skeleton up to `dry_run_recorded`.
 - Route metadata for KRX/NXT/SOR as no-order dry-run fields only.
-- Network-boundary proof that no broker/KIS, paper/live order, fake fill, fake
+- Network-boundary proof that no broker/KIS, adapter/account-affecting order, fake fill, fake
   balance, fake PnL, or AI provider path is reachable.
 
 The broader Set contract below remains future scope until later explicit owner
@@ -72,28 +72,28 @@ approval and broker-network gates close.
 - Buy/sell eligibility gate.
 - Position manager.
 - Order state machine.
-- No-order dry-run recorder for pre-KIS-paper approval validation.
-- Future adapter boundary for approved KIS KRX paper/mock API.
+- No-order dry-run recorder for pre-KIS-adapter approval validation.
+- Future adapter boundary for approved KIS KRX broker-adapter API.
 - Venue/session route parameter handling for KRX, NXT, and SOR on the same
   deterministic order-state semantics.
-- Explicit disabled/fallback behavior for KIS paper-unsupported NXT/SOR broker
-  branches during KIS paper runs.
+- Explicit disabled/fallback behavior for KIS adapter-unsupported NXT/SOR broker
+  branches during KIS operation runs.
 - `condition_card/v0` JSON schema.
 - `no_order_dry_run` record schema.
-- KIS paper adapter capability flags.
-- KIS KRX paper order/fill/reconciliation state contract.
+- KIS broker adapter capability flags.
+- KIS KRX broker order/fill/reconciliation state contract.
 
 ## 3. Excluded Scope
 
-- Live orders.
+- Account-affecting orders.
 - Direct AI order placement.
 - KIS network calls before verification.
 - Dashboard UI.
 - Final alpha formula.
 - Concrete risk parameter values; this unit requires references to configured
   values but does not select them.
-- Live NXT/SOR broker verification.
-- KIS paper adapter implementation in the foundation-only first Go queue.
+- Operation NXT/SOR broker verification.
+- KIS broker adapter implementation in the foundation-only first Go queue.
 - `submitted`, `accepted`, `partial_fill`, `filled`, cancel/retry, or
   reconciliation implementation in the foundation-only first Go queue.
 
@@ -105,11 +105,11 @@ approval and broker-network gates close.
 | AC-02 | P0 | Ambiguous conditions are rejected | Natural-language-only buy conditions do not become orders | compiler test | QA-002 |
 | AC-03 | P0 | Buy gate is deterministic | Capital, holdings, stale-data, venue, and stop policy must pass | policy test | QA-003 |
 | AC-04 | P0 | Order state is explicit | partial fill, reject, cancel, retry, and fail states are representable | state test | QA-004 |
-| AC-05 | P0 | Pre-approval path is dry-run only | Approved intents are recorded without broker calls, simulated fills, or fake balances before KIS paper approval | adapter test | QA-005 |
-| AC-06 | P0 | NXT/SOR are parameterized, not separate strategies | KRX/NXT/SOR routes use the same state machine; KIS paper-unsupported NXT/SOR branches are disabled or explicit-fallback-only | route/capability test | QA-006 |
+| AC-05 | P0 | Pre-approval path is dry-run only | Approved intents are recorded without broker calls, simulated fills, or fake balances before KIS adapter approval | adapter test | QA-005 |
+| AC-06 | P0 | NXT/SOR are parameterized, not separate strategies | KRX/NXT/SOR routes use the same state machine; KIS adapter-unsupported NXT/SOR branches are disabled or explicit-fallback-only | route/capability test | QA-006 |
 | AC-07 | P0 | Condition schema is deterministic | `condition_card/v0` accepts only known condition types and required source/risk refs | schema test | QA-007 |
-| AC-08 | P0 | KIS paper capabilities are explicit | Adapter capability flags expose KRX-only paper support and unsupported NXT/SOR/helper APIs | capability test | QA-008 |
-| AC-09 | P0 | KIS paper evidence shape is auditable without broker state application | Order, fill, balance, cancel, disabled-branch, and fallback fixture events are represented without applying broker state changes | reconciliation test | QA-009 |
+| AC-08 | P0 | KIS broker-adapter capabilities are explicit | Adapter capability flags expose KRX-only adapter support and unsupported NXT/SOR/helper APIs | capability test | QA-008 |
+| AC-09 | P0 | KIS adapter evidence shape is auditable without broker state application | Order, fill, balance, cancel, disabled-branch, and fallback fixture events are represented without applying broker state changes | reconciliation test | QA-009 |
 
 ## 5. Set Decisions
 
@@ -171,9 +171,9 @@ Minimum states:
 - `retrying`
 - `failed`
 
-Pre-KIS-paper path must stop at `dry_run_recorded`. `submitted` and later states
-are allowed only for an explicitly approved KIS KRX paper adapter or later
-approved live adapter.
+Pre-KIS-adapter path must stop at `dry_run_recorded`. `submitted` and later states
+are allowed only for an explicitly approved KIS KRX broker adapter or later
+approved operation adapter.
 
 Foundation-only first Go must not implement executable transitions beyond
 `dry_run_recorded`. Later states may be represented as enum constants or
@@ -197,12 +197,12 @@ Required fields:
 - `no_simulated_fill=true`
 - `created_at_kst`
 
-Dry-run records are decision evidence only. They are not paper-trading evidence,
+Dry-run records are decision evidence only. They are not automated-trading evidence,
 broker evidence, fill evidence, or PnL evidence.
 
-### 5.4 KIS Paper Capability Flags
+### 5.4 KIS Adapter Capability Flags
 
-The first KIS paper adapter must expose:
+The first KIS broker adapter must expose:
 
 - `supports_paper_krx_order=true`
 - `supports_paper_nxt_order=false`
@@ -217,11 +217,11 @@ The first KIS paper adapter must expose:
 - `supports_paper_holiday_query=false`
 
 Unsupported capabilities produce `disabled_branch` or `local_fallback` records;
-they must not call live-only APIs.
+they must not call operation-only APIs.
 
-### 5.5 KIS Paper Reconciliation
+### 5.5 KIS Adapter Reconciliation
 
-Use supported KIS KRX paper sources for broker-backed evidence:
+Use supported KIS KRX adapter sources for broker-backed evidence:
 
 - cash order
 - modify/cancel order
@@ -232,7 +232,7 @@ Use supported KIS KRX paper sources for broker-backed evidence:
 - KRX realtime order book
 - realtime fill notice
 
-Use local state or explicit fallback records for paper-unsupported helper APIs:
+Use local state or explicit fallback records for adapter-unsupported helper APIs:
 
 - modify/cancel eligible-order query
 - sellable quantity query
@@ -257,11 +257,11 @@ Validated scope:
 - UNIT-004 strategy/risk gate delegation for entry-intent review
 - pre-approval order-state transitions through `dry_run_recorded` only
 - UNIT-006 no-order dry-run decision records
-- venue-route metadata and explicit KIS paper capability flags
-- fixture-only KIS paper evidence representation without broker state
+- venue-route metadata and explicit KIS adapter capability flags
+- fixture-only KIS adapter evidence representation without broker state
   application
 
-Broker-backed paper evidence, executable `submitted`/`accepted`/fill
+Broker-backed adapter evidence, executable `submitted`/`accepted`/fill
 transitions, and KIS network adapters remain denied until later approved gates.
 
 ## 6. Remaining Open Questions
@@ -272,8 +272,8 @@ transitions, and KIS network adapters remain denied until later approved gates.
   First-pass risk values are closed by `HWISTOCK-UNIT-004`: minimum cash reserve
   ratio 0.25, maximum simultaneous holdings 5, and AI-assisted stop price capped
   by deterministic maximum -5% loss. Runtime calendar source hierarchy is closed
-  by `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`.
-- Exact KIS paper account balance, current rate limits, account/product-code
+  by `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md`.
+- Exact KIS broker-adapter account balance, current rate limits, account/product-code
   shape, and HTS ID must be verified through a future explicitly approved
-  broker-network smoke before the KIS paper adapter is enabled.
-- Live NXT/SOR behavior remains a later real-account/support-confirmation gate.
+  broker-network smoke before the KIS broker adapter is enabled.
+- Operation NXT/SOR behavior remains a later real-account/support-confirmation gate.

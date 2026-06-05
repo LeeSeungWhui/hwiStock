@@ -28,8 +28,8 @@ hwiStock before any trading implementation.
 - No fixed per-symbol maximum allocation is used in the first policy.
 - Every order must preserve `minimum_cash_reserve_ratio = 0.25` of total
   capital.
-  - 2,000,000 KRW live baseline keeps at least 500,000 KRW unallocated.
-  - 10,000,000 KRW KIS paper target keeps at least 2,500,000 KRW unallocated.
+  - 2,000,000 KRW capital baseline keeps at least 500,000 KRW unallocated.
+  - 10,000,000 KRW KIS adapter target keeps at least 2,500,000 KRW unallocated.
 - Stop policy is AI-assisted per entry: AI may propose a concrete stop price
   from the normalized signal bundle.
 - Deterministic risk gate caps accepted stop prices at maximum -5% loss from
@@ -38,7 +38,7 @@ hwiStock before any trading implementation.
 - There is no first-pass deterministic fallback stop when AI stop output is
   unavailable or invalid.
 - Broad account-level loss halt, max trades, and cooldown remain excluded for
-  the first minimal policy unless later paper evidence changes this.
+  the first minimal policy unless later adapter evidence changes this.
 
 ## 3. Evidence
 
@@ -55,14 +55,14 @@ hwiStock before any trading implementation.
 ## 4. Boundaries
 
 - No broker API, AI API, database, or network call was made.
-- No order placement, paper order, simulated fill, fake balance, or PnL claim was
+- No order placement, broker order, simulated fill, fake balance, or PnL claim was
   created.
-- This does not approve live trading or real-money operation.
+- This does not approve account-affecting operation or account-affecting operation.
 - Exact first-pass alpha/signal formula, chart setup/source, candle intervals,
   liquidity behavior, and market-alert source are packaged for approval in
   `docs/set/READY-SET-STRATEGY-DECISION-PACKET-20260602_hwistock.md`. One-week
-  paper pass criteria are closed by
-  `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`.
+  operation pass criteria are closed by
+  `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md`.
 
 ## 5. Verdict
 

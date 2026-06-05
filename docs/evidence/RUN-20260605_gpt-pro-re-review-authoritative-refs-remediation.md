@@ -54,7 +54,7 @@ GitHub raw/web access. It reported:
   - Aligns the source-level required metadata list with `terms_policy_ref`.
 - `ops/systemd/hwistock-runner.service`
   - Explicitly labels the runner service as no-order scaffolding, not
-    paper/mock runtime-ready evidence.
+    broker-adapter runtime-ready evidence.
 
 ## 3. Local Validation
 
@@ -81,7 +81,7 @@ pytest backend/tests/test_market_intelligence_ingestion.py backend/tests/test_ki
 
 - No KIS broker/API network call was made.
 - No order, cancel, or modify call was made.
-- No live endpoint was called.
+- No unapproved endpoint was called.
 - No secret env/config file was read or printed.
 - No strategy-risk numeric policy was changed.
 

@@ -19,7 +19,7 @@ go_preflight_checklist_ref: docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260604_r
 unit_ref: docs/units/HWISTOCK-UNIT-009_kis-api-portal-verification.md
 qa_ref: docs/qa/QA-HWISTOCK-UNIT-009_kis-api-portal-verification.md
 capability_matrix_ref: docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md
-kis_smoke_evidence_ref: docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md
+kis_smoke_evidence_ref: docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md
 rebaseline_evidence_ref: docs/evidence/RUN-20260604_ready-set-rebaseline-after-mywebtemplate-import.md
 ready_set_reissue_evidence_ref: docs/evidence/RUN-20260604_ready-set-reissue-after-mywebtemplate-owner-decision.md
 work_class: docs_only
@@ -45,14 +45,14 @@ docs-only/local-reference capability verification row.
 
 This closes the reissued row as `go_check_passed` for local docs and
 capability-matrix refinement only. It does **not** authorize new KIS/broker/API/network
-calls, credential use, paper/live orders, or runtime adapter behavior.
+calls, credential use, adapter/account-affecting orders, or runtime adapter behavior.
 
 Intentional partial boundaries remain:
 
-- actual paper balance amount,
+- actual adapter balance amount,
 - exact current KIS numeric rate limits,
-- live NXT/SOR routing proof,
-- paper-unsupported helper APIs and integrated/NXT realtime paths.
+- operation NXT/SOR routing proof,
+- adapter-unsupported helper APIs and integrated/NXT realtime paths.
 
 ## 2. Current Authority Basis
 
@@ -87,8 +87,8 @@ not deleted, and is superseded as current Go authorization by this rebaseline cl
 | row_id | mode | result | evidence |
 | --- | --- | --- | --- |
 | QA-001 | docs | PASS | official endpoint families remain enumerated in the unit and capability matrix |
-| QA-002 | docs | PASS with partial boundary | paper/live separation and KRX paper constraints remain documented; sanitized bounded smoke is cited only as historical support |
-| QA-003 | docs | PASS with partial boundary | KRX/NXT/SOR fields remain documented; NXT/SOR stay `live_verify` and paper KRX limits stay preserved |
+| QA-002 | docs | PASS with partial boundary | adapter-mode separation and KRX adapter constraints remain documented; sanitized bounded smoke is cited only as historical support |
+| QA-003 | docs | PASS with partial boundary | KRX/NXT/SOR fields remain documented; NXT/SOR stay `live_verify` and adapter KRX limits stay preserved |
 | QA-004 | safety | PASS | this rebaseline sync made no credential use, login, token request, broker API call, or order placement |
 
 Overall QA verdict: **PASS** with documented partial boundaries and a docs-only scope.
@@ -108,25 +108,25 @@ Overall QA verdict: **PASS** with documented partial boundaries and a docs-only 
 
 The following items remain intentionally deferred after this current-authority closure:
 
-- confirm the actual paper-account balance instead of assuming `10,000,000 KRW`;
+- confirm the actual adapter-account balance instead of assuming `10,000,000 KRW`;
 - record current official numeric REST/WebSocket/OAuth rate limits immediately before any broker-network unit;
-- verify live account acceptance/behavior for `EXCG_ID_DVSN_CD=NXT` and `EXCG_ID_DVSN_CD=SOR`;
-- prove exact behavior for paper-unsupported helper APIs only in later explicitly approved units.
+- verify broker account acceptance/behavior for `EXCG_ID_DVSN_CD=NXT` and `EXCG_ID_DVSN_CD=SOR`;
+- prove exact behavior for adapter-unsupported helper APIs only in later explicitly approved units.
 
 ## 7. Denied Paths After Closure
 
 Unless a future unit explicitly approves them, the following remain denied:
 
 - new KIS token/account/balance/quote/realtime/order/modify/cancel/WebSocket calls;
-- paper or live order placement;
+- adapter or account-affecting order placement;
 - broker network use for ordinary Go rows;
 - credential storage in repo/docs/evidence;
 - AI provider network activity;
 - fake fills, fake balances, fake PnL, or expected-profit claims.
 
-The bounded paper smoke
-`docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md` remains a sanitized,
-historical support artifact for already-proven KRX paper families only.
+The bounded adapter smoke
+`docs/evidence/RUN-20260604_kis-broker-adapter-api-smoke.md` remains a sanitized,
+historical support artifact for already-proven KRX adapter families only.
 
 ## 8. Worker And Fallback Context
 

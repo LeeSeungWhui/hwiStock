@@ -31,7 +31,7 @@ Original pre-rebaseline verdict (superseded): PASS to enter Go-Check as a
 docs-only bootstrap verification row against `READY-SET-COMPLETION-20260602_hwistock.md`.
 
 This historical verdict does not authorize product-code implementation, broker/KIS
-network calls, AI provider calls, paper orders, live orders, credential storage,
+network calls, AI provider calls, broker orders, account-affecting orders, credential storage,
 or operational trading readiness.
 
 ## 2. Delegation Guard
@@ -64,8 +64,8 @@ Excluded:
 - credential storage
 - market data integration
 - backtest engine
-- paper/sandbox order execution
-- live account access or live orders
+- adapter-backed order execution
+- broker account access or account-affecting orders
 - UI/dashboard implementation
 
 ## 4. Preflight Checklist
@@ -83,7 +83,7 @@ Excluded:
 | PF-09 | pass | Dashboard design review is not required for this docs-only bootstrap behavior; dashboard implementation is out of scope. |
 | PF-10 | pass | Selected action is no-network, no-order, no-credential-storage docs work. |
 | PF-11 | pass | Full expansion owner decisions are recorded in the completion report evidence chain. |
-| PF-12 | not_applicable | Current queue is the full skeleton/sandbox-safe queue, not narrowed Action 4 foundation-only closure. |
+| PF-12 | not_applicable | Current queue is the full skeleton/adapter-safe queue, not narrowed Action 4 foundation-only closure. |
 | PF-13 | pass | Git initialized on `main`; baseline commit `540a1c3` exists; `.env` files are ignored. |
 
 ## 5. Pre-Go Action

@@ -15,16 +15,16 @@ created_at: 2026-06-02
 ## 1. Purpose
 
 This packet turns the remaining `HWISTOCK-UNIT-004` strategy blockers into a
-single approval-ready decision set. It is not a profit claim and not live-trading
-approval. The values below are proposed only as first-pass paper/sandbox
+single approval-ready decision set. It is not a profit claim and not operation-trading
+approval. The values below are proposed only as first-pass adapter-backed
 parameters for implementation planning.
 
 ## 2. Already Closed Decisions
 
 - Capital policy: cash-only.
-- Live starting capital: 2,000,000 KRW.
-- Paper/mock target budget: 10,000,000 KRW until broker evidence proves the
-  actual paper balance.
+- Starting capital: 2,000,000 KRW.
+- Broker adapter target budget: 10,000,000 KRW until broker evidence proves the
+  actual adapter balance.
 - Maximum simultaneous holdings: 5.
 - Fixed per-symbol maximum allocation: none.
 - Minimum cash reserve floor: every buy must preserve
@@ -48,14 +48,14 @@ pretending that the strategy is proven.
 | candle intervals | 1-minute primary, 5-minute confirmation, 15-minute context | Fits 10-20 minute trades while allowing broader trend context. | Closes candle interval selection for first tests. |
 | chart confirmation rule | require all first-pass gates in Section 4: VWAP availability/pass, rolling breakout/reclaim, volume spike, reward/risk, stale-data pass | Avoids entry on catalyst alone and keeps risk gate central. | Closes chart confirmation as a measurable first-pass rule. |
 | liquidity threshold | require all first-pass liquidity gates in Section 4: 5-minute traded value, spread, and data availability | Prevents thin-name entries and makes missing market data fail closed. | Closes the first-pass liquidity rule as a measurable config. |
-| market-alert source | local KRX/NXT calendar cache first; KIS market/quote status only after approved broker-network smoke | Aligns with the selected calendar policy and avoids paper-unsupported KIS holiday dependency. | Closes market-alert source selection for implementation planning. |
-| entry result | `would_enter` / `dry_run_recorded` before KIS paper approval; no fake broker fill or fake PnL | Preserves the broker boundary. | Allows order-intent logging without broker calls. |
-| take-profit target | first paper default target is the lower of +1.5% price move or +2R, capped inside the 1-5% target band | Keeps the user's strategy hypothesis but prevents profit claims. | Adds a measurable target field for paper evidence. |
+| market-alert source | local KRX/NXT calendar cache first; KIS market/quote status only after approved broker-network smoke | Aligns with the selected calendar policy and avoids adapter-unsupported KIS holiday dependency. | Closes market-alert source selection for implementation planning. |
+| entry result | `would_enter` / `dry_run_recorded` before KIS adapter approval; no fake broker fill or fake PnL | Preserves the broker boundary. | Allows order-intent logging without broker calls. |
+| take-profit target | first adapter default target is the lower of +1.5% price move or +2R, capped inside the 1-5% target band | Keeps the user's strategy hypothesis but prevents profit claims. | Adds a measurable target field for adapter evidence. |
 | time stop | review at 10 minutes, exit by 20 minutes if the trade has not reached +0.5R or kept the chart setup valid; hard maximum 30 minutes | Matches the intended tempo but does not force constant re-entry. | Adds a measurable hold/exit review condition. |
 
 ## 4. First-Pass Numeric Rule Defaults
 
-These defaults are intentionally conservative paper/sandbox starting points.
+These defaults are intentionally conservative adapter-backed starting points.
 They are configuration values, not claims that the strategy will be profitable.
 
 ### 4.1 Candle And Data Freshness
@@ -80,7 +80,7 @@ Before an entry can become `would_enter`, all must pass:
 
 ### 4.3 Chart Confirmation Gates
 
-For the first paper strategy, all must pass:
+For the first adapter strategy, all must pass:
 
 - Price is above VWAP, or a 1-minute close has reclaimed VWAP after the candidate
   event.
@@ -98,7 +98,7 @@ For the first paper strategy, all must pass:
 - Initial target: lower of +1.5% price move or +2R, capped inside the 1-5% target
   band.
 - Trailing: after +1R, move review state to protect break-even or better; exact
-  trailing mechanics may be refined after paper evidence.
+  trailing mechanics may be refined after adapter evidence.
 - Time review: at 10 minutes, mark `hold_review` unless the position reached at
   least +0.5R and the chart setup remains valid.
 - Time exit: by 20 minutes if target/trailing condition has not justified hold.
@@ -111,7 +111,7 @@ Recommended approval wording:
 
 > Approve the first-pass strategy defaults in
 > `docs/set/READY-SET-STRATEGY-DECISION-PACKET-20260602_hwistock.md` for
-> paper/sandbox planning only. Keep broker and AI network calls disabled until
+> adapter-backed planning only. Keep broker and AI network calls disabled until
 > later explicit approval.
 
 If approved, update:
@@ -130,7 +130,7 @@ other non-trading foundations only.
 
 ## 7. Safety Notes
 
-- This packet does not approve live trading.
+- This packet does not approve account-affecting operation.
 - This packet does not approve KIS/external broker network calls.
 - This packet does not approve AI API network calls.
 - This packet does not assert expected profit.

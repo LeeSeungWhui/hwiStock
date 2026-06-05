@@ -30,7 +30,7 @@ PASS. `HWISTOCK-UNIT-001` may enter Go-Check as a docs-only bootstrap
 verification row against the 2026-06-04 rebaseline Ready-Set.
 
 This verdict does not authorize product-code implementation, broker/KIS network
-calls, AI provider calls, paper orders, live orders, credential storage, or
+calls, AI provider calls, broker orders, account-affecting orders, credential storage, or
 operational trading readiness.
 
 ## 2. Delegation Guard
@@ -70,8 +70,8 @@ Excluded:
 - credential storage
 - market data integration
 - backtest engine
-- paper/sandbox order execution
-- live account access or live orders
+- adapter-backed order execution
+- broker account access or account-affecting orders
 - UI/dashboard implementation
 
 ## 4. Preflight Checklist
@@ -89,7 +89,7 @@ Excluded:
 | PF-09 | pass | Dashboard design review not required for docs-only bootstrap. |
 | PF-10 | pass | Selected action is no-network, no-order, no-credential-storage docs work. |
 | PF-11 | pass | Owner decision receipt recorded in `docs/set/READY-SET-OWNER-DECISION-20260604_rebaseline_hwistock.md` and `docs/set/READY-SET-COMPLETION-20260604_rebaseline_hwistock.md`. |
-| PF-12 | not_applicable | Current queue is the full skeleton/sandbox-safe rebaseline queue. |
+| PF-12 | not_applicable | Current queue is the full skeleton/adapter-safe rebaseline queue. |
 | PF-13 | pass | Git initialized on `main`; baseline commit exists; `.env` files are ignored. |
 | PF-14 | pass | MyWebTemplate quarantine is documented as first-row blockers in the rebaseline Ready-Set docs and row closure matrix. UNIT-001 scope does not touch product code; quarantine is verified as documentation/first-row blocker for affected future rows. |
 

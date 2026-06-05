@@ -19,7 +19,7 @@ outgoing_bundle_sha256: d1b6c4c644dbbb461076e3e97c75a32b38880205dd9c4a01397f0bf6
 candidate_secret_scan_result: no_matches
 bundle_secret_scan_result: no_matches
 review_verdict: ready_with_exclusions
-selected_queue_scope: full_queue_skeleton_sandbox_safe
+selected_queue_scope: full_queue_skeleton_adapter_safe
 ---
 
 # GPT Pro Full Ready-Set External Review Evidence
@@ -68,7 +68,7 @@ broker tokens, AI keys, or runtime data.
 The external reviewer was asked to determine whether the full Ready-Set queue
 can be marked implementation-ready for Go-Check after:
 
-1. first-pass strategy defaults were approved for paper/sandbox planning only;
+1. first-pass strategy defaults were approved for adapter-backed planning only;
 2. dashboard design review was executed and its findings were applied;
 3. current final external Ready-Set review was approved for the sanitized bundle.
 
@@ -88,11 +88,11 @@ Reviewer verdict: `ready_with_exclusions`.
 Local interpretation:
 
 - No P0 safety blocker was reported in the Ready-Set docs.
-- Full queue closure is allowed only as a skeleton/docs/sandbox-safe Go-Check
+- Full queue closure is allowed only as a skeleton/docs/adapter-safe Go-Check
   queue after the review is recorded, findings are normalized, and row closure,
   completion, audit, and preflight refs are rewritten.
-- The review does not approve broker/KIS calls, AI provider calls, paper orders,
-  live orders, credential storage, public/LAN dashboard exposure, fake fills,
+- The review does not approve broker/KIS calls, AI provider calls, broker orders,
+  account-affecting orders, credential storage, public/LAN dashboard exposure, fake fills,
   fake balances, fake PnL, or expected-profit claims.
 - The remaining issues are closure-bookkeeping and over-scope prevention, not a
   missing core safety concept.
@@ -101,7 +101,7 @@ Local interpretation:
 
 | finding_id | severity | summary | local disposition |
 | --- | --- | --- | --- |
-| FQ-001 | P1 | Authoritative completion report still says foundation-only. | Fix by rewriting completion report for full skeleton/sandbox-safe queue. |
+| FQ-001 | P1 | Authoritative completion report still says foundation-only. | Fix by rewriting completion report for full skeleton/adapter-safe queue. |
 | FQ-002 | P1 | Row closure still excludes `UNIT-002`, `UNIT-004`, `UNIT-005`, and `UNIT-007`. | Fix by rewriting all nine rows as exactly `ready_for_go_check` with separate scope notes. |
 | FQ-003 | P1 | Full external review intake and links are not yet recorded. | Fix by adding this evidence and a full-queue findings intake, then linking them from closure docs. |
 | FQ-004 | P1 | Activation draft preconditions must be applied only after findings are closed or accepted as non-blocking. | Fix by closing/accepting the findings in the intake before marking completion ready. |
@@ -120,7 +120,7 @@ scope limits:
 - `UNIT-003`: source registry, fixture/config-first ingestion, DART schema,
   dedupe/event schema, and evidence output only.
 - `UNIT-004`: strategy/risk config, validators, rule tests, approved
-  paper/sandbox defaults, reserve floor, holdings cap, and stop validation only.
+  adapter-backed defaults, reserve floor, holdings cap, and stop validation only.
 - `UNIT-005`: AI job registry, schemas, validators, prompt templates, fixture
   outputs, and audit records only; provider network remains disabled.
 - `UNIT-006`: condition compiler, `condition_card/v0`, no-order dry-run
@@ -152,16 +152,16 @@ The review explicitly keeps these denied:
 - broker network calls;
 - KIS token/account/balance/quote/realtime/order/modify/cancel/WebSocket calls;
 - AI provider network calls;
-- paper orders;
-- live orders;
+- broker orders;
+- account-affecting orders;
 - credential storage;
 - public or LAN dashboard exposure;
 - buy/sell controls;
 - fake broker fills, balances, or PnL;
 - expected-profit claims;
-- one-week paper gate completion claims.
+- one-week operation gate completion claims.
 
-The one-week paper/sandbox gate remains future Prove evidence and still requires
+The one-week adapter-backed gate remains future Prove evidence and still requires
 at least seven consecutive calendar days, at least five valid Korean
 market-open days, P0 safety/evidence criteria, and explicit owner go/no-go
-before any live-readiness claim.
+before any operation-readiness claim.

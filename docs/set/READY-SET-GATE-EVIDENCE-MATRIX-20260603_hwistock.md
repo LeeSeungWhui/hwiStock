@@ -17,7 +17,7 @@ go_preflight_checklist_ref: docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260602_h
 review_findings_intake_ref: docs/set/READY-SET-REVIEW-FINDINGS-INTAKE-20260604_full.md
 external_review_evidence_ref: docs/evidence/RUN-20260604_gpt-pro-full-ready-set-review.md
 dashboard_design_findings_intake_ref: docs/set/READY-SET-REVIEW-FINDINGS-INTAKE-20260604_dashboard-design.md
-selected_queue_scope: full_queue_skeleton_sandbox_safe
+selected_queue_scope: full_queue_skeleton_adapter_safe
 ---
 
 # Ready-Set Gate Evidence Matrix
@@ -36,7 +36,7 @@ Current authoritative state:
 - current final external review: `complete_for_full_queue`
 - broker/KIS network calls: not approved
 - AI provider network calls: not approved
-- paper/live orders: not approved
+- adapter/account-affecting orders: not approved
 
 ## 2. Gate Evidence Matrix
 
@@ -55,7 +55,7 @@ Current authoritative state:
 | G-11 | Current final external review is complete and fresh | ChatGPT Pro reviewed the full queue after owner decisions and dashboard findings were applied | pass | none |
 | G-12 | External review findings are closed or non-blocking | Full review intake records no open P0/P1/P2-blocking findings after rewrites/accepted preflight constraints | pass | none |
 | G-13 | GPT/Claude/equivalent collaboration status is complete, local-only approved, or non-applicable | Complete for the full queue | pass | none |
-| G-14 | Strategy row has no unresolved blocking decision | Owner approved first-pass strategy defaults for paper/sandbox planning only | pass_for_skeleton_scope | future approval needed for broker-backed strategy/order behavior |
+| G-14 | Strategy row has no unresolved blocking decision | Owner approved first-pass strategy defaults for adapter-backed planning only | pass_for_skeleton_scope | future approval needed for broker-backed strategy/order behavior |
 | G-15 | Dashboard row has no unresolved design blocker | Dashboard design review completed and P0/P1 findings were fixed in Set docs | pass_for_skeleton_scope | future visual implementation proof at Go/Check/Prove |
 | G-16 | Go preflight checklist exists and blocks unsafe starts | Go preflight exists for all nine rows and denies broker/KIS/AI/order/dashboard-public/fake-broker behavior | pass_as_guard | selected-row preflight at Go time; PF-13 before code edits |
 | G-17 | Rule presets are mapped to units before implementation | `docs/set/READY-SET-RULE-PRESET-APPLICABILITY-MATRIX-20260603_hwistock.md` | pass | none |
@@ -65,11 +65,11 @@ Current authoritative state:
 
 ## 3. Closure Route
 
-The full queue is active only for the skeleton/sandbox-safe Go-Check scope.
+The full queue is active only for the skeleton/adapter-safe Go-Check scope.
 
 The route was closed by:
 
-1. Strategy packet approval for paper/sandbox planning only.
+1. Strategy packet approval for adapter-backed planning only.
 2. Dashboard design review execution and findings intake closure.
 3. Current final external GPT Pro review and full findings intake closure.
 4. Row-closure rewrite with all nine rows exactly `ready_for_go_check`.
@@ -83,8 +83,8 @@ Continuation commands and Ready-Set closure do not approve:
 - broker network calls;
 - KIS token/account/balance/quote/realtime/order/modify/cancel/WebSocket calls;
 - AI provider network calls;
-- paper order placement;
-- live order placement;
+- broker order placement;
+- account-affecting order placement;
 - credential storage;
 - public or LAN dashboard exposure;
 - dashboard service-control actions or buy/sell controls;

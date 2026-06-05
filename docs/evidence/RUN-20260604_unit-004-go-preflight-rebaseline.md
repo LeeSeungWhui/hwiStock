@@ -33,8 +33,8 @@ stdlib-only strategy/risk rulebook skeleton in the actual project root.
 
 This preflight authorizes only local config/constants, deterministic validators,
 focused unittest coverage, no-order dry-run record shaping, and doc/evidence
-updates. It does not authorize broker/KIS calls, AI provider calls, paper
-orders, live orders, fake broker/fill/balance/PnL behavior, credential reads,
+updates. It does not authorize broker/KIS calls, AI provider calls, adapter
+orders, account-affecting orders, fake broker/fill/balance/PnL behavior, credential reads,
 or runtime data artifact commits.
 
 ## 2. Delegation Guard Contract
@@ -66,7 +66,7 @@ Denied paths/actions remain:
   `apiRefer/**`
 - broker/KIS/network/web/browser/SSH/remote use
 - Git mutation, server runs, DB/migration/package-manager flows, deploys
-- paper/live orders, fake fills, fake balances, fake PnL, expected-profit claims
+- adapter/account-affecting orders, fake fills, fake balances, fake PnL, expected-profit claims
 
 ## 3. Selected Row Scope
 
@@ -82,10 +82,10 @@ Excluded:
 
 - broker or KIS adapters beyond `no_order_dry_run`
 - AI provider runtime calls
-- paper/live order execution
+- adapter/account-affecting order execution
 - fake broker/fill/balance/PnL behavior
 - runtime artifact generation under `data/`
-- strategy parameter changes beyond already-approved first-pass paper/sandbox defaults
+- strategy parameter changes beyond already-approved first-pass adapter-backed defaults
 
 ## 4. Preflight Checklist
 
@@ -98,7 +98,7 @@ Excluded:
 | PF-05 | pass | Profile, module, unit, QA, and index refs exist. |
 | PF-06 | pass | Scope stays local skeleton-safe and does not cross broker/AI/public-dashboard material-expansion boundaries. |
 | PF-07 | pass | No open historical P0/P1 review findings block this local-only scope. |
-| PF-08 | pass | First-pass strategy defaults are approved for paper/sandbox planning only. |
+| PF-08 | pass | First-pass strategy defaults are approved for adapter-backed planning only. |
 | PF-09 | pass | Dashboard scope remains out of row selection. |
 | PF-10 | pass | Selected work is no-network, no-order, no-credential local validation only. |
 | PF-11 | pass | Owner decision receipt and Ready-Set reissue evidence are recorded. |

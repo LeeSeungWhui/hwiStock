@@ -25,17 +25,17 @@ The owner approved starting the full local user-systemd runtime bundle. This Go
 pass installed/enabled/started hwiStock user services and timers, and performed
 bounded runtime smoke checks.
 
-This pass also added a safety guard so the KIS paper runner can run read-health
-and reconciliation ticks while paper cash order submission remains disabled
+This pass also added a safety guard so the KIS broker-adapter runner can run read-health
+and reconciliation ticks while broker cash order submission remains disabled
 unless a later explicit order unit enables `HWISTOCK_KIS_PAPER_ORDER_ENABLED`
 or passes `--allow-paper-orders`.
 
 Explicit scope exception: although UNIT-011 was primarily a local runtime
-supervisor/startup pass, the owner approved starting the KIS paper
+supervisor/startup pass, the owner approved starting the KIS adapter
 read-health/reconciliation timers as part of "turn the runtime bundle on".
-That exception is limited to paper/mock read and reconciliation evidence with
-orders disabled. It does not authorize KIS paper order submission, KIS
-order/cancel/modify endpoints, live domains, raw account output, or credential
+That exception is limited to broker-adapter read and reconciliation evidence with
+orders disabled. It does not authorize KIS broker order submission, KIS
+order/cancel/modify endpoints, unapproved domains, raw account output, or credential
 printing.
 
 ## 2. Side Effects Performed
@@ -57,7 +57,7 @@ printing.
   - `hwistock-kis-paper-runner.service`
 - Restarted `hwistock-api.service` after correcting the readiness note.
 
-No live endpoint, real-money order, public/LAN bind, secret print, staging, or
+No unapproved endpoint, account-affecting order, public/LAN bind, secret print, staging, or
 commit operation was performed.
 
 ## 3. Code / Config Changes
@@ -68,7 +68,7 @@ Changed runtime safety/config files:
   - Added `paper_order_enabled`.
   - Added CLI flag `--allow-paper-orders`.
   - Blocks `cash_order` with `blocked_paper_order_disabled` when an intent is
-    present but paper order submission is not explicitly enabled.
+    present but broker order submission is not explicitly enabled.
   - Preserves risk-overlay block reasons before the order-disabled block.
 - `ops/systemd/user/hwistock-kis-paper-runner.service`
   - Sets `HWISTOCK_KIS_PAPER_ORDER_ENABLED=false`.
@@ -119,16 +119,16 @@ Summary:
 - source event count: `12`
 - orders enabled: `false`
 
-## 6. KIS Paper Read Runtime Evidence
+## 6. KIS Adapter Read Runtime Evidence
 
-KIS paper health evidence:
+KIS adapter health evidence:
 `data/evidence/2026-06-05/kis-paper-health.json`
 
 Summary:
 
 - status: `ok`
-- paper domain only: true
-- live domain calls made: false
+- adapter domain only: true
+- unapproved domain calls made: false
 - orders enabled: false
 - order endpoint called: false
 - credential values printed: false
@@ -136,15 +136,15 @@ Summary:
 - token, quote, balance, buyable, daily order/fill lookup, and revoke steps
   recorded `pass`.
 
-KIS paper continuous runner evidence:
+KIS broker-adapter continuous runner evidence:
 `data/evidence/2026-06-05/kis-paper-continuous-latest.json`
 
 Summary:
 
 - status: `ok`
-- paper network enabled: true
-- paper order enabled: false
-- live domain calls made: false
+- adapter network enabled: true
+- broker order enabled: false
+- unapproved domain calls made: false
 - public dashboard exposed: false
 - raw responses stored: false
 - credential values printed: false
@@ -172,7 +172,7 @@ Current API status still reports:
 Remaining implementation blockers:
 
 - UNIT-013 signal-to-intent pipeline is not implemented.
-- UNIT-014 paper order submission remains disabled until explicit paper-order
+- UNIT-014 broker order submission remains disabled until explicit adapter-order
   execution Go/Prove scope.
 - Calendar/source configuration is missing.
 - Dashboard operator observation Prove is not complete.
@@ -199,9 +199,9 @@ Runtime start Go is complete, but Check is still pending.
 Current status:
 
 - service bundle: running
-- KIS paper read/reconciliation tick: running
+- KIS broker-adapter read/reconciliation tick: running
 - DeepSeek Pro analysis tick: running
-- KIS paper cash order submission: disabled
+- KIS broker cash order submission: disabled
 - automatic signal-to-intent trading: not implemented
-- operational paper trading readiness: false
-- live trading readiness: false
+- operational automated trading readiness: false
+- account-affecting operation readiness: false
