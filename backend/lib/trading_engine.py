@@ -541,7 +541,7 @@ def loadKisPaperCapabilityFlags() -> Dict[str, Any]:
         "supports_paper_cancel_order": True,
         "supports_paper_cancelable_query": False,
         "supports_paper_sellable_quantity_query": False,
-        "supports_paper_realized_pnl_query": False,
+        "supports_paper_realized_pnl_query": True,
         "supports_paper_holiday_query": False,
         "unsupported_branch_policy": {
             "nxt_order": "disabled_branch",
@@ -550,7 +550,6 @@ def loadKisPaperCapabilityFlags() -> Dict[str, Any]:
             "integrated_realtime": "disabled_branch",
             "cancelable_query": "local_fallback",
             "sellable_quantity_query": "local_fallback",
-            "realized_pnl_query": "local_fallback",
             "holiday_query": "local_fallback",
         },
     }

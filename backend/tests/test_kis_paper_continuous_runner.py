@@ -24,6 +24,7 @@ from service.kis_paper_adapter import (  # noqa: E402
     KisPaperAdapterError,
     describeKisPaperEnv,
     summarizeKisBalancePayload,
+    summarizeKisRealizedPnlPayload,
     validatePaperBaseUrl,
 )
 
@@ -40,6 +41,16 @@ class FakeTransport:
         if "/uapi/domestic-stock/v1/trading/order-cash" in url:
             rt_cd = "0" if self.order_status == "pass" else "1"
             return {"http_status": 200, "payload": {"rt_cd": rt_cd, "msg_cd": "ok" if rt_cd == "0" else "reject"}}
+        if "/uapi/domestic-stock/v1/trading/inquire-balance-rlz-pl" in url:
+            return {
+                "http_status": 200,
+                "payload": {
+                    "rt_cd": "0",
+                    "msg_cd": "ok",
+                    "output1": [{"pdno": "005930", "rlzt_pfls": "12000"}],
+                    "output2": {"rlzt_pfls": "34000", "real_evlu_pfls": "34000", "evlu_pfls_smtl_amt": "-84200"},
+                },
+            }
         if "/uapi/domestic-stock/v1/trading/inquire-balance" in url:
             return {
                 "http_status": 200,
@@ -213,6 +224,45 @@ def test_adapter_balance_summary_preserves_zero_pnl_value():
     assert summary["stock_eval_krw"] == 0
     assert summary["today_pnl_krw"] == 0
     assert summary["positions_count"] == 0
+
+
+def test_adapter_realized_pnl_uses_documented_endpoint_and_extracts_values():
+    transport = FakeTransport()
+    adapter = KisPaperAdapter(env=_env(), transport=transport)
+    token_result, token = adapter.issueTokenWithValue()
+    assert token_result["token_present"] is True
+
+    result = adapter.inquireRealizedPnl(token)
+
+    assert result["status"] == "pass"
+    assert result["step"] == "realized_pnl_inquire"
+    assert result["row_count"] == 1
+    assert result["dashboard_realized_pnl_summary"]["realized_pnl_krw"] == 34_000
+    assert result["dashboard_realized_pnl_summary"]["real_eval_pnl_krw"] == 34_000
+    assert result["dashboard_realized_pnl_summary"]["eval_pnl_sum_krw"] == -84_200
+    realized_call = [call for call in transport.calls if "inquire-balance-rlz-pl" in call["url"]][0]
+    assert "INQR_DVSN=00" in realized_call["url"]
+    assert realized_call["headers"]["tr_id"] == "TTTC8494R"
+
+
+def test_adapter_realized_pnl_summary_preserves_zero_value():
+    summary = summarizeKisRealizedPnlPayload(
+        {
+            "http_status": 200,
+            "payload": {
+                "rt_cd": "0",
+                "output2": {
+                    "rlzt_pfls": 0,
+                    "real_evlu_pfls": 0,
+                    "evlu_pfls_smtl_amt": 0,
+                },
+            },
+        }
+    )
+
+    assert summary["realized_pnl_krw"] == 0
+    assert summary["real_eval_pnl_krw"] == 0
+    assert summary["eval_pnl_sum_krw"] == 0
 
 
 def test_observation_manifest_is_operator_controlled_not_fixed_duration():

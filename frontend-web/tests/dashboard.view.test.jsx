@@ -31,6 +31,7 @@ describe("hwiStock operator console view", () => {
         cashBalance: 2000000,
         reserveBalance: 500000,
         todayPnl: -84200,
+        realizedPnl: 12000,
         aiJobStatus: "pro:present / flash:missing_or_safe_blocked",
         reportStatus: "continuous_tick:warn",
         paperNetworkEnabled: false,
@@ -136,6 +137,7 @@ describe("hwiStock operator console view", () => {
     expect(screen.getByText("2,000,000원")).toBeInTheDocument();
     expect(screen.getByText("500,000원")).toBeInTheDocument();
     expect(screen.getByText("-84,200원")).toBeInTheDocument();
+    expect(screen.getByText("+12,000원")).toBeInTheDocument();
     expect(screen.getByText("Pro 분석 있음 · Flash 문서 대기/안전 차단")).toBeInTheDocument();
     expect(screen.getByText("자동 점검: 주의")).toBeInTheDocument();
   });
@@ -156,6 +158,7 @@ describe("hwiStock operator console view", () => {
               cashBalance: "masked",
               reserveBalance: "masked",
               todayPnl: "system_report_only",
+              realizedPnl: "system_report_only",
               aiJobStatus: "pro:present / flash:present",
               reportStatus: "continuous_tick:ok",
             },
@@ -185,7 +188,7 @@ describe("hwiStock operator console view", () => {
     expect(screen.queryByText(/sked/)).not.toBeInTheDocument();
     expect(screen.getByText("계좌 조회 미연동")).toBeInTheDocument();
     expect(screen.getAllByText("조회 미연동").length).toBeGreaterThan(0);
-    expect(screen.getByText("손익 집계 대기")).toBeInTheDocument();
+    expect(screen.getAllByText("손익 집계 대기").length).toBeGreaterThanOrEqual(2);
   });
 
   test("에러는 code/requestId만 노출하고 raw JSON 페이로드는 렌더하지 않는다", () => {
@@ -262,6 +265,7 @@ describe("hwiStock operator console view", () => {
               cashBalance: 2000000,
               reserveBalance: 500000,
               todayPnl: 0,
+              realizedPnl: 0,
               aiJobStatus: "pro:present / flash:present",
               reportStatus: "continuous_tick:ok",
               paperNetworkEnabled: false,

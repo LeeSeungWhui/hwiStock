@@ -143,10 +143,13 @@ def _summaryFromPayload(
     pnl = _numericOrNone(payload.get("today_pnl_krw"))
     if pnl is None:
         pnl = _numericOrNone(payload.get("todayPnl"))
+    realizedPnl = _numericOrNone(payload.get("realized_pnl_krw"))
+    if realizedPnl is None:
+        realizedPnl = _numericOrNone(payload.get("realizedPnl"))
     positions = _numericOrNone(payload.get("positions_count")) or 0
     if positions == 0:
         positions = _numericOrNone(payload.get("openPositions")) or 0
-    if cash is None and pnl is None:
+    if cash is None and pnl is None and realizedPnl is None:
         return None
     return {
         "schema_version": "dashboard_account_summary/v0",
@@ -154,10 +157,12 @@ def _summaryFromPayload(
         "cashBalance": cash if cash is not None else "잔고 조회 실패",
         "reserveBalance": reserveFloor,
         "todayPnl": pnl if pnl is not None else "손익 조회 실패",
+        "realizedPnl": realizedPnl if realizedPnl is not None else "실현손익 조회 실패",
         "openPositions": positions,
         "status": payload.get("status") or "cached",
         "balanceStatus": payload.get("balance_status") or payload.get("balanceStatus"),
         "buyableStatus": payload.get("buyable_status") or payload.get("buyableStatus"),
+        "realizedPnlStatus": payload.get("realized_pnl_status") or payload.get("realizedPnlStatus"),
         "source": source,
         "accountDisplayed": bool(accountNo),
         "rawProviderPayloadDisplayed": False,
@@ -168,7 +173,10 @@ def _summaryFromPayload(
 def _accountSummaryHasNumericPnl(summary: Optional[Dict[str, Any]]) -> bool:
     if not summary:
         return False
-    return _numericOrNone(summary.get("todayPnl")) is not None
+    return (
+        _numericOrNone(summary.get("todayPnl")) is not None
+        or _numericOrNone(summary.get("realizedPnl")) is not None
+    )
 
 
 def _readDashboardAccountSummaryFromRunnerEvidence(
@@ -186,8 +194,10 @@ def _readDashboardAccountSummaryFromRunnerEvidence(
         return None
     balanceSummary: Dict[str, Any] = {}
     buyableSummary: Dict[str, Any] = {}
+    realizedSummary: Dict[str, Any] = {}
     balanceStatus = None
     buyableStatus = None
+    realizedStatus = None
     for step in evidence.get("steps") or []:
         if not isinstance(step, dict):
             continue
@@ -199,12 +209,18 @@ def _readDashboardAccountSummaryFromRunnerEvidence(
             buyableStatus = step.get("status")
             if isinstance(step.get("dashboard_buyable_summary"), dict):
                 buyableSummary = dict(step["dashboard_buyable_summary"])
+        if step.get("step") == "realized_pnl_inquire":
+            realizedStatus = step.get("status")
+            if isinstance(step.get("dashboard_realized_pnl_summary"), dict):
+                realizedSummary = dict(step["dashboard_realized_pnl_summary"])
     merged = {
         **balanceSummary,
         **buyableSummary,
+        **realizedSummary,
         "status": "cached_pass" if balanceStatus == "pass" or buyableStatus == "pass" else "cached_warn",
         "balance_status": balanceStatus,
         "buyable_status": buyableStatus,
+        "realized_pnl_status": realizedStatus,
     }
     return _summaryFromPayload(
         merged,
@@ -253,6 +269,7 @@ def buildDashboardAccountSummary(
         "cashBalance": "잔고 조회 대기",
         "reserveBalance": reserveFloor,
         "todayPnl": "손익 조회 대기",
+        "realizedPnl": "실현손익 조회 대기",
         "openPositions": 0,
         "status": "pending",
         "accountDisplayed": bool(accountNo),
@@ -281,6 +298,7 @@ def buildDashboardAccountSummary(
             **fallback,
             "cashBalance": "잔고 조회 비활성",
             "todayPnl": "손익 조회 비활성",
+            "realizedPnl": "실현손익 조회 비활성",
             "status": "disabled_by_env",
         }
 
@@ -292,6 +310,7 @@ def buildDashboardAccountSummary(
             **fallback,
             "cashBalance": "KIS 계좌 설정 필요",
             "todayPnl": "KIS 계좌 설정 필요",
+            "realizedPnl": "KIS 계좌 설정 필요",
             "status": "blocked_missing_env",
         }
 
@@ -302,6 +321,7 @@ def buildDashboardAccountSummary(
                 **fallback,
                 "cashBalance": "KIS 토큰 발급 실패",
                 "todayPnl": "KIS 토큰 발급 실패",
+                "realizedPnl": "KIS 토큰 발급 실패",
                 "status": "blocked_token_missing",
             }
         accountSummary = adapter.inquireAccountSummaryForDashboard(token, sampleSymbol)
@@ -314,6 +334,7 @@ def buildDashboardAccountSummary(
             **fallback,
             "cashBalance": "KIS 잔고 조회 실패",
             "todayPnl": "KIS 잔고 조회 실패",
+            "realizedPnl": "KIS 실현손익 조회 실패",
             "status": "warn",
             "errorType": type(exc).__name__,
         }
@@ -324,6 +345,7 @@ def buildDashboardAccountSummary(
             "status": accountSummary.get("status") or "unknown",
             "balance_status": accountSummary.get("balance_status"),
             "buyable_status": accountSummary.get("buyable_status"),
+            "realized_pnl_status": accountSummary.get("realized_pnl_status"),
         },
         accountNo=accountNo,
         productCode=productCode,
@@ -339,10 +361,14 @@ def buildDashboardAccountSummary(
         "todayPnl": accountSummary.get("today_pnl_krw")
         if accountSummary.get("today_pnl_krw") is not None
         else "손익 조회 실패",
+        "realizedPnl": accountSummary.get("realized_pnl_krw")
+        if accountSummary.get("realized_pnl_krw") is not None
+        else "실현손익 조회 실패",
         "openPositions": int(accountSummary.get("positions_count") or 0),
         "status": accountSummary.get("status") or "unknown",
         "balanceStatus": accountSummary.get("balance_status"),
         "buyableStatus": accountSummary.get("buyable_status"),
+        "realizedPnlStatus": accountSummary.get("realized_pnl_status"),
         "accountDisplayed": bool(accountSummary.get("account_label")),
     }
     _writeDashboardAccountSummaryCache(runtimeRoot, summary)
@@ -779,6 +805,7 @@ def buildOperatorConsoleSnapshot(
             "cashBalance": accountSummary["cashBalance"],
             "reserveBalance": accountSummary["reserveBalance"],
             "todayPnl": accountSummary["todayPnl"],
+            "realizedPnl": accountSummary["realizedPnl"],
             "openPositions": accountSummary["openPositions"],
             "riskRejects": riskRejects,
             "aiJobStatus": aiJobStatus,
@@ -805,6 +832,7 @@ def buildOperatorConsoleSnapshot(
                 "status": accountSummary["status"],
                 "balanceStatus": accountSummary.get("balanceStatus"),
                 "buyableStatus": accountSummary.get("buyableStatus"),
+                "realizedPnlStatus": accountSummary.get("realizedPnlStatus"),
                 "rawProviderPayloadDisplayed": accountSummary["rawProviderPayloadDisplayed"],
                 "credentialValuesPrinted": accountSummary["credentialValuesPrinted"],
             },

@@ -422,6 +422,8 @@ def runContinuousPaperTick(
     _sleepForKisCallGap(config)
     result["steps"].append(adapter.inquireBuyable(token, sample_symbol))
     _sleepForKisCallGap(config)
+    result["steps"].append(adapter.inquireRealizedPnl(token))
+    _sleepForKisCallGap(config)
     result["steps"].append(adapter.dailyOrderFillLookup(token, date_yyyymmdd=now.strftime("%Y%m%d")))
     _sleepForKisCallGap(config)
 

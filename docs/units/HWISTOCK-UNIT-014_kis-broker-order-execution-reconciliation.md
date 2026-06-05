@@ -97,8 +97,7 @@ and account conditions are present. Unapproved adapter operation remains forbidd
 
 - Unapproved domain calls.
 - NXT/SOR broker-adapter routing.
-- Sellable quantity or realized PnL APIs when the current adapter matrix says
-  local fallback.
+- Sellable quantity APIs when the current adapter matrix says local fallback.
 - Broker account values.
 - Fake broker fills, balances, positions, or PnL.
 - AI/provider calls.

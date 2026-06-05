@@ -412,6 +412,11 @@ const OperatorConsoleView = ({
                     {formatKrwValue(snapshot.summary.todayPnl, { signed: true })}
                   </span>
                 </SummaryRow>
+                <SummaryRow label={LANG_KO.view.summary.realizedPnl}>
+                  <span className="font-mono text-sm font-semibold text-slate-800">
+                    {formatKrwValue(snapshot.summary.realizedPnl, { signed: true })}
+                  </span>
+                </SummaryRow>
                 <SummaryRow label={LANG_KO.view.summary.openPositions}>
                   <span className="text-sm font-semibold text-slate-800">{snapshot.summary.openPositions}</span>
                 </SummaryRow>

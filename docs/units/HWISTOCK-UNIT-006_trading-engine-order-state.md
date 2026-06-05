@@ -213,7 +213,7 @@ The first KIS broker adapter must expose:
 - `supports_paper_cancel_order=true`
 - `supports_paper_cancelable_query=false`
 - `supports_paper_sellable_quantity_query=false`
-- `supports_paper_realized_pnl_query=false`
+- `supports_paper_realized_pnl_query=true`
 - `supports_paper_holiday_query=false`
 
 Unsupported capabilities produce `disabled_branch` or `local_fallback` records;
@@ -236,7 +236,6 @@ Use local state or explicit fallback records for adapter-unsupported helper APIs
 
 - modify/cancel eligible-order query
 - sellable quantity query
-- realized PnL query
 - holiday/open-day query from local cached KRX/NXT calendar, with KIS
   `국내휴장일조회` as later-approved broker cross-check only
 - NXT realtime

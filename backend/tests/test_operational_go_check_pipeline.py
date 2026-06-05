@@ -294,6 +294,7 @@ def test_unit015_operator_snapshot_is_read_only_and_exposes_local_account_summar
     assert snapshot["summary"]["accountId"] == "12345678-01"
     assert snapshot["summary"]["cashBalance"] == "잔고 조회 비활성"
     assert snapshot["summary"]["reserveBalance"] == 500_000
+    assert snapshot["summary"]["realizedPnl"] == "실현손익 조회 비활성"
     assert snapshot["readinessTruth"]["headline"] == "NOT_READY_FOR_PAPER_TRADING"
     assert snapshot["readinessTruth"]["serviceVisibilityIsNotReadiness"] is True
     assert snapshot["readinessTruth"]["paperNetworkEnabled"] is True
@@ -331,6 +332,7 @@ def test_unit015_account_summary_refreshes_stale_pnl_failure_cache(tmp_path: Pat
                 "cashBalance": 9_950_000,
                 "reserveBalance": 500_000,
                 "todayPnl": "손익 조회 실패",
+                "realizedPnl": "실현손익 조회 실패",
                 "openPositions": 0,
                 "status": "warn",
                 "source": "kis-live-read",
@@ -360,9 +362,11 @@ def test_unit015_account_summary_refreshes_stale_pnl_failure_cache(tmp_path: Pat
                 "total_eval_krw": 9_950_000,
                 "stock_eval_krw": 0,
                 "today_pnl_krw": -84_200,
+                "realized_pnl_krw": 12_000,
                 "positions_count": 0,
                 "balance_status": "pass",
                 "buyable_status": "warn",
+                "realized_pnl_status": "pass",
                 "credential_values_printed": False,
                 "raw_response_stored": False,
             }
@@ -383,11 +387,14 @@ def test_unit015_account_summary_refreshes_stale_pnl_failure_cache(tmp_path: Pat
     assert summary["source"] == "kis-live-read"
     assert summary["cashBalance"] == 9_950_000
     assert summary["todayPnl"] == -84_200
+    assert summary["realizedPnl"] == 12_000
     assert summary["balanceStatus"] == "pass"
     assert summary["buyableStatus"] == "warn"
+    assert summary["realizedPnlStatus"] == "pass"
 
     refreshed = json.loads(cache_path.read_text(encoding="utf-8"))
     assert refreshed["todayPnl"] == -84_200
+    assert refreshed["realizedPnl"] == 12_000
     assert refreshed["credentialValuesPrinted"] is False
 
 
@@ -412,6 +419,15 @@ def test_unit015_account_summary_preserves_zero_pnl_from_runner_evidence(tmp_pat
                         },
                     },
                     {
+                        "step": "realized_pnl_inquire",
+                        "status": "pass",
+                        "dashboard_realized_pnl_summary": {
+                            "realized_pnl_krw": 0,
+                            "real_eval_pnl_krw": 0,
+                            "eval_pnl_sum_krw": 0,
+                        },
+                    },
+                    {
                         "step": "buyable_inquire_psbl_order",
                         "status": "warn",
                         "dashboard_buyable_summary": {"buyable_cash_krw": None},
@@ -432,9 +448,11 @@ def test_unit015_account_summary_preserves_zero_pnl_from_runner_evidence(tmp_pat
     assert summary["source"] == "kis-paper-runner-evidence"
     assert summary["cashBalance"] == 10_000_000
     assert summary["todayPnl"] == 0
+    assert summary["realizedPnl"] == 0
     assert summary["openPositions"] == 0
     assert summary["balanceStatus"] == "pass"
     assert summary["buyableStatus"] == "warn"
+    assert summary["realizedPnlStatus"] == "pass"
 
 
 def test_unit015_operator_snapshot_detects_order_enabled_service_contradiction(tmp_path: Path, monkeypatch):

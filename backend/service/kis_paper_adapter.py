@@ -56,7 +56,7 @@ def loadKisPaperCapabilityFlags() -> Dict[str, Any]:
         "supports_paper_cancel_order": True,
         "supports_paper_cancelable_query": False,
         "supports_paper_sellable_quantity_query": False,
-        "supports_paper_realized_pnl_query": False,
+        "supports_paper_realized_pnl_query": True,
         "supports_paper_holiday_query": False,
         "unsupported_branch_policy": {
             "nxt_order": "disabled_branch",
@@ -64,7 +64,6 @@ def loadKisPaperCapabilityFlags() -> Dict[str, Any]:
             "integrated_realtime": "disabled_branch",
             "cancelable_query": "local_fallback",
             "sellable_quantity_query": "local_fallback",
-            "realized_pnl_query": "local_fallback",
             "holiday_query": "local_fallback",
         },
     }
@@ -208,6 +207,26 @@ def summarizeKisBuyablePayload(response: Mapping[str, Any]) -> Dict[str, Any]:
                 "nrcvb_buy_amt",
             ),
         )
+    }
+
+
+def summarizeKisRealizedPnlPayload(response: Mapping[str, Any]) -> Dict[str, Any]:
+    payload = response.get("payload") if isinstance(response.get("payload"), Mapping) else {}
+    output2 = payload.get("output2")
+    output1 = payload.get("output1")
+    realized_pnl = _first_int_by_keys(output2, ("rlzt_pfls",))
+    if realized_pnl is None:
+        realized_pnl = _first_int_by_keys(output1, ("rlzt_pfls", "real_evlu_pfls"))
+    real_eval_pnl = _first_int_by_keys(output2, ("real_evlu_pfls",))
+    if real_eval_pnl is None:
+        real_eval_pnl = _first_int_by_keys(output1, ("real_evlu_pfls",))
+    eval_pnl_sum = _first_int_by_keys(output2, ("evlu_pfls_smtl_amt",))
+    if eval_pnl_sum is None:
+        eval_pnl_sum = _first_int_by_keys(output1, ("evlu_pfls_smtl_amt",))
+    return {
+        "realized_pnl_krw": realized_pnl,
+        "real_eval_pnl_krw": real_eval_pnl,
+        "eval_pnl_sum_krw": eval_pnl_sum,
     }
 
 
@@ -356,6 +375,23 @@ class KisPaperAdapter:
         result["dashboard_buyable_summary"] = summarizeKisBuyablePayload(response)
         return result
 
+    def inquireRealizedPnl(self, token: str) -> Dict[str, Any]:
+        params = {
+            "CANO": self._env_value("KIS_PAPER_ACCOUNT_NO"),
+            "ACNT_PRDT_CD": self._env_value("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
+            "INQR_DVSN": "00",
+            "CTX_AREA_FK100": "",
+            "CTX_AREA_NK100": "",
+        }
+        response = self._request(
+            "GET",
+            f"/uapi/domestic-stock/v1/trading/inquire-balance-rlz-pl?{urllib.parse.urlencode(params)}",
+            headers=self._authHeaders(token, "TTTC8494R"),
+        )
+        result = sanitizeKisResponse(response, step="realized_pnl_inquire", row_count_key="output1")
+        result["dashboard_realized_pnl_summary"] = summarizeKisRealizedPnlPayload(response)
+        return result
+
     def dailyOrderFillLookup(self, token: str, *, date_yyyymmdd: str, symbol: str = "") -> Dict[str, Any]:
         params = {
             "CANO": self._env_value("KIS_PAPER_ACCOUNT_NO"),
@@ -461,6 +497,11 @@ class KisPaperAdapter:
         buyable = sanitizeKisResponse(buyable_response, step="dashboard_buyable_inquire")
         balance_summary = summarizeKisBalancePayload(balance_response)
         buyable_summary = summarizeKisBuyablePayload(buyable_response)
+        realized = {
+            "status": "skipped",
+            "reason": "dashboard_account_summary_uses_runner_realized_pnl_when_available",
+        }
+        realized_summary: Dict[str, Any] = {}
         cash_balance = buyable_summary.get("buyable_cash_krw")
         if cash_balance is None:
             cash_balance = balance_summary.get("cash_balance_krw")
@@ -474,9 +515,11 @@ class KisPaperAdapter:
             "total_eval_krw": balance_summary.get("total_eval_krw"),
             "stock_eval_krw": balance_summary.get("stock_eval_krw"),
             "today_pnl_krw": balance_summary.get("today_pnl_krw"),
+            "realized_pnl_krw": realized_summary.get("realized_pnl_krw"),
             "positions_count": balance_summary.get("positions_count", 0),
             "balance_status": balance.get("status"),
             "buyable_status": buyable.get("status"),
+            "realized_pnl_status": realized.get("status"),
             "credential_values_printed": False,
             "raw_response_stored": False,
         }

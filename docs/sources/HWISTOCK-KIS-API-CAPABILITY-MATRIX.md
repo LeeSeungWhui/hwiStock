@@ -60,7 +60,7 @@ broker.
 | `주식잔고조회[v1_국내주식-006].xlsx` | Balance/position lookup | `paper_proven_bounded_20260604` on KRX adapter path; use in approved KIS KRX broker adapter for cash/position reconciliation. | Verify operation response fields, masking, and account/product-code mapping. |
 | `매수가능조회[v1_국내주식-007].xlsx` | Buyable amount lookup | `paper_proven_bounded_20260604` on KRX adapter path; use in approved KIS broker adapter as an input to cash gate, while still applying hwiStock 2,000,000 KRW virtual capital cap if configured. | Verify operation cash-only fields and ensure 미수/credit buying power is ignored. |
 | `매도가능수량조회 [국내주식-165].xlsx` | Sellable quantity lookup | `paper_unsupported` / `local_fallback`: derive sellable quantity from adapter balance, local fills, unsettled orders, and local position locks. | Verify operation behavior before using as sell gate. |
-| `주식잔고조회_실현손익[v1_국내주식-041].xlsx` | Realized PnL lookup | `paper_unsupported` / `local_fallback`: calculate PnL from fills, fees, tax model, and position ledger during simulation. | Verify operation response and compare against system-calculated PnL before trusting it. |
+| `주식잔고조회_실현손익[v1_국내주식-041].xlsx` | Realized PnL lookup | Adapter endpoint implemented from the supplied API reference: `GET /uapi/domestic-stock/v1/trading/inquire-balance-rlz-pl`, `tr_id=TTTC8494R`; sanitized runner evidence records status and `rlzt_pfls` summary when returned. | Compare provider-realized PnL against system-calculated fill/fee/tax PnL before trusting discrepancies. |
 
 ## 5. Realtime Quote / Fill APIs
 

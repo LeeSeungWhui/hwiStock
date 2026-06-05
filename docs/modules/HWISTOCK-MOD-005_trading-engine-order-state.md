@@ -147,7 +147,7 @@ KRX broker-adapter only. The adapter capability must expose at least:
 - `supports_paper_cancel_order=true`
 - `supports_paper_cancelable_query=false`
 - `supports_paper_sellable_quantity_query=false`
-- `supports_paper_realized_pnl_query=false`
+- `supports_paper_realized_pnl_query=true`
 - `supports_paper_holiday_query=false`
 
 KIS broker order/fill reconciliation uses the supported KRX adapter APIs listed in

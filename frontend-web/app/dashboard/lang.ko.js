@@ -56,6 +56,7 @@ export const LANG_KO = {
       cash: "가용 현금",
       reserve: "예비금",
       todayPnl: "평가손익",
+      realizedPnl: "실현손익",
       openPositions: "보유 포지션",
       riskRejects: "리스크 거절",
       aiJob: "AI 작업",

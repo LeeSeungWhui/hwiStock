@@ -22,6 +22,7 @@ export const OPERATOR_FALLBACK_FIXTURE = {
     cashBalance: "masked",
     reserveBalance: "masked",
     todayPnl: "system_report_only",
+    realizedPnl: "system_report_only",
     openPositions: 0,
     riskRejects: 0,
     aiJobStatus: "missing_or_safe_blocked",
