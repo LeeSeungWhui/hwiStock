@@ -73,7 +73,7 @@ metadata.
 
 ## 2. Included Scope
 
-- KIS paper/mock credential loading from `/home/hwi/.config/hwistock/kis-paper.env`
+- KIS paper/mock credential loading from `/home/hwi/.config/hwistock/hwistockApi.env`
   without printing or committing values.
 - Paper/live domain guard that fail-closes on any live endpoint, partner
   endpoint, or unknown host.

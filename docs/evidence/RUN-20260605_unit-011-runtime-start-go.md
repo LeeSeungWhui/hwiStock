@@ -30,6 +30,14 @@ and reconciliation ticks while paper cash order submission remains disabled
 unless a later explicit order unit enables `HWISTOCK_KIS_PAPER_ORDER_ENABLED`
 or passes `--allow-paper-orders`.
 
+Explicit scope exception: although UNIT-011 was primarily a local runtime
+supervisor/startup pass, the owner approved starting the KIS paper
+read-health/reconciliation timers as part of "turn the runtime bundle on".
+That exception is limited to paper/mock read and reconciliation evidence with
+orders disabled. It does not authorize KIS paper order submission, KIS
+order/cancel/modify endpoints, live domains, raw account output, or credential
+printing.
+
 ## 2. Side Effects Performed
 
 - Installed repo unit files into `/home/hwi/.config/systemd/user/`.

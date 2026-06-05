@@ -10,7 +10,7 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=/data/workspace/My/hwiStock
 EnvironmentFile=-/home/hwi/.config/hwistock/hwistock.env
-EnvironmentFile=-/home/hwi/.config/hwistock/kis-paper.env
+EnvironmentFile=-/home/hwi/.config/hwistock/hwistockApi.env
 Environment=HWISTOCK_BIND_HOST=127.0.0.1
 Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=false
 ExecStart=/usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/kis_paper_continuous_runner.py --once --write-evidence --allow-paper-network'

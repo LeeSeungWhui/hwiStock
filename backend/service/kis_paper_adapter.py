@@ -74,7 +74,7 @@ def describeKisPaperEnv(env: Optional[Mapping[str, str]] = None) -> Dict[str, An
     source = env if env is not None else os.environ
     missing = [key for key in REQUIRED_ENV_KEYS if not str(source.get(key, "")).strip()]
     return {
-        "envPath": "/home/hwi/.config/hwistock/kis-paper.env",
+        "envPath": "/home/hwi/.config/hwistock/hwistockApi.env",
         "requiredKeys": list(REQUIRED_ENV_KEYS),
         "missingKeys": missing,
         "credentialsPresent": not missing,

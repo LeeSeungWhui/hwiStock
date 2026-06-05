@@ -59,6 +59,12 @@ trade documents without relying on a human-written intent file for every test.
 The intent still must be source-grounded, KIS-market-data-confirmed,
 session-confirmed, portfolio/order-state-compatible, risk-checked, and non-live.
 
+Source-authority correction: `docs/sources/HWISTOCK-SOURCE-REGISTRY.md` now
+splits public 24-hour market-intelligence sources from KIS paper-read market
+data. UNIT-013 may perform only KIS paper/mock **market-data reads** needed for
+signal confirmation and snapshot artifacts. UNIT-013 must not call KIS order,
+cancel, balance-changing, or live endpoints.
+
 ## 2. Included Scope
 
 - Build a trade-action pipeline from:
@@ -84,6 +90,8 @@ session-confirmed, portfolio/order-state-compatible, risk-checked, and non-live.
   - program-trading aggregate status where paper-supported;
   - `ranking/top-interest-stock`;
   - KRX realtime trade price/orderbook subscription contracts where supported.
+  Unsupported NXT/SOR/integrated broker-facing market-data branches must produce
+  disabled/fallback evidence and cannot be treated as paper-proven.
 - Produce deterministic `condition_card/v0` and `compiled_watch/v0` records.
 - Produce `paper_order_intent/v0` only when:
   - all input artifacts are schema-valid and manifest/hash complete;
@@ -111,6 +119,8 @@ session-confirmed, portfolio/order-state-compatible, risk-checked, and non-live.
 ## 3. Excluded Scope
 
 - Direct KIS order calls.
+- KIS cancel/modify/order submission calls, even when paper/mock credentials are
+  present.
 - Live trading.
 - Fake fills/balances/PnL.
 - News-only automatic orders.
@@ -133,6 +143,7 @@ session-confirmed, portfolio/order-state-compatible, risk-checked, and non-live.
 | AC-09 | P0 | Portfolio conflicts are blocked | Held symbols, pending orders, active exits, cooldowns, and prior valid trade-doc decisions block conflicting new intents unless a scale-in/exit action is explicitly permitted by deterministic rules. |
 | AC-10 | P0 | UNIT-016 contracts are applied | Intent generation consumes only schema-valid, manifest-complete, fresh, idempotent, reservation-safe artifacts defined by UNIT-016. |
 | AC-11 | P0 | Pending waits are superseded safely | A new accepted trade document cancels prior unfilled `WAIT_BUY` orders unless renewed explicitly and still gate-valid. |
+| AC-12 | P0 | UNIT-013 is paper-read only | KIS order/cancel/modify endpoints are not called by this unit; unsupported NXT/SOR broker-facing branches write disabled/fallback evidence. |
 
 ## 5. Go Notes
 
@@ -142,3 +153,7 @@ runner. UNIT-014 must not be asked to invent trades; it consumes approved
 data in this unit. The executor is still required to re-check portfolio/order
 state immediately before broker submission because holdings and open orders can
 change after Flash writes the document.
+
+If portfolio or order-state refs are missing, unavailable, stale, or only
+advisory, this unit may write watch/reject records but must not produce a clean
+entry `paper_order_intent/v0`.

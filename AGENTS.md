@@ -33,7 +33,7 @@ which is this project's profile source of truth.
 - Broker/API accounts: KIS paper/mock credentials are configured only in the
   local secret store; live accounts are not approved for runtime use.
 - Paper/sandbox accounts: KIS paper/mock account config exists in
-  `/home/hwi/.config/hwistock/kis-paper.env`; values must never be pasted,
+  `/home/hwi/.config/hwistock/hwistockApi.env`; values must never be pasted,
   committed, or written into reports.
 - Sensitive values must be referenced by fixture/env name rather than copied
   into reports.
@@ -126,7 +126,10 @@ which is this project's profile source of truth.
   handling changes
 - `prove`: `hwi-work-harness`
 - Browser QA route override: none yet
-- External collaboration/review route override: none yet
+- External collaboration/review route override: when requesting GPT Pro review
+  for this project, provide the GitHub repository URL plus the exact folders
+  and file paths that should be reviewed. Do not rely on an unscoped full-repo
+  prompt.
 
 ## Design / Browser Evidence
 

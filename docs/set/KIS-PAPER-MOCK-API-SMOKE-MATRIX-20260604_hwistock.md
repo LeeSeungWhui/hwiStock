@@ -51,7 +51,7 @@ Denied:
 
 Use only a local user-managed secret file such as:
 
-`/home/hwi/.config/hwistock/kis-paper.env`
+`/home/hwi/.config/hwistock/hwistockApi.env`
 
 Required variables for REST token, quote, balance, buyable, order, cancel, and
 daily order/fill smoke:

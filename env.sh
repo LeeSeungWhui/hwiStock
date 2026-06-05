@@ -118,7 +118,7 @@ load_hwistock_env_file "$HWISTOCK_ENV_DIR/hwistock.env"
 load_hwistock_env_file "$HWISTOCK_ENV_DIR/deepseek.env"
 load_hwistock_env_file "$HOME/.config/deepseek.env"
 load_hwistock_env_file "$HWISTOCK_ENV_DIR/source-apis.env"
-load_hwistock_env_file "$HWISTOCK_ENV_DIR/kis-paper.env"
+load_hwistock_env_file "$HWISTOCK_ENV_DIR/hwistockApi.env"
 
 unset -f load_hwistock_env_file
 

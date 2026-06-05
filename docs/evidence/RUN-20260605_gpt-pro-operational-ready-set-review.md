@@ -27,6 +27,12 @@ profile_refs:
 
 # GPT Pro Operational Ready-Set Review
 
+Historical terminology note: this external review predates the owner-confirmed
+10-minute Flash trade-document rebaseline. Any wording below that says "per
+market minute" or `NO_ACTION` is historical review text; current authority uses
+"at most one finalized Flash artifact per 10-minute decision bucket" and
+`NO_TRADE` sentinel artifacts.
+
 ## 1. Review Route
 
 - Tool route: Chrome extension browser runtime through `node_repl_http`.

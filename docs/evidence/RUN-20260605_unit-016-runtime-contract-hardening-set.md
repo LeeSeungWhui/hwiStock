@@ -70,8 +70,8 @@ The Set artifacts define:
   - `broker_order_result/v0`;
   - `reconciliation_event/v0`;
 - common artifact metadata and timestamp/hash rules;
-- Flash at-most-one-finalized-artifact-per-minute semantics;
-- `NO_ACTION` sentinel behavior;
+- Flash at-most-one-finalized-artifact-per-10-minute-decision-bucket semantics;
+- `NO_TRADE` sentinel behavior;
 - max five Flash candidates per document;
 - deterministic `trade_doc_id`, `intent_id`, and `client_order_key` formulas;
 - atomic artifact publication requirements;
@@ -95,15 +95,18 @@ Result:
 ```text
 runtime_contract_validation=PASS
 valid_artifacts=12
-invalid_cases=5
+invalid_cases=27
 schema_count=12
 ```
 
 The validator uses the standard library only. It checks required fields,
 primitive types, const/enum/pattern/min/max rules, KST timestamps, Flash
-candidate caps, Flash non-executability, paper-only broker request guards,
-executor state transitions, duplicate artifact ids, and obvious secret-like
-key/value leaks.
+candidate caps, nested Flash action refs, exact deterministic hash id patterns,
+`NO_TRADE` conditional behavior, KIS snapshot/portfolio/order freshness,
+paper-only broker request guards, cancel-target requirements, executor state
+transitions, duplicate artifact ids/intent ids, deterministic sizing bounds,
+ambiguous-submit reconciliation, publication-manifest completeness, and obvious
+secret-like key/value leaks.
 
 ## 5. Accepted Invalid Cases
 
@@ -112,8 +115,19 @@ The invalid fixture set proves the validator blocks:
 - missing `content_hash`;
 - Flash documents with more than five candidates;
 - Flash artifacts attempting to allow executable intents;
-- live/unknown broker request configuration; and
-- illegal order state transition.
+- live/unknown broker request configuration;
+- illegal order state transition;
+- short `trade_doc_id`, `intent_id`, and `client_order_key` values;
+- invalid Flash action enum and missing authoritative portfolio/order refs;
+- `NO_TRADE` documents with actions or missing reason;
+- stale KIS/portfolio/order snapshots;
+- missing source dedupe/hash/watermark fields;
+- bad resolved KIS paper host guard;
+- cancel requests without target ids/reason/deadline;
+- deterministic sizing/reservation breach;
+- partial publication without manifest;
+- ambiguous submit without reconciliation; and
+- duplicate intent / duplicate KIS snapshot sequence collections.
 
 ## 6. Boundaries Preserved
 

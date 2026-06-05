@@ -16,7 +16,8 @@
     "redaction_status",
     "producer",
     "input_refs",
-    "validation"
+    "validation",
+    "publication"
   ],
   "common_field_specs": {
     "schema_version": {
@@ -97,12 +98,61 @@
           "type": "array"
         }
       }
+    },
+    "publication": {
+      "type": "object",
+      "required_fields": [
+        "path",
+        "temp_path",
+        "manifest_ref",
+        "ready_marker",
+        "byte_size",
+        "content_hash",
+        "finalized_at_kst",
+        "atomic_rename_complete",
+        "manifest_hash_verified"
+      ],
+      "fields": {
+        "path": {
+          "type": "string"
+        },
+        "temp_path": {
+          "type": "string"
+        },
+        "manifest_ref": {
+          "type": "string"
+        },
+        "ready_marker": {
+          "type": "boolean",
+          "const": true
+        },
+        "byte_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "content_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "finalized_at_kst": {
+          "type": "string",
+          "format": "kst_datetime"
+        },
+        "atomic_rename_complete": {
+          "type": "boolean",
+          "const": true
+        },
+        "manifest_hash_verified": {
+          "type": "boolean",
+          "const": true
+        }
+      }
     }
   },
   "id_formulas": {
-    "trade_doc_id": "sha256(run_id + trading_date + decision_bucket_kst + input_manifest_hash)",
-    "intent_id": "sha256(trade_doc_id + trade_action_id + ticker + side + normalized_order_rule_hash)",
-    "client_order_key": "sha256(intent_id + execution_attempt_no)"
+    "trade_doc_id": "tdoc_ + sha256(run_id + trading_date + decision_bucket_kst + input_manifest_hash)",
+    "intent_id": "intent_ + sha256(trade_doc_id + trade_action_id + ticker + side + normalized_order_rule_hash)",
+    "client_order_key": "cok_ + sha256(intent_id + execution_attempt_no)"
   },
   "freshness_ttl_seconds": {
     "portfolio_order_state_before_submit": 5,
@@ -212,7 +262,13 @@
         "url",
         "body_storage_policy",
         "untrusted_text_ref",
-        "symbols"
+        "symbols",
+        "source_event_id",
+        "source_published_at_kst",
+        "dedupe_key",
+        "source_hash",
+        "collection_watermark",
+        "terms_policy_ref"
       ],
       "fields": {
         "schema_version": {
@@ -249,6 +305,46 @@
         },
         "symbols": {
           "type": "array"
+        },
+        "source_event_id": {
+          "type": "string"
+        },
+        "source_published_at_kst": {
+          "type": "string",
+          "format": "kst_datetime"
+        },
+        "dedupe_key": {
+          "type": "string"
+        },
+        "source_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "collection_watermark": {
+          "type": "object",
+          "required_fields": [
+            "watermark_id",
+            "source_id",
+            "collected_through_kst"
+          ],
+          "fields": {
+            "watermark_id": {
+              "type": "string"
+            },
+            "source_id": {
+              "type": "string"
+            },
+            "collected_through_kst": {
+              "type": "string",
+              "format": "kst_datetime"
+            },
+            "cursor": {
+              "type": "string"
+            }
+          }
+        },
+        "terms_policy_ref": {
+          "type": "string"
         }
       }
     },
@@ -265,7 +361,13 @@
         "source_url",
         "body_storage_policy",
         "untrusted_text_ref",
-        "symbols"
+        "symbols",
+        "source_event_id",
+        "source_published_at_kst",
+        "dedupe_key",
+        "source_hash",
+        "collection_watermark",
+        "terms_policy_ref"
       ],
       "fields": {
         "schema_version": {
@@ -306,6 +408,46 @@
         "symbols": {
           "type": "array",
           "min_items": 1
+        },
+        "source_event_id": {
+          "type": "string"
+        },
+        "source_published_at_kst": {
+          "type": "string",
+          "format": "kst_datetime"
+        },
+        "dedupe_key": {
+          "type": "string"
+        },
+        "source_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "collection_watermark": {
+          "type": "object",
+          "required_fields": [
+            "watermark_id",
+            "source_id",
+            "collected_through_kst"
+          ],
+          "fields": {
+            "watermark_id": {
+              "type": "string"
+            },
+            "source_id": {
+              "type": "string"
+            },
+            "collected_through_kst": {
+              "type": "string",
+              "format": "kst_datetime"
+            },
+            "cursor": {
+              "type": "string"
+            }
+          }
+        },
+        "terms_policy_ref": {
+          "type": "string"
         }
       }
     },
@@ -319,7 +461,16 @@
         "paper_support_status",
         "symbols",
         "market_session",
-        "freshness"
+        "freshness",
+        "as_of_kst",
+        "venue",
+        "heartbeat_at_kst",
+        "sequence_no",
+        "latency_ms",
+        "rate_limit_bucket",
+        "raw_payload_ref",
+        "redacted_payload_hash",
+        "snapshot_payload"
       ],
       "fields": {
         "schema_version": {
@@ -362,8 +513,138 @@
           "type": "object",
           "required_fields": [
             "ttl_seconds",
-            "is_fresh"
+            "is_fresh",
+            "last_refreshed_at_kst",
+            "heartbeat_gap_seconds"
+          ],
+          "fields": {
+            "ttl_seconds": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "is_fresh": {
+              "type": "boolean"
+            },
+            "last_refreshed_at_kst": {
+              "type": "string",
+              "format": "kst_datetime"
+            },
+            "heartbeat_gap_seconds": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "as_of_kst": {
+          "type": "string",
+          "format": "kst_datetime"
+        },
+        "venue": {
+          "type": "string",
+          "enum": [
+            "KRX",
+            "NXT_CONTEXT_ONLY",
+            "SESSION_CONTEXT"
           ]
+        },
+        "heartbeat_at_kst": {
+          "type": "string",
+          "format": "kst_datetime"
+        },
+        "sequence_no": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latency_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rate_limit_bucket": {
+          "type": "object",
+          "required_fields": [
+            "bucket_id",
+            "remaining",
+            "reset_at_kst"
+          ],
+          "fields": {
+            "bucket_id": {
+              "type": "string"
+            },
+            "remaining": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "reset_at_kst": {
+              "type": "string",
+              "format": "kst_datetime"
+            }
+          }
+        },
+        "raw_payload_ref": {
+          "type": "string"
+        },
+        "redacted_payload_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "snapshot_payload": {
+          "type": "object",
+          "required_fields": [
+            "payload_kind",
+            "symbol_payloads",
+            "ranking_payloads",
+            "orderbook_payloads",
+            "realtime_trade_payloads"
+          ],
+          "fields": {
+            "payload_kind": {
+              "type": "string"
+            },
+            "symbol_payloads": {
+              "type": "array",
+              "min_items": 1,
+              "item_required_fields": [
+                "symbol",
+                "last_price",
+                "as_of_kst"
+              ],
+              "item_fields": {
+                "symbol": {
+                  "type": "string",
+                  "pattern": "^\\d{6}$"
+                },
+                "last_price": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "bid": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "ask": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "volume": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "as_of_kst": {
+                  "type": "string",
+                  "format": "kst_datetime"
+                }
+              }
+            },
+            "ranking_payloads": {
+              "type": "array"
+            },
+            "orderbook_payloads": {
+              "type": "array"
+            },
+            "realtime_trade_payloads": {
+              "type": "array"
+            }
+          }
         }
       }
     },
@@ -430,7 +711,11 @@
         "portfolio_snapshot_ref",
         "order_state_snapshot_ref",
         "actions",
-        "executable_intents_allowed"
+        "executable_intents_allowed",
+        "pro_artifact_ref",
+        "pro_manifest_completed_at_kst",
+        "pro_manifest_cutoff_kst",
+        "pro_manifest_status"
       ],
       "fields": {
         "schema_version": {
@@ -438,10 +723,11 @@
         },
         "trade_doc_id": {
           "type": "string",
-          "pattern": "^tdoc_[a-z0-9]+$"
+          "pattern": "^tdoc_[0-9a-f]{64}$"
         },
         "decision_bucket_kst": {
-          "type": "string"
+          "type": "string",
+          "format": "kst_datetime"
         },
         "decision_interval_minutes": {
           "type": "integer",
@@ -508,11 +794,128 @@
             "portfolio_state_refs",
             "portfolio_conflict",
             "executable_intent_allowed"
-          ]
+          ],
+          "item_fields": {
+            "action_id": {
+              "type": "string",
+              "pattern": "^act_\\d{6}_\\d{4}_\\d{2}$"
+            },
+            "ticker": {
+              "type": "string",
+              "pattern": "^\\d{6}$"
+            },
+            "name": {
+              "type": "string"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "WAIT_BUY",
+                "BUY_NOW",
+                "HOLD",
+                "SELL",
+                "NO_TRADE"
+              ]
+            },
+            "entry_zone": {
+              "type": "array",
+              "max_items": 2
+            },
+            "take_profit": {
+              "type": "number",
+              "minimum": 0
+            },
+            "stop_loss": {
+              "type": "number",
+              "minimum": 0
+            },
+            "trailing_stop_pct": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "cancel_if_not_filled_until": {
+              "type": "string",
+              "format": "kst_datetime"
+            },
+            "position_size_pct": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "reason": {
+              "type": "string"
+            },
+            "valid_until": {
+              "type": "string",
+              "format": "kst_datetime"
+            },
+            "source_refs": {
+              "type": "array",
+              "min_items": 1
+            },
+            "market_data_refs": {
+              "type": "array",
+              "min_items": 1
+            },
+            "portfolio_state_refs": {
+              "type": "array",
+              "min_items": 2
+            },
+            "portfolio_conflict": {
+              "type": "object",
+              "required_fields": [
+                "already_holding",
+                "pending_order_exists",
+                "active_exit_exists",
+                "cooldown_active",
+                "position_locked"
+              ],
+              "fields": {
+                "already_holding": {
+                  "type": "boolean"
+                },
+                "pending_order_exists": {
+                  "type": "boolean"
+                },
+                "active_exit_exists": {
+                  "type": "boolean"
+                },
+                "cooldown_active": {
+                  "type": "boolean"
+                },
+                "position_locked": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "executable_intent_allowed": {
+              "type": "boolean",
+              "const": false
+            }
+          }
         },
         "executable_intents_allowed": {
           "type": "boolean",
           "const": false
+        },
+        "pro_artifact_ref": {
+          "type": "string"
+        },
+        "pro_manifest_completed_at_kst": {
+          "type": "string",
+          "format": "kst_datetime"
+        },
+        "pro_manifest_cutoff_kst": {
+          "type": "string",
+          "format": "kst_datetime"
+        },
+        "pro_manifest_status": {
+          "type": "string",
+          "enum": [
+            "latest_complete",
+            "missing_or_stale"
+          ]
         }
       }
     },
@@ -529,7 +932,9 @@
         "reserved_cash",
         "open_holding_slots",
         "reserved_holding_slots",
-        "authoritative_for_executor"
+        "authoritative_for_executor",
+        "as_of_kst",
+        "freshness"
       ],
       "fields": {
         "schema_version": {
@@ -572,7 +977,33 @@
           "minimum": 0
         },
         "authoritative_for_executor": {
-          "type": "boolean"
+          "type": "boolean",
+          "const": true
+        },
+        "as_of_kst": {
+          "type": "string",
+          "format": "kst_datetime"
+        },
+        "freshness": {
+          "type": "object",
+          "required_fields": [
+            "ttl_seconds",
+            "is_fresh",
+            "last_refreshed_at_kst"
+          ],
+          "fields": {
+            "ttl_seconds": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "is_fresh": {
+              "type": "boolean"
+            },
+            "last_refreshed_at_kst": {
+              "type": "string",
+              "format": "kst_datetime"
+            }
+          }
         }
       }
     },
@@ -585,7 +1016,9 @@
         "consumed_trade_doc_ids",
         "cooldowns",
         "position_locks",
-        "authoritative_for_executor"
+        "authoritative_for_executor",
+        "as_of_kst",
+        "freshness"
       ],
       "fields": {
         "schema_version": {
@@ -607,7 +1040,33 @@
           "type": "array"
         },
         "authoritative_for_executor": {
-          "type": "boolean"
+          "type": "boolean",
+          "const": true
+        },
+        "as_of_kst": {
+          "type": "string",
+          "format": "kst_datetime"
+        },
+        "freshness": {
+          "type": "object",
+          "required_fields": [
+            "ttl_seconds",
+            "is_fresh",
+            "last_refreshed_at_kst"
+          ],
+          "fields": {
+            "ttl_seconds": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "is_fresh": {
+              "type": "boolean"
+            },
+            "last_refreshed_at_kst": {
+              "type": "string",
+              "format": "kst_datetime"
+            }
+          }
         }
       }
     },
@@ -633,10 +1092,11 @@
         },
         "intent_id": {
           "type": "string",
-          "pattern": "^intent_[a-z0-9]+$"
+          "pattern": "^intent_[0-9a-f]{64}$"
         },
         "trade_doc_id": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^tdoc_[0-9a-f]{64}$"
         },
         "side": {
           "type": "string",
@@ -646,10 +1106,102 @@
           ]
         },
         "order_rule": {
-          "type": "object"
+          "type": "object",
+          "required_fields": [
+            "order_type",
+            "price_ref",
+            "limit_price_krw",
+            "tick_size",
+            "price_source_freshness_seconds"
+          ],
+          "fields": {
+            "order_type": {
+              "type": "string",
+              "enum": [
+                "limit"
+              ]
+            },
+            "price_ref": {
+              "type": "string"
+            },
+            "limit_price_krw": {
+              "type": "number",
+              "minimum": 0
+            },
+            "tick_size": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "price_source_freshness_seconds": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
         },
         "quantity_rule": {
-          "type": "object"
+          "type": "object",
+          "required_fields": [
+            "sizing_formula_version",
+            "risk_overlay_capital_krw",
+            "minimum_cash_reserve_ratio",
+            "available_cash_before_order",
+            "reserved_cash_before_order",
+            "max_order_cash_krw",
+            "limit_price_source_ref",
+            "limit_price_krw",
+            "tick_rounding_rule",
+            "lot_size",
+            "computed_quantity",
+            "reject_if_below_min_lot"
+          ],
+          "fields": {
+            "sizing_formula_version": {
+              "type": "string"
+            },
+            "risk_overlay_capital_krw": {
+              "type": "number",
+              "minimum": 0
+            },
+            "minimum_cash_reserve_ratio": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "available_cash_before_order": {
+              "type": "number",
+              "minimum": 0
+            },
+            "reserved_cash_before_order": {
+              "type": "number",
+              "minimum": 0
+            },
+            "max_order_cash_krw": {
+              "type": "number",
+              "minimum": 0
+            },
+            "limit_price_source_ref": {
+              "type": "string"
+            },
+            "limit_price_krw": {
+              "type": "number",
+              "minimum": 0
+            },
+            "tick_rounding_rule": {
+              "type": "string"
+            },
+            "lot_size": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "computed_quantity": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "reject_if_below_min_lot": {
+              "type": "boolean",
+              "const": true
+            }
+          }
         },
         "max_cash_krw": {
           "type": "number",
@@ -665,7 +1217,21 @@
             "reserved_cash",
             "reserved_holding_slots",
             "worst_case_fill_checked"
-          ]
+          ],
+          "fields": {
+            "reserved_cash": {
+              "type": "number",
+              "minimum": 0
+            },
+            "reserved_holding_slots": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "worst_case_fill_checked": {
+              "type": "boolean",
+              "const": true
+            }
+          }
         },
         "executable_intent_allowed": {
           "type": "boolean",
@@ -703,7 +1269,8 @@
           "type": "string"
         },
         "intent_id": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^intent_[0-9a-f]{64}$"
         },
         "from_state": {
           "type": "string"
@@ -731,7 +1298,8 @@
           "min_items": 1
         },
         "ledger_ref": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^ledger:"
         },
         "no_broker_call_if_rejected": {
           "type": "boolean",
@@ -765,11 +1333,12 @@
           "type": "string"
         },
         "intent_id": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^intent_[0-9a-f]{64}$"
         },
         "client_order_key": {
           "type": "string",
-          "pattern": "^cok_[a-z0-9]+$"
+          "pattern": "^cok_[0-9a-f]{64}$"
         },
         "broker_adapter": {
           "type": "string",
@@ -784,10 +1353,76 @@
           "required_fields": [
             "environment_label",
             "paper_account_alias",
+            "account_alias_redacted",
             "krx_only",
             "tr_id_allowed",
-            "startup_self_test_passed"
-          ]
+            "tr_id_allowlist_version",
+            "startup_self_test_passed",
+            "broker_adapter_alias",
+            "base_url_alias",
+            "resolved_rest_base_url_alias",
+            "resolved_rest_host_class",
+            "resolved_websocket_host_class",
+            "live_domain_detected",
+            "unknown_domain_detected"
+          ],
+          "fields": {
+            "environment_label": {
+              "type": "string",
+              "const": "PAPER_ONLY"
+            },
+            "paper_account_alias": {
+              "type": "string",
+              "pattern": "^paper_account_alias:[a-z0-9_-]+$"
+            },
+            "account_alias_redacted": {
+              "type": "boolean",
+              "const": true
+            },
+            "krx_only": {
+              "type": "boolean",
+              "const": true
+            },
+            "tr_id_allowed": {
+              "type": "boolean",
+              "const": true
+            },
+            "tr_id_allowlist_version": {
+              "type": "string"
+            },
+            "startup_self_test_passed": {
+              "type": "boolean",
+              "const": true
+            },
+            "broker_adapter_alias": {
+              "type": "string",
+              "const": "kis_paper"
+            },
+            "base_url_alias": {
+              "type": "string",
+              "const": "kis_paper_vts"
+            },
+            "resolved_rest_base_url_alias": {
+              "type": "string",
+              "const": "kis_paper_vts"
+            },
+            "resolved_rest_host_class": {
+              "type": "string",
+              "const": "kis_paper"
+            },
+            "resolved_websocket_host_class": {
+              "type": "string",
+              "const": "kis_paper"
+            },
+            "live_domain_detected": {
+              "type": "boolean",
+              "const": false
+            },
+            "unknown_domain_detected": {
+              "type": "boolean",
+              "const": false
+            }
+          }
         },
         "side": {
           "type": "string",
@@ -818,6 +1453,27 @@
         "submitted_after_write_ahead_log": {
           "type": "boolean",
           "const": true
+        },
+        "cancel_target_request_id": {
+          "type": "string"
+        },
+        "cancel_target_client_order_key": {
+          "type": "string",
+          "pattern": "^cok_[0-9a-f]{64}$"
+        },
+        "cancel_target_broker_order_id_alias": {
+          "type": "string"
+        },
+        "cancel_reason": {
+          "type": "string"
+        },
+        "superseding_trade_doc_id": {
+          "type": "string",
+          "pattern": "^tdoc_[0-9a-f]{64}$"
+        },
+        "cancel_deadline_kst": {
+          "type": "string",
+          "format": "kst_datetime"
         }
       }
     },
@@ -846,7 +1502,8 @@
           "type": "string"
         },
         "client_order_key": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^cok_[0-9a-f]{64}$"
         },
         "broker_status": {
           "type": "string",
@@ -905,7 +1562,8 @@
           "type": "string"
         },
         "matched_client_order_key": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^cok_[0-9a-f]{64}$"
         },
         "order_state": {
           "type": "string"
@@ -927,6 +1585,22 @@
           "const": "system"
         }
       }
+    }
+  },
+  "durable_execution_storage": {
+    "backend": "sqlite_or_postgresql_transactional_ledger_or_fsync_jsonl_until_db_unit",
+    "write_ahead_log": "required_before_broker_transport",
+    "unique_constraints": [
+      "trade_doc_id per trading_date",
+      "intent_id per trading_date",
+      "client_order_key globally",
+      "open account_alias + symbol + entry_side reservation lock"
+    ],
+    "lock_model": {
+      "account_symbol_single_writer": true,
+      "lock_ttl_seconds": 30,
+      "requires_re_read_before_submit_seconds": 5,
+      "crash_recovery": "replay write-ahead log, reconcile SUBMIT_UNKNOWN, release expired locks only after authoritative snapshots"
     }
   }
 }

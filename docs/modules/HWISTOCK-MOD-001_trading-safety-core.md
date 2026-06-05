@@ -222,7 +222,7 @@ Future interfaces may include:
   intents, rejected intents, and kill-switch blocks without broker order ids,
   fills, positions, balances, or simulated PnL.
 - KIS paper credentials may exist only in the local external secret file
-  `/home/hwi/.config/hwistock/kis-paper.env` for approved paper/mock work and
+  `/home/hwi/.config/hwistock/hwistockApi.env` for approved paper/mock work and
   must not be committed, printed, or copied into docs. Live credentials, account
   data, tokens, partner endpoints, and any broker-provided live mode remain out
   of scope until a later approved integration unit.

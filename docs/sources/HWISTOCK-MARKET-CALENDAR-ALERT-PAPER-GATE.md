@@ -76,16 +76,25 @@ Local KIS reference:
 - If KIS holiday lookup is approved later, cache it at most once per KST day and
   treat `opnd_yn` as a cross-check input, not the only trading gate.
 
-### 2.3 Session Routing
+### 2.3 Session Context And Internal Paper-Order Window
 
-hwiStock's owner-selected routing policy remains:
+hwiStock keeps two separate concepts:
 
-- KRX: 09:00-15:00 KST
-- NXT: 08:00-09:00 KST and 15:00-20:00 KST
+1. **exchange/session context** used by collectors, AI analysis, reports, and
+   operator UI; and
+2. **broker-facing paper-order enablement** used by the executor.
+
+KRX public regular-session context is treated as 09:00-15:30 KST unless a
+future market-calendar source update records a special day. The current
+conservative internal KIS paper-order enable window remains narrower:
+
+- KRX paper-order enable window: 09:00-15:00 KST
+- NXT context window: 08:00-09:00 KST and 15:00-20:00 KST
 - Idle: outside 08:00-20:00 KST or when the calendar says closed/stale
 
-This is a project routing policy. It does not claim to model every exchange
-auction, overlap, or broker-specific route detail.
+NXT is currently analysis/session context only. KIS paper broker-facing order
+routes are KRX-only; NXT/SOR/integrated broker routes must abort before
+transport unless a future approved unit records stronger paper/live proof.
 
 ## 3. Alert Channel Contract
 

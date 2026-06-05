@@ -68,9 +68,12 @@ branches:
 
 - `market_intelligence`: 24-hour ingestion of permitted public news, articles,
   disclosures, chart/market-data context, and related signals.
-- `trading`: simple venue-routed strategy/risk/order loop. Use KRX from
-  09:00-15:00 KST and NXT for 08:00-09:00 / 15:00-20:00 KST. Do not model
-  additional session modes unless a future unit explicitly changes this policy.
+- `trading`: simple session-aware strategy/risk/order loop. KRX public
+  regular-session context is 09:00-15:30 KST, but the current conservative KIS
+  paper-order enable window is KRX-only 09:00-15:00 KST. 08:00-09:00 /
+  15:00-20:00 KST remains NXT analysis/session context only. KIS paper
+  broker-facing orders must stay KRX-only; NXT/SOR broker routes abort before
+  transport unless a later approved unit proves support.
 
 This project is tooling and automation work, not investment advice. Strategy
 documentation must distinguish hypotheses, backtest results, paper-trading
@@ -106,9 +109,9 @@ explicit-fallback-only during KIS paper runs until a later approved
 real-account/support-confirmation gate. Actual KIS paper balance and exact
 current rate limits still require a future explicitly approved broker-network
 smoke.
-Paper/mock investment target budget is 10,000,000 KRW until paper balance
-evidence proves the actual value. This paper target is separate from the
-intended live starting capital of 2,000,000 KRW cash.
+Paper/mock account balance is observed broker evidence only. Risk sizing uses
+the hwiStock risk-overlay capital of 2,000,000 KRW unless a future approved
+profile/unit change records a different value.
 
 Current operational-paper correction: the continuous KIS paper runner foundation
 (`HWISTOCK-UNIT-010`) is not the complete trading program. Actual paper-run
@@ -157,7 +160,10 @@ Current owner-defined runtime architecture is file-driven:
    never hold credentials.
 
 ChatGPT Pro remains optional external review through browser automation when
-available; it is not required for the runtime loop to stay running.
+available; it is not required for the runtime loop to stay running. When GPT
+Pro review is used for this project, the review packet must include the GitHub
+repository URL and the exact folders and file paths to review, instead of only
+an unscoped architecture summary or whole-project prompt.
 
 ## 2. Project Layout
 
@@ -203,16 +209,18 @@ available; it is not required for the runtime loop to stay running.
   - `/home/hwi/.config/hwistock/deepseek.env`: optional AI provider secrets
   - `/home/hwi/.config/hwistock/source-apis.env`: optional DART/Naver/source API
     secrets
-  - `/home/hwi/.config/hwistock/kis-paper.env`: optional KIS paper/mock secrets
+  - `/home/hwi/.config/hwistock/hwistockApi.env`: optional KIS paper/mock secrets
 - Generated output folders: not created yet
 - Runtime target: home server, 24-hour service/process managed by `systemd`
   or an approved service manager for continuous paper/sandbox evidence.
   Observation window duration is chosen by the operator, not hardcoded by the
   runner.
 - Market scope: Korea domestic stocks (`국장`) first
-- Trading venues: KRX + NXT
-- Trading routing policy: 09:00-15:00 KST -> KRX; 08:00-09:00 and 15:00-20:00
-  KST -> NXT
+- Trading venues/session context: KRX + NXT
+- KRX session truth: KRX public regular-session context is 09:00-15:30 KST
+- Current KIS paper-order enable window: KRX-only 09:00-15:00 KST
+- NXT/SOR broker route policy: analysis/session context only in paper mode;
+  abort before KIS transport unless future approved proof changes this
 - Broker/API direction: Korea Investment & Securities Open API (`KIS`)
 - Blocked broker candidate: KB Securities personal use is blocked unless later
   official confirmation proves otherwise
@@ -226,8 +234,8 @@ available; it is not required for the runtime loop to stay running.
 - Broker-provided mock/demo/testbed/sandbox API mode: KIS KRX-paper path only
   under explicit unit/smoke approval; NXT/SOR stay disabled or
   explicit-fallback-only until later real-account/support-confirmation
-- Paper/mock-investment target budget: 10,000,000 KRW, pending KIS paper balance
-  evidence
+- Paper/mock account balance: observed broker evidence only; it does not expand
+  the 2,000,000 KRW risk-overlay sizing capital
 - KIS API mode: the first bounded paper/mock REST and websocket smoke passed in
   `docs/evidence/RUN-20260604_kis-paper-mock-api-smoke.md`; ordinary Go rows
   still must not call KIS/broker APIs unless the selected unit explicitly scopes
@@ -362,6 +370,15 @@ visual basis in the unit and QA scenario before Go.
 - `check`: `hwi-work-harness`; add external review for broker credentials, order
   placement, live trading, or risk-control changes.
 - `prove`: `hwi-work-harness`
+
+Project-specific GPT Pro review packet policy:
+
+- Include the current GitHub repository URL, not only local paths.
+- Include the exact folders and file paths that GPT Pro should review.
+- Keep secret-bearing local config, ignored env files, broker credentials,
+  raw account identifiers, and local-only runtime data out of the review packet.
+- If the intended review scope changes, regenerate the path list before sending
+  the prompt.
 
 ## 5. Rule Presets
 
@@ -500,9 +517,11 @@ Planned gate ids:
   fills during ordinary Go implementation rows.
 - `service-lifecycle-smoke`: future smoke gate for start, stop, restart, health,
   and log output of the home-server runner.
-- `market-calendar-smoke`: future smoke gate for 09:00-15:00 KRX routing,
-  08:00-09:00 / 15:00-20:00 NXT routing, out-of-envelope idle behavior,
-  closed/stale-calendar idle behavior, and local cached-calendar coverage.
+- `market-calendar-smoke`: future smoke gate for KRX session context,
+  conservative KRX-only paper-order enablement 09:00-15:00 KST,
+  08:00-09:00 / 15:00-20:00 NXT analysis/session context,
+  out-of-envelope idle behavior, closed/stale-calendar idle behavior, and local
+  cached-calendar coverage.
 - `intel-ingestion-smoke`: future smoke gate for source allowlist, robots/terms
   compliance notes, deduplication, rate limiting, and disclosure/news evidence.
 - `ai-orchestration-smoke`: future smoke gate for structured AI output,
@@ -623,8 +642,8 @@ window metadata, and final go/no-go verdict.
   venue/session parameters in the engine, but KIS-facing NXT/SOR branches stay
   disabled or explicit-fallback-only and require later
   real-account/support-confirmation evidence before live routing. Internal fake
-  broker simulation is not used. Official paper/mock investment mode appears
-  potentially usable and has a planned starting budget of 10,000,000 KRW.
+  broker simulation is not used. Broker paper balance is observed evidence
+  only and must not expand hwiStock's 2,000,000 KRW risk-overlay capital.
 - Dashboard/UI need: selected as read-only status/conversation dashboard. Direct
   buy/sell controls are excluded. Default access is local-only
   `127.0.0.1`/SSH-tunnel/Chrome-Remote-Desktop. Design route is no-design
@@ -750,7 +769,7 @@ These must be answered before implementation-ready Go:
 21. KIS paper/mock API use for continuous testing: current operational use is
     governed by the 2026-06-05 operational Ready-Set queue. The official
     paper/mock investment API can be used for operator-selected observation
-    windows in the KRX-supported paper path. The 10,000,000 KRW paper budget is
-    broker-visible paper context only; hwiStock risk sizing must preserve the
-    2,000,000 KRW live-capital policy overlay unless a future explicit
-    profile/unit change says otherwise.
+    windows in the KRX-supported paper path. Broker-visible paper balance is
+    observed context only; hwiStock risk sizing must preserve the 2,000,000 KRW
+    risk-overlay capital unless a future explicit profile/unit change says
+    otherwise.

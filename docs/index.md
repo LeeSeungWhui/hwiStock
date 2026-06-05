@@ -15,10 +15,12 @@ separate branches:
 
 - Market intelligence branch: runs 24 hours for news, articles, disclosures, and
   other permitted public information ingestion.
-- Trading branch: uses simple venue routing inside 08:00-20:00 KST. Route
-  09:00-15:00 KST to KRX, and route the remaining trading envelope
-  08:00-09:00 / 15:00-20:00 KST to NXT. Do not split this into additional
-  session modes unless a future unit explicitly changes this policy.
+- Trading branch: uses simple session context inside 08:00-20:00 KST. KRX
+  public regular-session context is 09:00-15:30 KST, while the current
+  conservative KIS paper-order enable window is KRX-only 09:00-15:00 KST.
+  08:00-09:00 / 15:00-20:00 KST remains NXT analysis/session context only.
+  KIS paper broker-facing orders must stay KRX-only; NXT/SOR broker routes
+  abort before transport unless a later approved unit proves support.
 
 Strategy direction is short-term day trading (`단타`) with a fast intraday
 scalping/momentum hypothesis: enter only on approved signals, hold roughly
@@ -61,9 +63,9 @@ disabled/fallback behavior in KIS-facing paper runs until a later approved
 real-account/support-confirmation gate. The actual paper balance and exact
 current rate-limit numbers still require future account evidence. This closure
 does not authorize new KIS/broker/network calls. The
-paper/mock investment target budget is 10,000,000 KRW until the paper account
-balance proves the actual value, and it is separate from the intended live
-starting capital of 2,000,000 KRW cash.
+paper/mock account balance is observed broker evidence only. Risk sizing uses
+the hwiStock risk-overlay capital of 2,000,000 KRW unless a future approved
+profile/unit change records a different value.
 
 AI orchestration direction is selected at the operating-skeleton planning level,
 but the owner-defined runtime target is now precise and file-driven:
@@ -876,13 +878,13 @@ secret store. DeepSeek analysis remains not running as a hwiStock job/timer.
   simultaneous holdings 5, and AI-assisted per-entry stop price capped by
   deterministic maximum -5% loss rules. Broad daily/account-level loss
   management is intentionally not selected for the first pass.
-- Official paper/mock-investment target budget: 10,000,000 KRW, pending future
-  KIS paper balance evidence. UNIT-009 Go-Check confirms paper/live endpoint
-  separation and documents KRX-bounded paper proof via the capability matrix and
-  sanitized smoke cross-reference, but not the actual paper balance. KIS paper
-  proof is KRX-limited where the local API references mark NXT/SOR,
-  integrated realtime, holiday, sellable quantity, or helper lookup APIs as
-  paper-unsupported.
+- Broker-visible paper/mock balance is observed evidence only and does not
+  expand hwiStock's 2,000,000 KRW risk-overlay capital. UNIT-009 Go-Check
+  confirms paper/live endpoint separation and documents KRX-bounded paper proof
+  via the capability matrix and sanitized smoke cross-reference, but not a
+  sizing-budget change. KIS paper proof is KRX-limited where the local API
+  references mark NXT/SOR, integrated realtime, holiday, sellable quantity, or
+  helper lookup APIs as paper-unsupported.
 - UI/dashboard scope is selected as read-only status, reports, logs, AI
   conversation, and operator visibility. Direct buy/sell controls are excluded.
   Default access is local-only `127.0.0.1` through local browser, SSH tunnel, or

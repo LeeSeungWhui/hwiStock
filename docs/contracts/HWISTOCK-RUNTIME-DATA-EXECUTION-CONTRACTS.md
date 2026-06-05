@@ -66,10 +66,17 @@ Every artifact in the schema catalog must include:
 - `producer`;
 - `input_refs`;
 - `validation`.
+- `publication`.
 
 Timestamps are KST ISO-8601 strings. `valid_until` must be after
 `created_at_kst`. `content_hash` is a lowercase 64-character SHA-256 hex digest
 of the normalized artifact payload or input manifest.
+
+Source-origin events must additionally include `source_event_id`,
+`source_published_at_kst`, `dedupe_key`, `source_hash`,
+`collection_watermark`, and `terms_policy_ref`. News/disclosure freshness is
+evaluated from the source timestamp where provided, not from collector receipt
+alone.
 
 ## 4. Atomic Publication
 
@@ -111,14 +118,22 @@ decision bucket**.
 - `HOLD`, `SELL`, stop-loss, take-profit, and trailing-stop handling are checked
   continuously by the executor against realtime price/orderbook state; AI prose
   never bypasses the deterministic exit rules.
+- Flash must read the latest **complete** Pro manifest that is finalized before
+  the bucket cutoff. If the Pro manifest is missing, stale, incomplete, or
+  fails hash validation, Flash writes `NO_TRADE` with a named reason instead of
+  generating clean entry actions.
+- Clean entry actions (`WAIT_BUY` / `BUY_NOW`) require both current portfolio
+  and order-state refs. Missing, stale, unavailable, or advisory-only refs may
+  produce watch/reject records, but cannot produce a clean
+  `paper_order_intent/v0`.
 
 ## 6. Deterministic IDs
 
-| id | formula |
+| id | required shape | formula |
 | --- | --- |
-| `trade_doc_id` | `sha256(run_id + trading_date + decision_bucket_kst + input_manifest_hash)` |
-| `intent_id` | `sha256(trade_doc_id + trade_action_id + ticker + side + normalized_order_rule_hash)` |
-| `client_order_key` | `sha256(intent_id + execution_attempt_no)` |
+| `trade_doc_id` | `tdoc_` + 64 lowercase SHA-256 hex chars | `sha256(run_id + trading_date + decision_bucket_kst + input_manifest_hash)` |
+| `intent_id` | `intent_` + 64 lowercase SHA-256 hex chars | `sha256(trade_doc_id + trade_action_id + ticker + side + normalized_order_rule_hash)` |
+| `client_order_key` | `cok_` + 64 lowercase SHA-256 hex chars | `sha256(intent_id + execution_attempt_no)` |
 
 Reprocessing the same `trade_doc_id` or `intent_id` is a no-op after the ledger
 records consumption. Duplicate ids across a day are a P0 failure.
@@ -146,6 +161,36 @@ Reservation accounting must include `available_cash`, `reserved_cash`,
 `settled_cash`, `pending_buy_cash`, `pending_sell_qty`, `open_holding_slots`,
 and `reserved_holding_slots`. Cash reserve and max-holdings gates evaluate
 worst-case fills of pending orders.
+
+Durable execution storage must provide:
+
+- write-ahead log before broker transport;
+- unique constraints for `trade_doc_id`, `intent_id`, and `client_order_key`;
+- account/symbol single-writer lock with expiry;
+- transaction or fsync-backed append semantics;
+- restart replay that reconciles `SUBMIT_UNKNOWN` before retry; and
+- lock release only after fresh authoritative portfolio/order snapshots.
+
+Until the DB-backed implementation unit defines a stronger backend, the
+fallback file ledger must use append-only JSONL plus fsync and atomic manifest
+publication. A partial file or missing manifest is non-executable.
+
+## 7-1. Deterministic Sizing Formula
+
+The sizing calculator is system-owned. AI may propose a sizing hint, but the
+accepted `paper_order_intent/v0` quantity is computed from:
+
+1. `risk_overlay_capital_krw` (baseline 2,000,000 KRW unless a future approved
+   profile/unit change overrides it);
+2. `minimum_cash_reserve_ratio` (baseline 0.25);
+3. current available cash and already reserved pending-buy cash;
+4. `max_order_cash_krw = min(action_cash_cap, risk_overlay_capital_krw *
+   (1 - minimum_cash_reserve_ratio) - reserved_cash_before_order)`;
+5. fresh limit-price source and KRX tick rounding rule; and
+6. lot-size rounding with reject-if-below-min-lot behavior.
+
+If computed quantity would breach reserve, holdings slots, stale price, or tick
+rules, the intent is rejected before executor submission.
 
 ## 8. Freshness TTLs
 
@@ -188,6 +233,28 @@ KIS broker transport is allowed only when all conditions pass:
 Unknown/live domains, live profile names, raw account ids, unsupported TR IDs,
 or unsupported NXT/SOR/integrated broker routes abort before network transport.
 
+The guard must also record sanitized resolved host classes:
+
+- `resolved_rest_base_url_alias = kis_paper_vts`;
+- `resolved_rest_host_class = kis_paper`;
+- `resolved_websocket_host_class = kis_paper`;
+- `tr_id_allowlist_version`;
+- `paper_account_alias` with raw account values redacted; and
+- `live_domain_detected = false`, `unknown_domain_detected = false`.
+
+## 10-1. Cancel Request Contract
+
+`side = cancel` broker requests are executable only when they include:
+
+- `cancel_target_request_id`;
+- `cancel_target_client_order_key`;
+- `cancel_target_broker_order_id_alias`;
+- `cancel_reason`;
+- `superseding_trade_doc_id`; and
+- `cancel_deadline_kst`.
+
+Cancels without target ids/reason/deadline are rejected before KIS transport.
+
 ## 11. Validation
 
 Run:
@@ -201,8 +268,20 @@ The validator checks:
 - all valid fixtures satisfy the catalog;
 - all invalid fixtures fail with expected error classes;
 - Flash action max is enforced;
-- Flash executable intent fields are false;
-- broker requests are paper-only;
+- nested Flash action fields, source/market/portfolio refs, and action enums are
+  enforced;
+- Flash executable intent fields are false and `NO_TRADE` documents carry no
+  actions;
+- exact `tdoc_`, `intent_`, and `cok_` hash id patterns are enforced;
+- source timestamp/dedupe/hash/watermark fields are required;
+- KIS market snapshot payload, heartbeat, latency, rate-limit, raw-ref, and
+  payload-hash fields are required;
+- KIS, portfolio, and order snapshots must be fresh for executable inputs;
+- broker requests are paper-only and include resolved host-class assertions;
+- cancel requests include target refs/reason/deadline;
+- deterministic sizing rejects reserve breaches;
+- ambiguous submit results require reconciliation;
+- partial publications without manifest are rejected;
 - executor state transitions are legal;
 - required ids and common metadata exist; and
 - obvious secret-looking keys or values are rejected.

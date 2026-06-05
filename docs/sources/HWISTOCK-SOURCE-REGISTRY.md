@@ -10,6 +10,7 @@ updated_at: 2026-06-05
 unit_refs:
   - HWISTOCK-UNIT-003
   - HWISTOCK-UNIT-002
+  - HWISTOCK-UNIT-013
 module_refs:
   - HWISTOCK-MOD-002
   - HWISTOCK-MOD-001
@@ -32,8 +33,9 @@ Default policy:
   source-derived event fields.
 - Source outputs may create candidate events, but cannot directly invoke order
   routing.
-- Broker-provided quotes/news/realtime data remain deferred until the KIS API
-  verification unit approves a broker network path.
+- Public market-intelligence sources and KIS paper-read market-data sources are
+  separated. KIS market-data reads may be implemented only inside the explicit
+  UNIT-013 paper-read scope; KIS order calls remain forbidden there.
 
 ## 2. Source Status Values
 
@@ -41,6 +43,9 @@ Default policy:
 - `conditional_after_key`: allowed only after explicit API-key/config approval.
 - `conditional_after_terms_check`: source is official, but implementation must
   first record terms, rate, and access method.
+- `approved_unit_013_paper_read_pending_proof`: broker API market-data read
+  source is allowed only for UNIT-013 Go-Check with paper/mock credentials,
+  sanitized artifacts, rate/backoff evidence, and no order endpoint calls.
 - `deferred`: not used in the first ingestion implementation.
 - `forbidden_default`: blocked unless a later Set contract explicitly changes
   the policy.
@@ -54,7 +59,7 @@ Default policy:
 | `naver_search_news_api` | NAVER Developers Search API - news | `conditional_after_key` | official API | `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` | title, original link, Naver link, description/excerpt, timestamps, query metadata | General news source after API credentials and query/rate config are approved. No article-body scraping. |
 | `kind_krx_disclosure_portal` | KRX KIND disclosure portal | `conditional_after_terms_check` | official web portal / future approved method | none until approved | metadata only until method is approved | Official disclosure portal, but automated collection needs source-specific terms/access confirmation. DART remains first source. |
 | `krx_data_marketplace_delayed` | KRX Data Marketplace | `conditional_after_terms_check` | official data portal/product | none until approved | delayed market-data metadata/OHLCV only after terms/access confirmation | Use for delayed/context data only after access policy is recorded. Realtime trading feed is not approved here. |
-| `kis_market_or_realtime_data` | KIS market/realtime/news APIs | `deferred` | broker API | not configured | none | UNIT-009 confirms official KIS realtime/market endpoint families and paper/live separation, but broker network operations still require an explicit future broker-network unit and approval. |
+| `kis_market_or_realtime_data` | KIS market/realtime/news APIs | `approved_unit_013_paper_read_pending_proof` | broker API paper-read only | `/home/hwi/.config/hwistock/hwistockApi.env` alias only; values never stored | sanitized metadata/snapshot fields, payload refs, hashes, watermarks; no raw secrets/account ids | UNIT-013 may collect KIS paper-supported KRX market-data snapshots for signal confirmation. UNIT-013 must not call KIS order endpoints. NXT/SOR/integrated broker-facing branches stay disabled/fallback-only until later proof. |
 | `krx_nxt_market_calendar_cache` | KRX trading-days/holidays + NXT session references | `approved_first_go` | local cached calendar generated from official sources | none | trading-day/session metadata only | Runtime scheduler source for open/closed/stale-calendar decisions. See `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-PAPER-GATE.md`. |
 | `general_media_html_scrape` | General news/media HTML scraping | `forbidden_default` | HTML scraping | none | none | Blocked by default due copyright/terms/anti-bot risk. |
 | `unofficial_finance_apis` | Unofficial finance/news/quote APIs | `forbidden_default` | unofficial API/scraping | none | none | Blocked unless a later source-specific review approves terms and data quality. |
@@ -91,6 +96,10 @@ Checked on 2026-06-02.
   - `terms_checked_at`
   - `rate_limit_policy`
   - `body_storage_policy`
+  - `source_published_at_kst` when the source provides it
+  - `dedupe_key`
+  - `source_hash`
+  - `collection_watermark`
   - `last_success_at`
   - `last_failure_at`
 
@@ -113,12 +122,14 @@ Required shared fields:
 - `market`
 - `title`
 - `source_url`
-- `published_at_kst`
+- `source_published_at_kst`
 - `collected_at_kst`
 - `event_type`
 - `dedupe_key`
 - `body_storage_policy`
 - `source_hash`
+- `collection_watermark`
+- `terms_policy_ref`
 - `candidate_eligible`
 
 ## 6. Deduplication
@@ -138,6 +149,7 @@ Duplicates must be linked, not discarded silently.
 - First approved realtime broker feed is not selected in this registry.
 - KRX Data Marketplace may be used only for delayed/context data after terms and
   access are approved.
-- KIS realtime quote/order-book feeds are documented by UNIT-009, but remain
-  deferred until a future approved broker-network unit defines credentials,
-  throttles, account mode, and evidence handling.
+- KIS realtime quote/order-book feeds are documented by UNIT-009 and may be
+  attempted only inside UNIT-013's paper-read market-data collector where
+  paper-supported. Unsupported NXT/SOR/integrated feeds must write
+  disabled/fallback evidence and cannot unlock broker-facing orders.

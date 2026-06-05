@@ -77,7 +77,9 @@ source ./env.sh && python3 scripts/validate_runtime_contracts.py
   - `artifact_id`;
   - `source_id` or input refs;
   - `collected_at_kst`;
-  - `source_published_at` when source-provided;
+  - `source_published_at_kst` when source-provided;
+  - `dedupe_key`, `source_hash`, `collection_watermark`, and
+    `terms_policy_ref` for news/disclosure events;
   - `valid_until`;
   - `content_hash`;
   - validation status and error codes.
@@ -87,6 +89,8 @@ source ./env.sh && python3 scripts/validate_runtime_contracts.py
   - `intent_id` from trade doc id, trade action id, ticker, side, and normalized
     order rule;
   - broker `client_order_key` from intent id and execution attempt number.
+  Each runtime id must use the full prefixed SHA shape:
+  `tdoc_[0-9a-f]{64}`, `intent_[0-9a-f]{64}`, or `cok_[0-9a-f]{64}`.
 - Define atomic artifact publication:
   - write to temp path;
   - fsync file and containing directory where supported;
@@ -101,6 +105,8 @@ source ./env.sh && python3 scripts/validate_runtime_contracts.py
     are canceled or explicitly renewed by the next accepted document;
   - invalid, timed-out, skipped, off-session, or model-unavailable ticks produce
     `NO_TRADE` sentinel artifacts with no executable intents.
+  - Flash reads the latest complete Pro manifest before the cutoff or writes
+    `NO_TRADE` with a named reason.
 - Define portfolio/order conflict model:
   - Flash portfolio snapshots are advisory context only;
   - executor portfolio/order snapshots are authoritative at submit time;
@@ -157,8 +163,17 @@ source ./env.sh && python3 scripts/validate_runtime_contracts.py
   - paper-supported TR ID allowlist;
   - KRX-only paper order route until future approval;
   - startup self-test;
+  - resolved REST/WebSocket host-class assertions;
+  - TR-ID allowlist version;
   - fatal abort on live/unknown domain, live profile, unsupported route, or
     missing paper-mode evidence.
+- Define cancel-request requirements:
+  - target request id;
+  - target client order key;
+  - target broker-order alias;
+  - cancel reason;
+  - superseding trade document; and
+  - cancel deadline.
 
 ## 3. Excluded Scope
 
@@ -186,6 +201,7 @@ source ./env.sh && python3 scripts/validate_runtime_contracts.py
 | AC-10 | P0 | Freshness TTLs are explicit | Each input class has a TTL, source timestamp rule, and fail-closed behavior. |
 | AC-11 | P0 | Paper-only guard is enforceable | Unknown/live KIS domain/account/TR ID/route aborts before transport. |
 | AC-12 | P0 | Failure-mode QA exists | QA covers duplicate docs, partial writes, stale inputs, conflicts, reservation breach, restart, KIS reject, partial fill, websocket disconnect, and live misconfiguration. |
+| AC-13 | P0 | Validator fixtures cover Pro findings | Invalid fixtures cover short deterministic ids, nested Flash action failures, missing refs, stale KIS/portfolio/order snapshots, bad paper guard, cancel target gaps, reservation breach, partial publication, ambiguous submit, duplicate intent, and duplicate KIS snapshot sequence. |
 
 ## 5. Go Notes
 
