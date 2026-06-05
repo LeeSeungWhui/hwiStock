@@ -9,9 +9,6 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/data/workspace/My/hwiStock
-ExecStartPre=/usr/bin/env mkdir -p /data/workspace/My/hwiStock/logs/systemd
-StandardOutput=append:/data/workspace/My/hwiStock/logs/systemd/hwistock-kis-paper-health.log
-StandardError=append:/data/workspace/My/hwiStock/logs/systemd/hwistock-kis-paper-health.err.log
 EnvironmentFile=-/home/hwi/.config/hwistock/hwistockApi.env
-ExecStart=/usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/kis_paper_health.py --once'
+ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-kis-paper-health -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/kis_paper_health.py --once'
 NoNewPrivileges=true

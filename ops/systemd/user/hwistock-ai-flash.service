@@ -9,13 +9,10 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/data/workspace/My/hwiStock
-ExecStartPre=/usr/bin/env mkdir -p /data/workspace/My/hwiStock/logs/systemd
-StandardOutput=append:/data/workspace/My/hwiStock/logs/systemd/hwistock-ai-flash.log
-StandardError=append:/data/workspace/My/hwiStock/logs/systemd/hwistock-ai-flash.err.log
 EnvironmentFile=-/home/hwi/.config/hwistock/deepseek.env
 Environment=HWISTOCK_DEEPSEEK_MODEL=deepseek-v4-flash
 Environment=HWISTOCK_AI_EVENT_LIMIT=20
 Environment=HWISTOCK_AI_MAX_OUTPUT_TOKENS=2000
 Environment=HWISTOCK_AI_REASONING_EFFORT=low
-ExecStart=/usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/ai_analysis_runner.py --once --job flash-10m --model "${HWISTOCK_DEEPSEEK_MODEL:-deepseek-v4-flash}"'
+ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-ai-flash -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/ai_analysis_runner.py --once --job flash-10m --model "${HWISTOCK_DEEPSEEK_MODEL:-deepseek-v4-flash}"'
 NoNewPrivileges=true

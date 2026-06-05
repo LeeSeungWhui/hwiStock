@@ -16,7 +16,7 @@ WorkingDirectory=/data/workspace/My/hwiStock
 EnvironmentFile=/home/hwi/.config/hwistock/hwistock.env
 Environment=HWISTOCK_BIND_HOST=127.0.0.1
 # Skeleton tick loop: --once emits local status; no broker/network/order behavior
-ExecStart=/usr/bin/env bash -c 'while true; do /usr/bin/python3 backend/service/HwiStockRunnerService.py --once || exit 1; sleep 300; done'
+ExecStart=/usr/bin/env python3 /data/workspace/My/hwiStock/ops/systemd/run_with_daily_logs.py --name hwistock-runner -- /usr/bin/env bash -c 'while true; do /usr/bin/python3 backend/service/HwiStockRunnerService.py --once || exit 1; sleep 300; done'
 Restart=on-failure
 RestartSec=10
 NoNewPrivileges=true

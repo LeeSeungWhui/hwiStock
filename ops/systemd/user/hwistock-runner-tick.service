@@ -7,10 +7,7 @@ Description=hwiStock runner evidence tick (no-order)
 [Service]
 Type=oneshot
 WorkingDirectory=/data/workspace/My/hwiStock
-ExecStartPre=/usr/bin/env mkdir -p /data/workspace/My/hwiStock/logs/systemd
-StandardOutput=append:/data/workspace/My/hwiStock/logs/systemd/hwistock-runner-tick.log
-StandardError=append:/data/workspace/My/hwiStock/logs/systemd/hwistock-runner-tick.err.log
 EnvironmentFile=-/home/hwi/.config/hwistock/hwistock.env
 Environment=HWISTOCK_BIND_HOST=127.0.0.1
-ExecStart=/usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/HwiStockRunnerService.py --once --write-evidence'
+ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-runner-tick -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/HwiStockRunnerService.py --once --write-evidence'
 NoNewPrivileges=true

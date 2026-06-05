@@ -13,7 +13,7 @@ Group=hwi
 WorkingDirectory=/data/workspace/My/hwiStock/backend
 EnvironmentFile=/home/hwi/.config/hwistock/hwistock.env
 Environment=HWISTOCK_BIND_HOST=127.0.0.1
-ExecStart=/usr/bin/python3 -m uvicorn server:app --host 127.0.0.1 --port 5001
+ExecStart=/usr/bin/env python3 /data/workspace/My/hwiStock/ops/systemd/run_with_daily_logs.py --name hwistock-api -- /usr/bin/python3 -m uvicorn server:app --host 127.0.0.1 --port 5001
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

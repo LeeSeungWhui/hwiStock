@@ -9,13 +9,10 @@ Wants=network-online.target hwistock-api.service
 [Service]
 Type=simple
 WorkingDirectory=/data/workspace/My/hwiStock
-ExecStartPre=/usr/bin/env mkdir -p /data/workspace/My/hwiStock/logs/systemd
-StandardOutput=append:/data/workspace/My/hwiStock/logs/systemd/hwistock-frontend.log
-StandardError=append:/data/workspace/My/hwiStock/logs/systemd/hwistock-frontend.err.log
 Environment=HOSTNAME=127.0.0.1
 Environment=PORT=5000
 Environment=NEXT_TELEMETRY_DISABLED=1
-ExecStart=/usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && cd frontend-web && exec pnpm dev -H 127.0.0.1 -p 5000'
+ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-frontend -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && cd frontend-web && exec pnpm dev -H 127.0.0.1 -p 5000'
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
