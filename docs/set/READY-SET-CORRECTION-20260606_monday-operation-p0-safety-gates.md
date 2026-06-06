@@ -63,10 +63,13 @@ weak for unattended operation:
   - repository service-file policy,
   - live/effective user-systemd policy,
   - runtime artifact freshness.
-- If live/effective order policy is enabled while operational readiness remains
-  false, the dashboard must flag `systemd_order_enabled_contradicts_readiness`.
-- Required artifacts have TTLs and can become stale blockers even when files
-  exist.
+- If live/effective order policy is enabled under `paper_experiment` session
+  approval, the dashboard must not treat that as a live/final-readiness
+  contradiction. `systemd_order_enabled_contradicts_readiness` is retained only
+  for unscoped order enablement outside the paper experiment contract.
+- Required artifacts have TTLs and can become evidence gaps even when files
+  exist. Only paper-experiment hard blockers may block the Monday KIS paper/mock
+  run.
 
 ### Frontend
 

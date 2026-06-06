@@ -67,11 +67,8 @@ _UNSAFE_CONVERSATION_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 _BLOCKER_LABEL_PAIRS: tuple[tuple[str, str], ...] = (
     ("paper_network_disabled", "시장/브로커 네트워크 플래그 미확인"),
-    ("paper_orders_not_submitted", "주문 제출 증거 없음"),
-    ("paper_observation_not_accepted", "관찰 리포트 승인 없음"),
-    ("operational_trading_readiness_false", "운영 준비 플래그 미충족"),
+    ("paper_order_loop_disabled", "모의투자 주문 루프 비활성"),
     ("artifact_missing_or_safe_blocked", "필수 런타임 산출물 누락"),
-    ("systemd_order_enabled_contradicts_readiness", "서비스 주문 플래그와 준비 상태 불일치"),
     ("blocked_calendar_unconfigured", "거래 캘린더 미설정"),
     ("blocked_calendar_stale", "거래 캘린더 만료"),
     ("blocked_source_unconfigured", "시장 데이터 소스 미설정"),
@@ -895,34 +892,42 @@ def buildReadinessTruthPanel(
     blockerList = []
     if not paperNetworkEnabled:
         blockerList.append("paper_network_disabled")
-    if not paperOrdersSubmitted:
-        blockerList.append("paper_orders_not_submitted")
-    if not paperObservationAccepted:
-        blockerList.append("paper_observation_not_accepted")
-    if not operationalTradingReadiness:
-        blockerList.append("operational_trading_readiness_false")
+    if not paperOrderEnabled:
+        blockerList.append("paper_order_loop_disabled")
     orderGate = runnerStatus.get("orderGate")
     if orderGate and orderGate != "no_order_dry_run_only":
         blockerList.append(str(orderGate))
+    evidenceGapList = []
+    if not paperOrdersSubmitted:
+        evidenceGapList.append("paper_orders_not_submitted")
+    if not paperObservationAccepted:
+        evidenceGapList.append("paper_observation_not_accepted")
+    if not operationalTradingReadiness:
+        evidenceGapList.append("live_production_readiness_not_applicable")
     if fallbackArtifactKeys:
-        blockerList.append("artifact_missing_or_safe_blocked")
+        evidenceGapList.append("artifact_missing_or_safe_blocked")
     for artifactKey in (artifactFreshness or {}).get("staleKeys") or []:
-        blockerList.append(f"artifact_stale:{artifactKey}")
-    if paperOrderEnabled and not operationalTradingReadiness:
-        blockerList.append("systemd_order_enabled_contradicts_readiness")
+        evidenceGapList.append(f"artifact_stale:{artifactKey}")
+    paperExperimentReady = not blockerList
     return {
-        "headline": "NOT_READY_FOR_PAPER_TRADING",
-        "severity": "danger",
+        "headline": "PAPER_EXPERIMENT_READY" if paperExperimentReady else "PAPER_EXPERIMENT_BLOCKED",
+        "severity": "calm" if paperExperimentReady else "danger",
         "operatorMessage": (
-            "서비스/타이머/대시보드가 보여도 모의매매 관찰 준비 완료가 아닙니다. "
-            "paper network, order submission, observation acceptance, order gate를 모두 확인해야 합니다."
+            "현재 목표는 최종 운영 ready가 아니라 KIS 모의투자 paper experiment입니다. "
+            "live/production readiness는 paper 주문 루프를 차단하지 않으며, session approval·캘린더·중복락·증거 저장을 기준으로 봅니다."
         ),
         "blockers": blockerList,
+        "evidenceGaps": evidenceGapList,
+        "paperExperimentReady": paperExperimentReady,
+        "paperOrderLoopEnabled": paperOrderEnabled,
         "paperNetworkEnabled": paperNetworkEnabled,
         "paperOrderEnabled": paperOrderEnabled,
         "paperOrdersSubmitted": paperOrdersSubmitted,
         "paperObservationAccepted": paperObservationAccepted,
         "operationalTradingReadiness": operationalTradingReadiness,
+        "operationalTradingReadinessBlocksPaperOperation": False,
+        "liveMoneyTradingReady": "not_applicable",
+        "productionQualityReady": "partial_non_blocking",
         "orderGate": orderGate,
         "servicePolicy": policy,
         "artifactFreshness": artifactFreshness or {},
@@ -983,7 +988,8 @@ def buildAiConversationArtifactContext(
     operationalTradingReadiness = bool(readiness.get("liveRunnerReady"))
     servicePolicy = {
         **servicePolicy,
-        "orderFlagContradictsReadiness": paperOrderEnabled and not operationalTradingReadiness,
+        "orderFlagContradictsReadiness": False,
+        "liveReadinessDoesNotBlockPaperExperiment": True,
     }
     readinessTruth = buildReadinessTruthPanel(
         runnerStatus=runnerStatus,
@@ -1212,7 +1218,8 @@ def buildOperatorConsoleSnapshot(
     operationalTradingReadiness = readiness["liveRunnerReady"]
     servicePolicy = {
         **servicePolicy,
-        "orderFlagContradictsReadiness": paperOrderEnabled and not operationalTradingReadiness,
+        "orderFlagContradictsReadiness": False,
+        "liveReadinessDoesNotBlockPaperExperiment": True,
     }
     readinessTruth = buildReadinessTruthPanel(
         runnerStatus=runnerStatus,
@@ -1318,9 +1325,11 @@ def buildOperatorConsoleSnapshot(
             "runningServiceVisible": True,
             "paperNetworkEnabled": paperNetworkEnabled,
             "paperOrderEnabled": paperOrderEnabled,
+            "paperExperimentReady": readinessTruth["paperExperimentReady"],
             "paperOrdersSubmitted": paperOrdersSubmitted,
             "paperObservationAccepted": paperObservationAccepted,
             "operationalTradingReadiness": operationalTradingReadiness,
+            "operationalTradingReadinessBlocksPaperOperation": False,
             "liveReadinessRequiresExplicitApproval": True,
         },
         "safety": {

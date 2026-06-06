@@ -61,6 +61,9 @@ PAPER_ORDER_BROKER_ADAPTERS = frozenset({"kis_paper"})
 ORDER_GRADE_MARKET_DATA_SOURCES = frozenset(
     {"kis_paper_read", "kis_market_six_input", "kis_market_mode_aware"}
 )
+OPERATION_MODES = frozenset({"observe_only", "paper_experiment", "live_production"})
+DEFAULT_MAX_DAILY_PAPER_ORDERS = 20
+DEFAULT_MAX_PAPER_NOTIONAL_KRW = 2_000_000
 
 
 def _now_kst() -> datetime:
@@ -84,13 +87,47 @@ def _float_env(env: Mapping[str, str], key: str, default: float) -> float:
         return default
 
 
-def loadContinuousPaperRunnerConfig(env: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
+def _int_env(env: Mapping[str, str], key: str, default: int) -> int:
+    raw = str(env.get(key, "")).strip().replace(",", "")
+    if not raw:
+        return default
+    try:
+        parsed = int(float(raw))
+    except ValueError:
+        return default
+    return parsed if parsed >= 0 else default
+
+
+def normalizeOperationMode(value: Any) -> str:
+    mode = str(value or "").strip().lower()
+    if mode in OPERATION_MODES:
+        return mode
+    return "observe_only"
+
+
+def loadContinuousPaperRunnerConfig(
+    env: Optional[Mapping[str, str]] = None,
+    *,
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
     source = env if env is not None else os.environ
+    operation_mode = normalizeOperationMode(source.get("HWISTOCK_OPERATION_MODE"))
     paper_order_requested = _bool_env(source, "HWISTOCK_KIS_PAPER_ORDER_ENABLED", False)
-    paper_order_approval = loadPaperOrderApproval(source, requested=paper_order_requested)
+    paper_order_approval = loadPaperOrderApproval(
+        source,
+        requested=paper_order_requested,
+        now=now,
+        operation_mode=operation_mode,
+    )
+    paper_order_loop_enabled = (
+        operation_mode == "paper_experiment"
+        and paper_order_requested
+        and paper_order_approval["approved"]
+    )
     return {
         "runner_id": "hwistock-kis-paper-continuous-runner",
         "schema_version": "kis_paper_continuous_runner_config/v0",
+        "operation_mode": operation_mode,
         "duration_policy": "operator_selected",
         "fixed_duration_days": None,
         "auto_stop_on_duration": False,
@@ -98,8 +135,11 @@ def loadContinuousPaperRunnerConfig(env: Optional[Mapping[str, str]] = None) -> 
         "auto_fail_on_duration": False,
         "paper_network_enabled": _bool_env(source, "HWISTOCK_KIS_PAPER_NETWORK_ENABLED", False),
         "paper_order_requested": paper_order_requested,
-        "paper_order_enabled": paper_order_requested and paper_order_approval["approved"],
+        "paper_order_enabled": paper_order_loop_enabled,
+        "paper_order_loop_enabled": paper_order_loop_enabled,
         "paper_order_approval": paper_order_approval,
+        "max_daily_paper_orders": int(paper_order_approval.get("maxDailyOrders") or DEFAULT_MAX_DAILY_PAPER_ORDERS),
+        "max_paper_notional_krw": int(paper_order_approval.get("maxNotionalKrw") or DEFAULT_MAX_PAPER_NOTIONAL_KRW),
         "intent_file": str(source.get("HWISTOCK_KIS_PAPER_INTENT_FILE", "")).strip(),
         "data_root": str(source.get("HWISTOCK_DATA_DIR", str(DEFAULT_DATA_ROOT))).strip(),
         "state_file": str(source.get("HWISTOCK_KIS_PAPER_STATE_FILE", "")).strip(),
@@ -114,8 +154,11 @@ def loadPaperOrderApproval(
     *,
     requested: Optional[bool] = None,
     now: Optional[datetime] = None,
+    operation_mode: Optional[str] = None,
 ) -> Dict[str, Any]:
     source = env if env is not None else os.environ
+    effective_now = now or _now_kst()
+    mode = normalizeOperationMode(operation_mode or source.get("HWISTOCK_OPERATION_MODE"))
     request_flag = _bool_env(source, "HWISTOCK_KIS_PAPER_ORDER_ENABLED", False) if requested is None else bool(requested)
     run_id = str(source.get("HWISTOCK_OPERATOR_APPROVED_ORDER_RUN_ID") or "").strip()
     approval_file = str(source.get("HWISTOCK_ORDER_APPROVAL_FILE") or "").strip()
@@ -125,6 +168,8 @@ def loadPaperOrderApproval(
     result = {
         "requested": request_flag,
         "approved": False,
+        "mode": mode,
+        "approvalMode": None,
         "runIdPresent": bool(run_id),
         "approvalFilePresent": False,
         "approvalFilePathConfigured": bool(approval_file),
@@ -132,9 +177,17 @@ def loadPaperOrderApproval(
         "calendarFilePresent": bool(calendar_path and Path(calendar_path).is_file()),
         "marketDataSource": market_data_source or None,
         "weekdayCalendarFallbackAllowed": weekday_calendar_fallback,
+        "validForDateKst": None,
+        "validUntilKst": None,
+        "maxDailyOrders": _int_env(source, "HWISTOCK_MAX_DAILY_PAPER_ORDERS", DEFAULT_MAX_DAILY_PAPER_ORDERS),
+        "maxNotionalKrw": _int_env(source, "HWISTOCK_MAX_PAPER_NOTIONAL_KRW", DEFAULT_MAX_PAPER_NOTIONAL_KRW),
+        "liveMoneyScope": "not_applicable",
         "reason": "paper_order_not_requested" if not request_flag else "order_approval_missing",
     }
     if not request_flag:
+        return result
+    if mode != "paper_experiment":
+        result["reason"] = "operation_mode_not_paper_experiment"
         return result
     if not run_id:
         result["reason"] = "HWISTOCK_OPERATOR_APPROVED_ORDER_RUN_ID_missing"
@@ -157,13 +210,34 @@ def loadPaperOrderApproval(
     if approved_run_id != run_id:
         result["reason"] = "order_approval_run_id_mismatch"
         return result
+    approval_mode = normalizeOperationMode(payload.get("mode") or payload.get("operation_mode"))
+    result["approvalMode"] = approval_mode
+    if approval_mode != "paper_experiment":
+        result["reason"] = "order_approval_mode_not_paper_experiment"
+        return result
     if payload.get("allow_paper_orders") is not True:
         result["reason"] = "order_approval_allow_paper_orders_not_true"
         return result
+    live_money_scope = str(payload.get("live_money_scope") or "not_applicable").strip().lower()
+    result["liveMoneyScope"] = live_money_scope
+    if live_money_scope != "not_applicable":
+        result["reason"] = "order_approval_live_money_scope_must_be_not_applicable"
+        return result
+    valid_for_date = str(payload.get("valid_for_date_kst") or "").strip()
+    if valid_for_date:
+        result["validForDateKst"] = valid_for_date
+        if valid_for_date != effective_now.astimezone(KST).date().isoformat():
+            result["reason"] = "order_approval_valid_for_date_mismatch"
+            return result
     valid_until = _parse_optional_kst_timestamp(payload.get("valid_until_kst") or payload.get("valid_until"))
-    if valid_until and valid_until <= (now or _now_kst()):
+    result["validUntilKst"] = valid_until.isoformat() if valid_until else None
+    if valid_until and valid_until <= effective_now:
         result["reason"] = "order_approval_expired"
         return result
+    if "max_daily_orders" in payload:
+        result["maxDailyOrders"] = _coerce_nonnegative_int(payload.get("max_daily_orders"), result["maxDailyOrders"])
+    if "max_notional_krw" in payload:
+        result["maxNotionalKrw"] = _coerce_nonnegative_int(payload.get("max_notional_krw"), result["maxNotionalKrw"])
     if weekday_calendar_fallback:
         result["reason"] = "weekday_calendar_fallback_forbidden_for_paper_orders"
         return result
@@ -179,6 +253,14 @@ def loadPaperOrderApproval(
     result["approved"] = True
     result["reason"] = "operator_order_approval_verified"
     return result
+
+
+def _coerce_nonnegative_int(value: Any, default: int) -> int:
+    try:
+        parsed = int(float(str(value).strip().replace(",", "")))
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed >= 0 else default
 
 
 def evaluatePaperRiskOverlay(
@@ -261,6 +343,58 @@ def evaluatePaperRiskOverlay(
             "current_holdings_count": current_holdings,
             "sellable_quantity": int(account.get("sellable_quantity") or 0) if account_truth_present else 0,
         },
+    }
+
+
+def estimateIntentNotionalKrw(intent: Mapping[str, Any]) -> int:
+    planned_cash = _int_or_none(intent.get("planned_order_cash_krw")) or 0
+    quantity = _int_or_none(intent.get("quantity")) or 0
+    order_price = _int_or_none(intent.get("order_price") or intent.get("price")) or 0
+    computed = quantity * order_price if quantity > 0 and order_price > 0 else 0
+    return max(planned_cash, computed)
+
+
+def evaluatePaperSessionLimits(
+    intent: Mapping[str, Any],
+    state: Mapping[str, Any],
+    approval: Mapping[str, Any],
+    *,
+    now: datetime,
+) -> Dict[str, Any]:
+    max_daily_orders = int(approval.get("maxDailyOrders") or DEFAULT_MAX_DAILY_PAPER_ORDERS)
+    max_notional = int(approval.get("maxNotionalKrw") or DEFAULT_MAX_PAPER_NOTIONAL_KRW)
+    today = now.astimezone(KST).date().isoformat()
+    history_rows = [
+        dict(row)
+        for row in (state.get("submitted_order_history") or [])
+        if isinstance(row, Mapping)
+    ]
+    pending_rows = [
+        dict(row)
+        for row in (state.get("pending_orders") or [])
+        if isinstance(row, Mapping)
+    ]
+    submitted_today = [
+        row for row in [*history_rows, *pending_rows]
+        if str(row.get("submitted_at_kst") or row.get("recorded_at_kst") or "").startswith(today)
+    ]
+    used_notional = sum(_coerce_nonnegative_int(row.get("notional_krw"), 0) for row in submitted_today)
+    intent_notional = estimateIntentNotionalKrw(intent)
+    errors: list[str] = []
+    if max_daily_orders > 0 and len(submitted_today) >= max_daily_orders:
+        errors.append("max_daily_paper_orders_exceeded")
+    if max_notional > 0 and used_notional + intent_notional > max_notional:
+        errors.append("max_paper_notional_krw_exceeded")
+    return {
+        "ok": not errors,
+        "errors": errors,
+        "dateKst": today,
+        "submittedOrderCountToday": len(submitted_today),
+        "maxDailyOrders": max_daily_orders,
+        "usedNotionalKrw": used_notional,
+        "intentNotionalKrw": intent_notional,
+        "maxNotionalKrw": max_notional,
+        "blocksPaperOrder": bool(errors),
     }
 
 
@@ -383,19 +517,67 @@ def evaluateRealtimeExitDecision(
     }
 
 
+def buildPaperExperimentReadiness(
+    config: Mapping[str, Any],
+    status: Mapping[str, Any],
+) -> Dict[str, Any]:
+    approval = config.get("paper_order_approval") if isinstance(config.get("paper_order_approval"), Mapping) else {}
+    calendar = status.get("calendar") if isinstance(status.get("calendar"), Mapping) else {}
+    checks = {
+        "paperNetworkEnabled": config.get("paper_network_enabled") is True,
+        "paperOrderRequested": config.get("paper_order_requested") is True,
+        "paperOrderLoopEnabled": config.get("paper_order_loop_enabled") is True,
+        "sessionApproval": approval.get("approved") is True,
+        "calendarConfigured": approval.get("calendarFilePresent") is True,
+        "calendarReady": calendar.get("state") == "calendar_ready",
+        "krxOrderSessionOpen": calendar.get("krxOrderSessionOpen") is True,
+        "marketDataOrderGrade": approval.get("marketDataSource") in ORDER_GRADE_MARKET_DATA_SOURCES,
+        "duplicateLockReady": True,
+        "evidenceWriteReady": True,
+    }
+    ready = config.get("operation_mode") == "paper_experiment" and all(value is True for value in checks.values())
+    return {
+        "ready": ready,
+        "checks": checks,
+        "blockers": [key for key, value in checks.items() if value is not True],
+        "operationMode": config.get("operation_mode") or "observe_only",
+    }
+
+
 def evaluateContinuousPaperRunnerStatus(
     *,
     at_kst: Optional[str] = None,
     env: Optional[Mapping[str, str]] = None,
 ) -> Dict[str, Any]:
-    config = loadContinuousPaperRunnerConfig(env)
+    reference_now = _parse_optional_kst_timestamp(at_kst) or _now_kst()
+    config = loadContinuousPaperRunnerConfig(env, now=reference_now)
     status = base_runner.get_runner_status(at_kst)
+    paper_readiness = buildPaperExperimentReadiness(config, status)
+    paper_experiment_ready = paper_readiness["ready"]
     return {
         "runnerId": config["runner_id"],
         "mode": "kis_paper_mock",
+        "operationMode": config["operation_mode"],
         "continuousService": True,
-        "paperRunReady": False,
+        "paperRunReady": paper_readiness["checks"]["paperNetworkEnabled"],
+        "paperExperimentReady": paper_experiment_ready,
+        "paperOrderLoopEnabled": config["paper_order_loop_enabled"],
         "operationalTradingReadiness": False,
+        "operationalTradingReadinessBlocksPaperOperation": False,
+        "liveMoneyTradingReady": {
+            "state": "not_applicable",
+            "liveApiAvailable": False,
+            "blocksPaperOperation": False,
+        },
+        "productionQualityReady": {
+            "state": "partial",
+            "blocksPaperOperation": False,
+        },
+        "paperExperimentReadiness": {
+            "ready": paper_experiment_ready,
+            "checks": paper_readiness["checks"],
+            "blockers": paper_readiness["blockers"],
+        },
         "durationPolicy": {
             "type": config["duration_policy"],
             "fixedDurationDays": config["fixed_duration_days"],
@@ -406,6 +588,8 @@ def evaluateContinuousPaperRunnerStatus(
         "paperNetworkEnabled": config["paper_network_enabled"],
         "paperOrderRequested": config["paper_order_requested"],
         "paperOrderEnabled": config["paper_order_enabled"],
+        "maxDailyPaperOrders": config["max_daily_paper_orders"],
+        "maxPaperNotionalKrw": config["max_paper_notional_krw"],
         "paperOrderApproval": config["paper_order_approval"],
         "paperEnv": config["paper_env"],
         "capabilities": config["capabilities"],
@@ -531,10 +715,11 @@ def runContinuousPaperTick(
     at_kst: Optional[str] = None,
 ) -> Dict[str, Any]:
     source = env if env is not None else os.environ
-    config = loadContinuousPaperRunnerConfig(source)
-    status = _status_with_env_overrides(base_runner.get_runner_status(at_kst), source, at_kst=at_kst)
     now = _now_kst()
     reference_now = _parse_optional_kst_timestamp(at_kst) or now
+    config = loadContinuousPaperRunnerConfig(source, now=reference_now)
+    status = _status_with_env_overrides(base_runner.get_runner_status(at_kst), source, at_kst=at_kst)
+    paper_readiness = buildPaperExperimentReadiness(config, status)
     data_root = Path(config["data_root"])
     local_state = _load_runner_state(config, data_root=data_root)
     intent_source = "explicit_argument" if intent else "none"
@@ -546,13 +731,25 @@ def runContinuousPaperTick(
         "event": "kis_paper_continuous_tick",
         "timestamp_kst": now.isoformat(),
         "runner_id": config["runner_id"],
+        "operation_mode": config["operation_mode"],
         "continuous_service": True,
         "duration_policy": "operator_selected",
         "fixed_duration_days": None,
         "paper_network_enabled": config["paper_network_enabled"],
         "paper_order_requested": config["paper_order_requested"],
         "paper_order_enabled": config["paper_order_enabled"],
+        "paper_order_loop_enabled": config["paper_order_loop_enabled"],
         "paper_order_approval": config["paper_order_approval"],
+        "paper_experiment_ready": paper_readiness["ready"],
+        "paper_experiment_readiness": paper_readiness,
+        "live_money_trading_ready": {
+            "state": "not_applicable",
+            "blocks_paper_operation": False,
+        },
+        "production_quality_ready": {
+            "state": "partial",
+            "blocks_paper_operation": False,
+        },
         "paper_domain_only": True,
         "live_domain_calls_made": False,
         "ai_provider_calls_made": False,
@@ -688,61 +885,79 @@ def runContinuousPaperTick(
                 }
             )
         else:
-            key = str(intent.get("idempotency_key") or intent.get("intent_id") or "").strip()
-            claim = _acquire_intent_claim(key, data_root=data_root, now=now)
-            result["steps"].append(claim)
-            if claim["status"] != "pass":
+            session_limit = evaluatePaperSessionLimits(
+                intent,
+                local_state,
+                config["paper_order_approval"],
+                now=reference_now,
+            )
+            result["paperSessionLimitPreflight"] = session_limit
+            if not session_limit["ok"]:
                 result["steps"].append(
                     {
                         "step": "cash_order",
-                        "status": "blocked_intent_claim",
+                        "status": "blocked_paper_session_limit",
                         "broker_endpoint_called": False,
-                        "reason": claim.get("reason"),
+                        "errors": session_limit["errors"],
+                        "sessionLimit": session_limit,
                     }
                 )
             else:
-                _mark_runner_state_submitting(local_state, intent, now=now)
-                _write_runner_state(local_state, config, data_root=data_root)
-                try:
-                    cash_order = adapter.placeCashOrder(token, intent)
-                except Exception as exc:  # pragma: no cover - defensive network ambiguity boundary
-                    cash_order = {
-                        "step": "cash_order",
-                        "status": "warn",
-                        "broker_endpoint_called": "unknown",
-                        "reason": "cash_order_exception_requires_reconciliation",
-                        "error_type": type(exc).__name__,
-                    }
-                result["steps"].append(cash_order)
-                if _broker_step_passed(cash_order):
-                    markIntentConsumed(key)
-                    _update_intent_claim_status(key, data_root=data_root, status="submitted", now=now)
-                    _mark_runner_state_submitted(local_state, intent, cash_order, now=now)
-                    _write_runner_state(local_state, config, data_root=data_root)
-                elif cash_order.get("broker_endpoint_called") is False:
-                    _release_intent_claim(key, data_root=data_root)
-                    _clear_runner_state_submitting(local_state, key, now=now)
-                    _write_runner_state(local_state, config, data_root=data_root)
+                key = str(intent.get("idempotency_key") or intent.get("intent_id") or "").strip()
+                claim = _acquire_intent_claim(key, data_root=data_root, now=now)
+                result["steps"].append(claim)
+                if claim["status"] != "pass":
                     result["steps"].append(
                         {
-                            "step": "local_state",
-                            "status": "not_marked_consumed",
-                            "reason": "cash_order_blocked_before_broker_endpoint",
-                            "broker_status": cash_order.get("status"),
+                            "step": "cash_order",
+                            "status": "blocked_intent_claim",
+                            "broker_endpoint_called": False,
+                            "reason": claim.get("reason"),
                         }
                     )
                 else:
-                    _update_intent_claim_status(key, data_root=data_root, status="ambiguous", now=now)
-                    _mark_runner_state_ambiguous(local_state, intent, cash_order, now=now)
+                    _mark_runner_state_submitting(local_state, intent, now=now)
                     _write_runner_state(local_state, config, data_root=data_root)
-                    result["steps"].append(
-                        {
-                            "step": "local_state",
-                            "status": "ambiguous_submit_requires_reconciliation",
-                            "reason": "cash_order_not_passed_after_claim",
-                            "broker_status": cash_order.get("status"),
+                    try:
+                        cash_order = adapter.placeCashOrder(token, intent)
+                    except Exception as exc:  # pragma: no cover - defensive network ambiguity boundary
+                        cash_order = {
+                            "step": "cash_order",
+                            "status": "warn",
+                            "broker_endpoint_called": "unknown",
+                            "reason": "cash_order_exception_requires_reconciliation",
+                            "error_type": type(exc).__name__,
                         }
-                    )
+                    result["steps"].append(cash_order)
+                    if _broker_step_passed(cash_order):
+                        markIntentConsumed(key)
+                        _update_intent_claim_status(key, data_root=data_root, status="submitted", now=now)
+                        _mark_runner_state_submitted(local_state, intent, cash_order, now=now)
+                        _write_runner_state(local_state, config, data_root=data_root)
+                    elif cash_order.get("broker_endpoint_called") is False:
+                        _release_intent_claim(key, data_root=data_root)
+                        _clear_runner_state_submitting(local_state, key, now=now)
+                        _write_runner_state(local_state, config, data_root=data_root)
+                        result["steps"].append(
+                            {
+                                "step": "local_state",
+                                "status": "not_marked_consumed",
+                                "reason": "cash_order_blocked_before_broker_endpoint",
+                                "broker_status": cash_order.get("status"),
+                            }
+                        )
+                    else:
+                        _update_intent_claim_status(key, data_root=data_root, status="ambiguous", now=now)
+                        _mark_runner_state_ambiguous(local_state, intent, cash_order, now=now)
+                        _write_runner_state(local_state, config, data_root=data_root)
+                        result["steps"].append(
+                            {
+                                "step": "local_state",
+                                "status": "ambiguous_submit_requires_reconciliation",
+                                "reason": "cash_order_not_passed_after_claim",
+                                "broker_status": cash_order.get("status"),
+                            }
+                        )
 
     if token_cache_managed:
         result["steps"].append(tokenCacheRevokeSkippedStep())
@@ -887,6 +1102,7 @@ def _load_runner_state(config: Mapping[str, Any], *, data_root: Path) -> Dict[st
             "ambiguous_intent_keys": [],
             "ambiguous_submits": [],
             "pending_orders": [],
+            "submitted_order_history": [],
             "last_updated_kst": None,
         }
         state["claim_intent_keys"] = sorted(_claim_keys_from_dir(data_root=data_root))
@@ -903,6 +1119,7 @@ def _load_runner_state(config: Mapping[str, Any], *, data_root: Path) -> Dict[st
     state.setdefault("ambiguous_intent_keys", [])
     state.setdefault("ambiguous_submits", [])
     state.setdefault("pending_orders", [])
+    state.setdefault("submitted_order_history", [])
     state["claim_intent_keys"] = sorted(_claim_keys_from_dir(data_root=data_root))
     return state
 
@@ -1146,6 +1363,7 @@ def _mark_runner_state_submitted(
             "side": str(intent.get("side") or ""),
             "quantity": intent.get("quantity"),
             "order_price": intent.get("order_price") or intent.get("price"),
+            "notional_krw": estimateIntentNotionalKrw(intent),
             "idempotency_key": key,
             "flash_trade_document_ref": doc_ref,
             "submitted_at_kst": now.isoformat(),
@@ -1157,6 +1375,13 @@ def _mark_runner_state_submitted(
         }
     )
     state["pending_orders"] = pending
+    history = [
+        dict(row)
+        for row in (state.get("submitted_order_history") or [])
+        if isinstance(row, Mapping) and str(row.get("idempotency_key") or "").strip() != key
+    ]
+    history.append(dict(pending[-1]))
+    state["submitted_order_history"] = history[-500:]
     state["last_updated_kst"] = now.isoformat()
 
 
@@ -1284,6 +1509,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.allow_paper_network:
         env["HWISTOCK_KIS_PAPER_NETWORK_ENABLED"] = "true"
     if args.allow_paper_orders:
+        env["HWISTOCK_OPERATION_MODE"] = "paper_experiment"
         env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
     env["HWISTOCK_DATA_DIR"] = str(args.output_root)
     intent = _load_intent_file(args.intent_file)

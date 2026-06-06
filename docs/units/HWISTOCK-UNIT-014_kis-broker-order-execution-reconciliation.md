@@ -7,6 +7,9 @@ name: KIS broker order execution and reconciliation
 status: go_check_local_passed
 implementation_status: go_check_passed_local_no_network_order_smoke_blocked
 post_pro_reinforcement_status: corrective_gap_recorded
+paper_experiment_status: session_approval_required
+live_money_trading_ready: not_applicable
+production_quality_ready: partial_non_blocking
 priority: P0
 source_of_truth: user_intent
 owner: hwi
@@ -42,6 +45,7 @@ evidence_refs:
   - docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
   - docs/evidence/RUN-20260606_kis-mode-gated-account-truth-go-check.md
   - docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md
+  - docs/evidence/RUN-20260606_paper-experiment-readiness-split-go-check.md
 ---
 
 # KIS Broker Order Execution And Reconciliation
@@ -56,6 +60,12 @@ evidence_refs:
 > unsupported. Runtime must skip those helper TRs as
 > `skipped_provider_unsupported`, keep unsupported sellable truth as unknown, and
 > fail closed where supported provider truth is required.
+>
+> Paper experiment correction (2026-06-06): the current side-effect target is a
+> KIS paper/mock experiment, not live-money trading. A session-level
+> `paper_experiment` approval file may enable KRX paper/mock order submission
+> without per-order human approval. Live-money readiness is `not_applicable`,
+> and production-quality gaps are non-blocking for this paper experiment.
 
 ## 1. Goal
 
@@ -64,10 +74,13 @@ that watches approved trade-document-derived `paper_order_intent/v0` records,
 places only KRX broker orders, and reconciles broker-visible adapter-visible state.
 
 This unit is the first place where approved KIS broker orders may be placed
-during an explicitly scoped Go/Prove side-effect run. Local no-network
-preflight/idempotency/realtime-exit Go-Check passed on 2026-06-05, but KIS broker adapter
-order transport and reconciliation smoke remains blocked until approved market
-and account conditions are present. Unapproved adapter operation remains forbidden.
+during an explicitly scoped side-effect run. Local no-network
+preflight/idempotency/realtime-exit Go-Check passed on 2026-06-05. For the
+current Monday KIS paper/mock experiment, KRX order transport is allowed only
+when `paper_experiment` mode, the session approval file, caps, token/account
+truth, KRX calendar/session preflight, duplicate lock, submit-result recording,
+and evidence-write checks all pass. Unapproved adapter operation remains
+forbidden.
 
 ## 2. Included Scope
 
@@ -134,7 +147,9 @@ and account conditions are present. Unapproved adapter operation remains forbidd
 
 ## 5. Go Notes
 
-Actual broker-network calls are side effects. Go/Prove must record the preflight
-time, adapter/unapproved domain guard, secret redaction status, and whether the market
-was open. Market-closed broker rejections are valid classified evidence but not
-proof that an order can fill.
+Actual broker-network calls are side effects. For KIS paper/mock, the current
+approval surface is the date/cap-scoped `paper_experiment` session approval,
+not per-order human approval. Go/Prove must record the preflight time,
+adapter/unapproved domain guard, secret redaction status, approval file metadata,
+session/cap checks, and whether the market was open. Market-closed broker
+rejections are valid classified evidence but not proof that an order can fill.

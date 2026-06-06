@@ -359,14 +359,18 @@ def test_unit015_operator_snapshot_is_read_only_and_exposes_local_account_summar
     assert snapshot["summary"]["cashBalance"] == "잔고 조회 비활성"
     assert snapshot["summary"]["reserveBalance"] == 500_000
     assert snapshot["summary"]["realizedPnl"] == "실현손익 조회 비활성"
-    assert snapshot["readinessTruth"]["headline"] == "NOT_READY_FOR_PAPER_TRADING"
+    assert snapshot["readinessTruth"]["headline"] == "PAPER_EXPERIMENT_BLOCKED"
     assert snapshot["readinessTruth"]["serviceVisibilityIsNotReadiness"] is True
     assert snapshot["readinessTruth"]["paperNetworkEnabled"] is True
     assert snapshot["readinessTruth"]["paperOrderEnabled"] is False
+    assert snapshot["readinessTruth"]["paperExperimentReady"] is False
+    assert snapshot["readinessTruth"]["operationalTradingReadinessBlocksPaperOperation"] is False
     assert snapshot["readinessTruth"]["paperOrdersSubmitted"] is False
     assert snapshot["readinessTruth"]["paperObservationAccepted"] is False
     assert snapshot["readinessTruth"]["operationalTradingReadiness"] is False
+    assert "paper_order_loop_disabled" in snapshot["readinessTruth"]["blockers"]
     assert "blocked_calendar_day_missing" in snapshot["readinessTruth"]["blockers"]
+    assert "paper_orders_not_submitted" in snapshot["readinessTruth"]["evidenceGaps"]
 
     report = operator_console.writeObservationReport(
         startedAtKst="2026-06-05T09:00:00+09:00",
@@ -519,7 +523,7 @@ def test_unit015_account_summary_preserves_zero_pnl_from_runner_evidence(tmp_pat
     assert summary["realizedPnlStatus"] == "pass"
 
 
-def test_unit015_operator_snapshot_detects_order_enabled_service_contradiction(tmp_path: Path, monkeypatch):
+def test_unit015_operator_snapshot_allows_order_enabled_paper_experiment_without_live_contradiction(tmp_path: Path, monkeypatch):
     _disable_dashboard_account_network(monkeypatch)
     risky_unit = tmp_path / "hwistock-kis-paper-runner.service"
     risky_unit.write_text(
@@ -539,7 +543,9 @@ def test_unit015_operator_snapshot_detects_order_enabled_service_contradiction(t
     )
     assert snapshot["readinessTruth"]["paperOrderEnabled"] is True
     assert snapshot["runtime"]["kisPaperRunnerServicePolicy"]["paperOrderEnabledByService"] is True
-    assert "systemd_order_enabled_contradicts_readiness" in snapshot["readinessTruth"]["blockers"]
+    assert snapshot["runtime"]["kisPaperRunnerServicePolicy"]["orderFlagContradictsReadiness"] is False
+    assert "systemd_order_enabled_contradicts_readiness" not in snapshot["readinessTruth"]["blockers"]
+    assert "live_production_readiness_not_applicable" in snapshot["readinessTruth"]["evidenceGaps"]
     assert any(entry["code"] == "SYSTEMD_ORDER_FLAG" and entry["message"] == "enabled" for entry in snapshot["auditLog"])
 
 
@@ -583,7 +589,9 @@ def test_unit015_operator_snapshot_uses_live_systemd_effective_policy(tmp_path: 
     assert policy["livePolicy"]["available"] is True
     assert policy["paperOrderEnabledEffective"] is True
     assert snapshot["readinessTruth"]["paperOrderEnabled"] is True
-    assert "systemd_order_enabled_contradicts_readiness" in snapshot["readinessTruth"]["blockers"]
+    assert policy["orderFlagContradictsReadiness"] is False
+    assert "systemd_order_enabled_contradicts_readiness" not in snapshot["readinessTruth"]["blockers"]
+    assert "live_production_readiness_not_applicable" in snapshot["readinessTruth"]["evidenceGaps"]
     assert any(entry["code"] == "SYSTEMD_ORDER_FLAG" and entry["message"] == "enabled" for entry in snapshot["auditLog"])
 
 
@@ -756,7 +764,7 @@ def test_unit015_operator_snapshot_marks_stale_runtime_artifact_as_blocker(tmp_p
 
     freshness = snapshot["runtime"]["artifactFreshness"]
     assert freshness["artifacts"]["kisMarket"]["stale"] is True
-    assert "artifact_stale:kisMarket" in snapshot["readinessTruth"]["blockers"]
+    assert "artifact_stale:kisMarket" in snapshot["readinessTruth"]["evidenceGaps"]
     assert any(
         entry["code"] == "ARTIFACT_kisMarket" and entry["level"] == "warn" and "stale" in entry["message"]
         for entry in snapshot["auditLog"]

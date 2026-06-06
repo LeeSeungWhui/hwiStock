@@ -533,9 +533,19 @@ def getRunnerStatus(atKst: Optional[str] = None) -> Dict[str, Any]:
     return {
         "runnerId": "hwistock-paper-runner-skeleton",
         "mode": "paper_sandbox",
+        "operationMode": os.getenv("HWISTOCK_OPERATION_MODE", "observe_only"),
         "liveOrdersEnabled": False,
         "brokerCallsEnabled": False,
         "orderExecution": "no_order_dry_run",
+        "liveMoneyTradingReady": {
+            "state": "not_applicable",
+            "liveApiAvailable": False,
+            "blocksPaperOperation": False,
+        },
+        "productionQualityReady": {
+            "state": "partial",
+            "blocksPaperOperation": False,
+        },
         "bindHostDefault": DEFAULT_BIND_HOST,
         "killSwitch": {"active": kill_switch, "blocksRouting": kill_switch},
         "routing": route,
@@ -555,8 +565,9 @@ def getRunnerStatus(atKst: Optional[str] = None) -> Dict[str, Any]:
         "paperObservation": paperObservationTemplate(),
         "readiness": {
             "liveRunnerReady": False,
+            "liveRunnerReadyBlocksPaperOperation": False,
             "paperObservationAccepted": False,
-            "note": "runtime services may be active, but operational paper-trading readiness remains false until the full UNIT-011 through UNIT-015 queue passes Go/Check/Prove",
+            "note": "live/production readiness is not applicable to KIS paper/mock experiment startup; paper experiment readiness is evaluated by the continuous KIS paper runner",
         },
     }
 

@@ -10,7 +10,11 @@ verification_status: not_started
 post_pro_reinforcement_status: unit011_015_go_check_passed_unit012_014_pending
 implementation_ready_scope: operational_contract_hardened_go_check_queue
 broker_run_ready: false
-operational_readiness: false
+operational_readiness: false_final_operation_acceptance_only
+paper_experiment_ready: conditional
+live_money_trading_ready: not_applicable
+production_quality_ready: partial_non_blocking
+paper_order_loop_policy: session_approval_caps_evidence
 priority: P0
 source_of_truth: user_intent
 owner: hwi
@@ -40,6 +44,7 @@ evidence_refs:
   - docs/evidence/RUN-20260605_post-pro-corrective-go-check-unit-011-015.md
   - docs/evidence/RUN-20260606_monday-operation-p0-safety-gates-go-check.md
   - docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md
+  - docs/evidence/RUN-20260606_paper-experiment-readiness-split-go-check.md
 contract_refs:
   - docs/contracts/HWISTOCK-RUNTIME-DATA-EXECUTION-CONTRACTS.md
   - docs/contracts/hwistock-runtime-contracts.schema.json
@@ -55,7 +60,16 @@ contract_refs:
 > KIS paper/mock hotfix note (2026-06-06): latest runtime evidence preserves
 > provider-unsupported account-helper truth as unknown and skips unsupported KIS
 > helper TRs instead of calling real-investment TR ids. This strengthens runtime
-> safety but does not make the order-submit path ready.
+> safety but does not by itself make the order-submit path ready.
+>
+> Paper experiment correction (2026-06-06): the current Monday-start goal is
+> `paper_experiment_ready`, not final live-money or production-quality
+> readiness. `live_money_trading_ready = not_applicable` and
+> `production_quality_ready = partial_non_blocking` must not block the KIS
+> paper/mock order loop. The paper loop may submit KRX paper/mock orders only
+> under `paper_experiment` session approval, caps, KRX session/calendar
+> preflight, account truth, duplicate lock, submit-result recording, and
+> evidence-write success.
 
 ## 1. Purpose
 
@@ -178,8 +192,11 @@ operation-ready.
 - The currently running market-intelligence collector covers OpenDART/NAVER/RSS
   style source collection, but the exact source-key readiness and source
   coverage must still be proven per source.
-- The currently running KIS broker adapter runner can perform read/reconciliation ticks,
-  but broker cash order submission is disabled unless explicitly enabled.
+- The currently running KIS broker adapter runner can perform read/reconciliation
+  ticks. KIS paper/mock cash order submission is enabled only by
+  `paper_experiment` mode plus a date/cap-scoped approval file and still fails
+  closed on token/account/balance/buyable, KRX-session, duplicate-lock,
+  evidence-write, submit-result, or crash blockers.
 - The 2026-06-05 base runner reported `blocked_calendar_unconfigured`, which
   blocked order flow until calendar/session evidence was configured. The
   2026-06-06 Monday P0 safety gate later hardened this behavior: date-specific
@@ -192,8 +209,9 @@ operation-ready.
 - There is no current KIS intraday ranking/realtime collector artifact feeding
   the Flash 10-minute decision job.
 - There is no current DeepSeek Flash 10-minute trade-document writer.
-- There is no current source-grounded trade-document to order-intent queue that
-  feeds the KIS broker adapter runner.
+- The source-grounded trade-document to order-intent queue exists as a bounded
+  local implementation surface and must feed the KIS broker adapter runner only
+  through deterministic schema/freshness/session/risk/reservation/conflict gates.
 - There is no current portfolio/order-state snapshot contract included in the
   Flash prompt or final executor gate.
 - 2026-06-05 ChatGPT Pro external review classified the current operational
@@ -209,7 +227,10 @@ operation-ready.
 P0 safety boundaries:
 
 - KIS unapproved domains stay outside the current adapter boundary.
-- Account-affecting trading requires explicit scoped approval.
+- Account-affecting trading requires explicit scoped approval. For the current
+  KIS paper/mock experiment, that approval is session-level
+  `paper_experiment` approval with date/cap/source/calendar constraints; no
+  per-order human approval is required inside that approved session.
 - Unapproved credentials stay outside the current adapter boundary.
 - Public/LAN exposure requires a later authenticated access contract.
 - Secrets must stay in `/home/hwi/.config/hwistock/*.env` and must never be
@@ -299,6 +320,17 @@ hwiStock can be called operation-ready only when:
 - observation-window evidence is written without a hardcoded duration; and
 - final Prove evidence says `broker_run_ready: true`.
 
-Until then, the correct status is:
+For the current KIS paper/mock experiment, the narrower Monday readiness target
+is satisfied when `paper_experiment_ready = true`, not when final operation
+acceptance is complete. Its hard blockers are disabled paper network/order loop,
+paper token failure, account/balance/buyable failure, KRX session/calendar
+failure, broken duplicate lock, evidence-write failure, missing submit-result
+recording, and process crash. Non-blockers for the experiment include
+`live_money_trading_ready =
+not_applicable`, `production_quality_ready = partial_non_blocking`, incomplete
+final observation acceptance, SELL/exit coverage gaps, unsupported paper/mock
+helper TRs that are safely skipped, and dashboard menu incompleteness.
 
-`operational_readiness: false`.
+Until final operation acceptance closes, the correct broad status is:
+
+`operational_readiness: false_final_operation_acceptance_only`.

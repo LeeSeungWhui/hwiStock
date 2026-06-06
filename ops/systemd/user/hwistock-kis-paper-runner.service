@@ -12,10 +12,15 @@ WorkingDirectory=/data/workspace/My/hwiStock
 EnvironmentFile=-/home/hwi/.config/hwistock/hwistock.env
 EnvironmentFile=-/home/hwi/.config/hwistock/hwistockApi.env
 Environment=HWISTOCK_BIND_HOST=127.0.0.1
+Environment=HWISTOCK_OPERATION_MODE=paper_experiment
 Environment=HWISTOCK_MARKET_DATA_SOURCE=kis_market_mode_aware
 Environment=HWISTOCK_CALENDAR_PATH=/data/workspace/My/hwiStock/config/market-calendar/krx-nxt-trading-days.json
 Environment=HWISTOCK_ALLOW_WEEKDAY_CALENDAR_FALLBACK=false
-Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=false
+Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=true
+Environment=HWISTOCK_MAX_DAILY_PAPER_ORDERS=20
+Environment=HWISTOCK_MAX_PAPER_NOTIONAL_KRW=2000000
+Environment=HWISTOCK_PAPER_STOP_ON_DUPLICATE_LOCK_ERROR=true
+Environment=HWISTOCK_PAPER_STOP_ON_EVIDENCE_WRITE_ERROR=true
 Environment=HWISTOCK_KIS_MIN_CALL_GAP_SEC=1.35
-ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-kis-paper-runner -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/kis_paper_continuous_runner.py --once --write-evidence --allow-paper-network'
+ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-kis-paper-runner -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/kis_paper_continuous_runner.py --once --write-evidence --allow-paper-network --allow-paper-orders'
 NoNewPrivileges=true

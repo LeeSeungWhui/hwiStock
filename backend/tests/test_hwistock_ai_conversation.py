@@ -213,6 +213,7 @@ def test_ai_conversation_readiness_reflects_service_order_policy(tmp_path):
         "\n".join(
             [
                 "[Service]",
+                "Environment=HWISTOCK_OPERATION_MODE=paper_experiment",
                 "Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=true",
                 "ExecStart=/usr/bin/env python backend/service/kis_paper_continuous_runner.py --once --allow-paper-network --allow-paper-orders",
             ]
@@ -229,5 +230,6 @@ def test_ai_conversation_readiness_reflects_service_order_policy(tmp_path):
 
     assert readiness["paperOrderEnabled"] is True
     assert readiness["servicePolicy"]["paperOrderEnabledByService"] is True
-    assert readiness["servicePolicy"]["orderFlagContradictsReadiness"] is True
-    assert "systemd_order_enabled_contradicts_readiness" in readiness["blockers"]
+    assert readiness["servicePolicy"]["orderFlagContradictsReadiness"] is False
+    assert "systemd_order_enabled_contradicts_readiness" not in readiness["blockers"]
+    assert "live_production_readiness_not_applicable" in readiness["evidenceGaps"]

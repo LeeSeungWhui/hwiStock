@@ -94,9 +94,13 @@ API (`KIS`, 한국투자증권). KB Securities (`KB증권`) is treated as not us
 personal-account automation project unless a future official confirmation proves
 otherwise. hwiStock will not use an internal fake broker adapter as the first
 execution path. The first broker-backed execution path is an approved KIS
-broker-adapter-investment KRX path. Before that explicit broker-network approval,
+broker-adapter KRX path. Outside a valid `paper_experiment` session approval,
 the engine may run only no-order dry-run validation that records candidate,
-risk, and order-intent decisions without simulating broker fills.
+risk, and order-intent decisions without simulating broker fills. Inside a valid
+`paper_experiment` session approval, KIS paper/mock KRX orders are allowed
+without per-order human approval, subject to deterministic caps, account truth,
+KRX session preflight, duplicate locks, submit-result recording, and
+evidence-write checks.
 UNIT-009 confirms, from official docs/samples, KIS domestic
 order/account/realtime endpoint families, adapter-mode separation,
 personal-account eligibility, and NXT/SOR order-routing fields. Local KIS
@@ -128,7 +132,18 @@ transport shape, retry once after invalid token evidence, skip provider-unsuppor
 sellable/cancelable/realized-PnL/holiday helper TRs as
 `skipped_provider_unsupported`, and preserve unsupported sellable truth as
 unknown instead of converting it to zero. This hotfix is evidence for safer
-runtime/account-truth handling, not order-submit readiness.
+runtime/account-truth handling, not by itself order-submit readiness.
+
+Owner paper-experiment correction (2026-06-06): Monday-start readiness is
+evaluated as `paper_experiment_ready`, not as final live-money or production
+readiness. `live_money_trading_ready` is `not_applicable` for this experiment.
+`production_quality_ready` is `partial_non_blocking`. The true paper blockers
+are disabled paper network/order loop, paper token failure,
+account/balance/buyable failure, KRX session/calendar failure, broken duplicate
+lock, evidence-write failure, missing submit-result recording, and process
+crash. In `paper_experiment` mode, a valid session approval plus caps enables
+the KIS paper/mock order loop; no per-order human approval is required inside
+that approved session.
 
 Current owner-defined runtime architecture is file-driven:
 
@@ -243,9 +258,15 @@ an unscoped architecture summary or whole-project prompt.
   broker execution path
 - Pre-approval execution behavior: no-order dry-run only, recording candidate,
   risk, and order-intent decisions without broker fill simulation
+- Paper experiment execution behavior: with `HWISTOCK_OPERATION_MODE =
+  paper_experiment`, `HWISTOCK_KIS_PAPER_ORDER_ENABLED = true`, and a valid
+  approval file for the KST date/caps/source/calendar, the KIS paper/mock KRX
+  order loop may submit approved paper orders without per-order human approval.
+  The runner must still fail closed on token/account/balance/buyable,
+  KRX-session, duplicate-lock, evidence-write, submit-result, or crash blockers.
 - Broker-provided adapter API mode: KIS KRX-adapter path only
-  under explicit unit/smoke approval; NXT/SOR stay disabled or
-  explicit-fallback-only until later broker-account/support-confirmation
+  under explicit unit/smoke or `paper_experiment` session approval; NXT/SOR stay
+  disabled or explicit-fallback-only until later broker-account/support-confirmation
 - Broker-adapter account balance: observed broker evidence only; it does not expand
   the 2,000,000 KRW risk-overlay sizing capital
 - KIS API mode: the first bounded broker-adapter REST and websocket smoke passed in
@@ -305,6 +326,8 @@ an unscoped architecture summary or whole-project prompt.
   `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-automated-trading-program_hwistock.md`
 - Current KIS paper/mock runtime hotfix evidence:
   `docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md`
+- Current KIS paper/mock experiment readiness split evidence:
+  `docs/evidence/RUN-20260606_paper-experiment-readiness-split-go-check.md`
 - Current operational implementation / contract units:
   - `docs/units/HWISTOCK-UNIT-011_operational-runtime-supervisor.md`
   - `docs/units/HWISTOCK-UNIT-016_runtime-contract-hardening.md`
@@ -601,10 +624,12 @@ Explicit approval is required before:
 - any broker network call
 - any KIS or external broker network call unless a Set-approved broker-adapter unit explicitly scopes it
 - any broker account login
-- any order placement, even adapter-backed, unless the unit explicitly scopes it
+- any order placement, even adapter-backed, unless the unit explicitly scopes it;
+  for KIS paper/mock experiments this approval may be session-level and
+  date/cap-scoped rather than per-order
 - treating the system as operation-ready before an operator-selected adapter-backed
   observation window has been completed, reviewed, and explicitly accepted
-- account-affecting trading
+- account-affecting trading outside the current KIS paper/mock experiment scope
 - production deployment or remote operation
 - selecting an AI API provider/model or sending project data to an AI API
 - changing AI prompt, output schema, model, tool permissions, or fallback policy
@@ -626,6 +651,14 @@ For trading-related work, evidence must label the environment:
 - `broker_order`
 
 `broker_order` evidence requires explicit approval in a Set contract.
+For the current KIS paper/mock experiment, the explicit approval unit is the
+date/cap-scoped `paper_experiment` session approval file consumed by the runner.
+It must include `mode` or `operation_mode = paper_experiment`,
+`allow_paper_orders = true`, `valid_for_date_kst`, optional `valid_until_kst`,
+`max_daily_orders`, `max_notional_krw`, and
+`live_money_scope = not_applicable`. This approval enables the paper order loop
+only for the approved session and caps; it does not approve live-money
+operation.
 The earliest operation approval must link operator-selected adapter-backed
 observation evidence, including dates, test environment, scenario coverage,
 broker order/reconciliation results where approved, failures, fixes, observation

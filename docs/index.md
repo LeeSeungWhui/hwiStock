@@ -3,10 +3,14 @@
 `hwiStock` is a stock day-trading automation project. The initial project
 contract prioritizes safety, observability, adapter-backed validation, and clear
 approval gates before any broker adapter integration and account-affecting order flow.
-Before account-affecting operation, the project must pass an operator-selected
-adapter-backed observation window with named evidence and an explicit user
-go/no-go approval. The runtime must not hardcode seven days, one week, or any
-other fixed test duration; the operator decides the observation period.
+For the current KIS paper/mock experiment, the active readiness target is
+`paper_experiment_ready`, not final live-money or production-quality readiness.
+Paper/mock orders may run under a session-level `paper_experiment` approval,
+caps, calendar/session preflight, account truth, duplicate lock, submit-result
+recording, and evidence-write checks. Live-money operation and production-quality
+acceptance remain separate non-blocking categories for this experiment. The
+runtime must not hardcode seven days, one week, or any other fixed test duration;
+the operator decides the observation period.
 The intended runtime target is a 24-hour home-server program/service, not a
 Codex session. Codex is used for planning, implementation, review, and evidence
 work; the trading runner must be an independently restartable service.
@@ -104,8 +108,10 @@ strategy/risk/order state machines own executable broker-order decisions.
 | Service observability | 🟡 OBSERVABLE | API, frontend, timers, and runtime artifacts may be active on loopback/systemd, but service activity is not automated-trading readiness. | `docs/evidence/RUN-20260605_unit-011-runtime-start-go.md`; `docs/evidence/RUN-20260606_monday-operation-p0-safety-gates-go-check.md` |
 | Data/AI artifact pipeline | 🟡 PARTIAL | Local Go-Check evidence exists for Pro/Flash artifacts, source grounding, KIS mode-aware market data, and fail-closed behavior; provider/network observation still needs scoped evidence. | `docs/evidence/RUN-20260605_operational-go-check-units-012-015.md`; `docs/evidence/RUN-20260606_monday-operation-p0-safety-gates-go-check.md` |
 | KIS paper/mock account truth | 🟡 PARTIAL | Supported KIS paper/mock read steps pass in the latest sanitized smoke; provider-unsupported helper TRs are skipped as `skipped_provider_unsupported` and unknown sellable truth is not converted to zero. | `docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md`; `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md` |
-| Order submission readiness | ❌ FALSE | Account-affecting order submission is not a current readiness claim. It still requires explicit unit scope, market/session preflight, account truth, adapter guard, idempotency/reconciliation evidence, and operator approval. | `docs/units/HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md`; `docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md` |
-| Observation acceptance | ❌ FALSE | No operator-selected market-hours observation window has been accepted as final operational proof. | `docs/units/HWISTOCK-UNIT-015_operator-console-observation-prove.md`; `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md` |
+| KIS paper experiment order loop | 🟡 CONDITIONAL GO TARGET | KIS paper/mock KRX order submission is the current Monday experiment target. It is allowed only in `paper_experiment` mode with session approval, caps, KRX session preflight, token/account/balance/buyable truth, duplicate lock, submit-result recording, and evidence-write checks. | `docs/units/HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md`; `docs/contracts/HWISTOCK-RUNTIME-DATA-EXECUTION-CONTRACTS.md`; `docs/evidence/RUN-20260606_paper-experiment-readiness-split-go-check.md` |
+| Live-money trading readiness | ⚪ NOT_APPLICABLE | Live-money trading is not requested for the current experiment and must not block KIS paper/mock operation. | `docs/profiles/PROFILE-HWISTOCK.md`; `docs/modules/HWISTOCK-MOD-009_operational-automated-trading-program.md` |
+| Production-quality readiness | 🟡 PARTIAL_NON_BLOCKING | Production-quality hardening is still incomplete, but incomplete production quality is not a blocker for the KIS paper/mock experiment. | `docs/profiles/PROFILE-HWISTOCK.md`; `docs/evidence/RUN-20260606_paper-experiment-readiness-split-go-check.md` |
+| Observation acceptance | 🟡 NON_BLOCKING_FOR_PAPER_EXPERIMENT | No operator-selected market-hours observation window has been accepted as final operational proof. This blocks final operation acceptance, not the start of the bounded KIS paper/mock experiment. | `docs/units/HWISTOCK-UNIT-015_operator-console-observation-prove.md`; `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md` |
 
 Terminology for the current docs:
 
@@ -116,6 +122,17 @@ Terminology for the current docs:
 - `KIS paper/mock` is the currently configured KIS investment environment.
   Paper/mock enables KRX plus integrated market-data/account-truth helpers, but
   it does not make unsupported KIS helper TRs available.
+- `paper_experiment_ready` is the current Monday-start target. True blockers are
+  disabled paper network/order loop, paper token failure, account/balance/buyable
+  failure, KRX session closed or missing date-specific calendar row, broken
+  duplicate lock, evidence-write failure, missing submit-result record, and
+  process crash.
+- `paper_order_loop_enabled` means the runner is in `paper_experiment` mode and
+  has a valid session approval plus caps. It does not require per-order human
+  approval inside the approved session.
+- `live_money_trading_ready = not_applicable` and
+  `production_quality_ready = partial_non_blocking` do not block the current
+  KIS paper/mock experiment.
 - `real investment mode` is a later mode-gated branch for KRX/NXT where KIS
   capability flags and separate proof allow it. SOR remains disabled unless a
   future contract proves it.
@@ -173,6 +190,8 @@ Current 2026-06-05 operational automated-trading authority:
   `docs/evidence/RUN-20260606_kis-mode-gated-account-truth-go-check.md`
 - KIS paper token-cache and mock-unsupported TR hotfix evidence:
   `docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md`
+- KIS paper experiment readiness split Go-Check evidence:
+  `docs/evidence/RUN-20260606_paper-experiment-readiness-split-go-check.md`
 - Monday operation local calendar cache:
   `config/market-calendar/krx-nxt-trading-days.json`
 
@@ -185,9 +204,15 @@ Current truth after the Pro critique:
 
 - `implementation_ready: true` only for the
   `operational_contract_hardened_go_check_queue`;
-- `broker_run_ready: false`;
-- `continuous_runner_ready: false`;
-- `operational_readiness: false`;
+- `paper_experiment_ready: conditional` for the KIS paper/mock Monday
+  experiment;
+- `paper_order_loop_enabled: true` only when `HWISTOCK_OPERATION_MODE =
+  paper_experiment`, `HWISTOCK_KIS_PAPER_ORDER_ENABLED = true`, and the
+  approval file/date/caps/source/calendar checks pass;
+- `live_money_trading_ready: not_applicable`;
+- `production_quality_ready: partial_non_blocking`;
+- `operational_readiness: false` only for final operation acceptance, not as a
+  blocker for the bounded KIS paper/mock experiment;
 - `broker_runner_ready: false`.
 
 The runtime can be observed through local services, timers, artifacts, the
@@ -211,16 +236,20 @@ Corrective reinforcements now attached to the existing queue:
 3. `HWISTOCK-UNIT-012`: DeepSeek Pro/Flash timer and artifact truth.
 4. `HWISTOCK-UNIT-013`: source/calendar/KIS mode-aware market-data readiness
    without order submission.
-5. `HWISTOCK-UNIT-014`: bounded KRX broker order/reconciliation smoke only after
-   explicit approval and market/session preflight.
+5. `HWISTOCK-UNIT-014`: bounded KRX paper/mock broker
+   order/reconciliation smoke under `paper_experiment` session approval, caps,
+   and market/session preflight.
 
 Latest operational Go-Check update: UNIT-012 through UNIT-015 passed local
 no-network Go-Check for the owner-selected NAVER/OpenDART + KIS mode-aware
-market-data scope. Provider network smoke, KIS broker adapter-read transport, KIS KRX adapter
-order/reconciliation smoke, browser/tunnel Prove, and final operator
-observation-window acceptance remain blocked until explicitly scoped. Therefore
-`broker_run_ready: false`, `continuous_runner_ready: false`, and
-`operational_readiness: false` remain current.
+market-data scope. The 2026-06-06 paper-experiment correction changes the
+readiness interpretation for Monday: provider/browser/final observation
+acceptance remain incomplete, but they are non-blocking for starting the
+bounded KIS paper/mock experiment when the paper token, account/balance/buyable
+truth, KRX calendar/session, duplicate lock, submit-result recording, and
+evidence-write checks pass. Therefore `operational_readiness: false` remains
+current only for final operation acceptance, while `paper_experiment_ready` is
+the active Monday readiness gate.
 
 Correction: `HWISTOCK-UNIT-010` is a KIS broker adapter runner foundation and local
 no-network implementation proof, not the whole stock-trading program. The
@@ -231,8 +260,10 @@ and validator evidence. UNIT-012/013 are responsible for the Pro-hourly,
 Flash-10-minute, KIS-market-data, and trade-document bridge. Current status is
 `go_check_passed_local_no_network_with_side_effect_rows_blocked` only for the
 contract-hardened Go-Check queue. Until the side-effect rows pass Go/Check/Prove,
-`broker_run_ready: false`, `continuous_runner_ready: false`, and
-`operational_readiness: false` remain the correct status.
+`operational_readiness: false` remains the correct final-operation status.
+This does not block the separate KIS paper/mock `paper_experiment_ready` gate
+for the Monday experiment when its session approval, caps, KRX session,
+account-truth, duplicate-lock, submit-result, and evidence-write checks pass.
 
 Prior GPT Pro review correction: the 2026-06-05 external review classified the
 architecture as solid in intent but not implementation-ready until runtime
@@ -255,11 +286,13 @@ runner evidence, KIS broker adapter health, and KIS broker adapter continuous ru
 analysis and KIS broker adapter read/reconciliation ticks produced successful sanitized
 evidence. DeepSeek timer activity means the local analysis job/timer is installed
 and produces sanitized runtime evidence when provider/config prerequisites are
-available; it does not imply order readiness. KIS broker adapter cash order
-submission remains disabled by the default user systemd runner and additionally
-requires an operator approval file plus matching approved order run id before
-the runner can submit any cash order. The order gate remains blocked by missing
-calendar/source configuration.
+available; it does not imply final operation readiness. KIS paper/mock cash
+order submission is now a separate `paper_experiment` loop: the systemd runner
+may enable `HWISTOCK_OPERATION_MODE=paper_experiment` and
+`HWISTOCK_KIS_PAPER_ORDER_ENABLED=true`, but the runner still fails closed
+without a valid session approval file, date/cap checks, order-grade source,
+configured date-specific calendar, KRX open-session proof, duplicate lock,
+submit-result recording, and evidence-write success.
 
 Follow-up Pro review fail-closed remediation on 2026-06-05 tightened
 paper-order approval/calendar/source requirements, required `paper_only` and the
@@ -291,10 +324,10 @@ Superseded narrow UNIT-010 correction set:
   UNIT-012 through UNIT-015 queue above.
 - Narrow UNIT-010 readiness: `HWISTOCK-UNIT-010` local no-network Go-Check has passed.
   The continuous KIS broker adapter runner code exists and later UNIT-011 evidence shows
-  service-managed runtime startup, but `broker_run_ready: false`,
-  `continuous_runner_ready: false`, and `operational_readiness: false`
-  remain for the operational program because order-producing Go rows, broker
-  order evidence, and operator observation-window Prove have not closed.
+  service-managed runtime startup, but broad final-operation readiness remains
+  false for the operational program because final observation-window Prove has
+  not closed. The separate KIS paper/mock experiment path is governed by
+  `paper_experiment_ready` instead of this broad final-operation label.
 
 The current code baseline changed on 2026-06-04 when MyWebTemplate-derived
 `backend/` and `frontend-web/` code was imported. Earlier Ready-Set closure and

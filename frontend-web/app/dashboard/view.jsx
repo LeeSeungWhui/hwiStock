@@ -39,6 +39,8 @@ const healthVariantMap = {
 const readinessHeadlineLabelMap = {
   NOT_READY: "준비 전",
   NOT_READY_FOR_PAPER_TRADING: "준비 전",
+  PAPER_EXPERIMENT_BLOCKED: "Paper BLOCKED",
+  PAPER_EXPERIMENT_READY: "Paper GO",
   READY: "준비 완료",
 };
 
@@ -50,11 +52,15 @@ const readinessBlockerLabelMap = {
   blocked_source_unconfigured: "시세 데이터 소스 설정 필요",
   fallback_snapshot: "폴백 스냅샷 표시 중",
   missing_or_safe_blocked: "없음/안전 차단",
-  operational_readiness_false: "운영 준비 미완료",
-  operational_trading_readiness_false: "운영 준비 미완료",
+  live_production_readiness_not_applicable: "최종 운영 준비 범위 아님",
+  operational_readiness_false: "최종 운영 준비 미완료",
+  operational_trading_readiness_false: "최종 운영 준비 미완료",
+  paper_order_loop_disabled: "모의투자 주문 루프 비활성",
   paper_network_disabled: "시세 API 연결 차단",
-  paper_observation_not_accepted: "관찰 승인 필요",
-  paper_orders_not_submitted: "주문 제출 대기",
+  paper_observation_not_accepted: "관찰 증거 대기",
+  paper_orders_not_submitted: "주문 증거 대기",
+  partial_non_blocking: "부분 준비/비차단",
+  not_applicable: "해당 없음",
   systemd_order_enabled_contradicts_readiness: "서비스 주문 설정과 준비 상태 불일치",
   unknown: "상태 확인 필요",
 };
@@ -138,7 +144,7 @@ const formatReadinessState = (key, value) => {
     paperOrderEnabled: ["주문 차단", "주문 허용"],
     paperOrdersSubmitted: ["제출 대기", "제출 완료"],
     paperObservationAccepted: ["미승인", "승인됨"],
-    operationalTradingReadiness: ["준비 전", "준비 완료"],
+    operationalTradingReadiness: ["범위 밖", "준비 완료"],
   };
   const pair = labelByKey[key] || ["아니오", "예"];
   return pair[on ? 1 : 0];
@@ -327,11 +333,7 @@ const FreshnessStrip = ({ snapshot }) => {
 
 const ReadinessTruthBanner = ({ readinessTruth, usesFallback }) => {
   const truth = readinessTruth || {};
-  const ready = truth.operationalTradingReadiness
-    && truth.paperNetworkEnabled
-    && truth.paperOrdersSubmitted
-    && truth.paperObservationAccepted
-    && !usesFallback;
+  const ready = Boolean(truth.paperExperimentReady) && !usesFallback;
   const blockerList = Array.isArray(truth.blockers) ? truth.blockers : [];
   const tone = ready ? severityToneMap.calm : severityToneMap.danger;
   const readinessSignalLabel = ready ? "READY" : "NOT READY";

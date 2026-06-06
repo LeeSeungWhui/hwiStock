@@ -12,9 +12,12 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from lib.kis_paper_continuous_runtime import (
+    buildPaperExperimentReadiness,
     evaluateContinuousPaperRunnerStatus,
     evaluateIntentExecutionPreflight,
     evaluatePaperRiskOverlay,
+    evaluatePaperSessionLimits,
+    estimateIntentNotionalKrw,
     evaluateRealtimeExitDecision,
     loadContinuousPaperRunnerConfig,
     loadPaperOrderApproval,
@@ -26,9 +29,12 @@ from lib.kis_paper_continuous_runtime import (
 )
 
 __all__ = (
+    "buildPaperExperimentReadiness",
     "evaluateContinuousPaperRunnerStatus",
     "evaluateIntentExecutionPreflight",
     "evaluatePaperRiskOverlay",
+    "evaluatePaperSessionLimits",
+    "estimateIntentNotionalKrw",
     "evaluateRealtimeExitDecision",
     "loadContinuousPaperRunnerConfig",
     "loadPaperOrderApproval",

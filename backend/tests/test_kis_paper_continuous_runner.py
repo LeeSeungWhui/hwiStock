@@ -122,6 +122,9 @@ def reset_env(monkeypatch):
         "HWISTOCK_KIS_PAPER_STATE_FILE",
         "HWISTOCK_OPERATOR_APPROVED_ORDER_RUN_ID",
         "HWISTOCK_ORDER_APPROVAL_FILE",
+        "HWISTOCK_OPERATION_MODE",
+        "HWISTOCK_MAX_DAILY_PAPER_ORDERS",
+        "HWISTOCK_MAX_PAPER_NOTIONAL_KRW",
     ):
         monkeypatch.delenv(key, raising=False)
     yield
@@ -173,12 +176,18 @@ def _calendar(tmp_path: Path, monkeypatch):
 
 def _order_approval(tmp_path: Path, env: dict, *, run_id: str = "approved-order-run-1") -> Path:
     path = tmp_path / f"{run_id}.approval.json"
+    env["HWISTOCK_OPERATION_MODE"] = "paper_experiment"
     path.write_text(
         json.dumps(
             {
+                "mode": "paper_experiment",
                 "approved_order_run_id": run_id,
                 "allow_paper_orders": True,
+                "valid_for_date_kst": "2026-06-05",
                 "valid_until_kst": "2099-12-31T23:59:59+09:00",
+                "max_daily_orders": 20,
+                "max_notional_krw": 2_000_000,
+                "live_money_scope": "not_applicable",
             },
             ensure_ascii=False,
         ),
@@ -253,12 +262,14 @@ def test_tick_invalidates_cached_token_once_when_account_step_rejects_it(tmp_pat
     assert any(step.get("step") == "oauth_token" and step.get("cache_hit") is False for step in payload["steps"])
 
 
-def test_default_systemd_runner_does_not_enable_orders():
+def test_systemd_runner_enables_paper_experiment_orders_with_session_gate():
     service_path = Path(__file__).resolve().parents[2] / "ops" / "systemd" / "user" / "hwistock-kis-paper-runner.service"
     service_text = service_path.read_text(encoding="utf-8")
-    assert "--allow-paper-orders" not in service_text
-    assert "Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=true" not in service_text
-    assert "Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=false" in service_text
+    assert "Environment=HWISTOCK_OPERATION_MODE=paper_experiment" in service_text
+    assert "--allow-paper-orders" in service_text
+    assert "Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=true" in service_text
+    assert "Environment=HWISTOCK_MAX_DAILY_PAPER_ORDERS=20" in service_text
+    assert "Environment=HWISTOCK_MAX_PAPER_NOTIONAL_KRW=2000000" in service_text
 
 
 def test_paper_domain_guard_rejects_live_domain():
@@ -413,60 +424,75 @@ def test_continuous_status_exposes_false_readiness():
     status = continuous.evaluateContinuousPaperRunnerStatus(env={})
     assert status["continuousService"] is True
     assert status["paperRunReady"] is False
+    assert status["operationMode"] == "observe_only"
+    assert status["paperExperimentReady"] is False
+    assert status["paperOrderLoopEnabled"] is False
     assert status["operationalTradingReadiness"] is False
+    assert status["operationalTradingReadinessBlocksPaperOperation"] is False
+    assert status["liveMoneyTradingReady"]["state"] == "not_applicable"
+    assert status["liveMoneyTradingReady"]["blocksPaperOperation"] is False
+    assert status["productionQualityReady"]["state"] == "partial"
+    assert status["productionQualityReady"]["blocksPaperOperation"] is False
     assert status["durationPolicy"]["fixedDurationDays"] is None
     assert status["paperOrderEnabled"] is False
 
 
 def test_order_flag_requires_operator_approval_file(tmp_path, monkeypatch):
-    env = {"HWISTOCK_KIS_PAPER_ORDER_ENABLED": "true"}
-    status = continuous.evaluateContinuousPaperRunnerStatus(env=env)
+    env = {"HWISTOCK_OPERATION_MODE": "paper_experiment", "HWISTOCK_KIS_PAPER_ORDER_ENABLED": "true"}
+    status = continuous.evaluateContinuousPaperRunnerStatus(env=env, at_kst="2026-06-05T09:30:00")
     assert status["paperOrderRequested"] is True
     assert status["paperOrderEnabled"] is False
     assert status["paperOrderApproval"]["reason"] == "HWISTOCK_OPERATOR_APPROVED_ORDER_RUN_ID_missing"
 
     env["HWISTOCK_OPERATOR_APPROVED_ORDER_RUN_ID"] = "approved-order-run-1"
     env["HWISTOCK_ORDER_APPROVAL_FILE"] = str(tmp_path / "missing.approval.json")
-    status = continuous.evaluateContinuousPaperRunnerStatus(env=env)
+    status = continuous.evaluateContinuousPaperRunnerStatus(env=env, at_kst="2026-06-05T09:30:00")
     assert status["paperOrderEnabled"] is False
     assert status["paperOrderApproval"]["reason"] == "HWISTOCK_ORDER_APPROVAL_FILE_not_found"
 
     _order_approval(tmp_path, env)
     _mark_order_grade_source(env)
     env["HWISTOCK_CALENDAR_PATH"] = str(_calendar(tmp_path, monkeypatch))
-    status = continuous.evaluateContinuousPaperRunnerStatus(env=env)
+    status = continuous.evaluateContinuousPaperRunnerStatus(env=env, at_kst="2026-06-05T09:30:00")
     assert status["paperOrderEnabled"] is True
     assert status["paperOrderApproval"]["reason"] == "operator_order_approval_verified"
+    assert status["paperExperimentReady"] is False
+    assert "paperNetworkEnabled" in status["paperExperimentReadiness"]["blockers"]
+
+    env["HWISTOCK_KIS_PAPER_NETWORK_ENABLED"] = "true"
+    status = continuous.evaluateContinuousPaperRunnerStatus(env=env, at_kst="2026-06-05T09:30:00")
+    assert status["paperExperimentReady"] is True
+    assert status["paperExperimentReadiness"]["blockers"] == []
 
 
 def test_order_approval_rejects_weekday_calendar_fallback(tmp_path, monkeypatch):
-    env = {"HWISTOCK_KIS_PAPER_ORDER_ENABLED": "true"}
+    env = {"HWISTOCK_OPERATION_MODE": "paper_experiment", "HWISTOCK_KIS_PAPER_ORDER_ENABLED": "true"}
     _order_approval(tmp_path, env)
     _mark_order_grade_source(env)
     env["HWISTOCK_CALENDAR_PATH"] = str(_calendar(tmp_path, monkeypatch))
     env["HWISTOCK_ALLOW_WEEKDAY_CALENDAR_FALLBACK"] = "true"
 
-    status = continuous.evaluateContinuousPaperRunnerStatus(env=env)
+    status = continuous.evaluateContinuousPaperRunnerStatus(env=env, at_kst="2026-06-05T09:30:00")
 
     assert status["paperOrderEnabled"] is False
     assert status["paperOrderApproval"]["reason"] == "weekday_calendar_fallback_forbidden_for_paper_orders"
 
 
 def test_order_approval_requires_order_grade_source_and_calendar(tmp_path, monkeypatch):
-    env = {"HWISTOCK_KIS_PAPER_ORDER_ENABLED": "true"}
+    env = {"HWISTOCK_OPERATION_MODE": "paper_experiment", "HWISTOCK_KIS_PAPER_ORDER_ENABLED": "true"}
     _order_approval(tmp_path, env)
 
-    status = continuous.evaluateContinuousPaperRunnerStatus(env=env)
+    status = continuous.evaluateContinuousPaperRunnerStatus(env=env, at_kst="2026-06-05T09:30:00")
     assert status["paperOrderEnabled"] is False
     assert status["paperOrderApproval"]["reason"] == "order_approval_market_data_source_not_order_grade"
 
     _mark_order_grade_source(env)
-    status = continuous.evaluateContinuousPaperRunnerStatus(env=env)
+    status = continuous.evaluateContinuousPaperRunnerStatus(env=env, at_kst="2026-06-05T09:30:00")
     assert status["paperOrderEnabled"] is False
     assert status["paperOrderApproval"]["reason"] == "HWISTOCK_CALENDAR_PATH_missing_for_order_approval"
 
     env["HWISTOCK_CALENDAR_PATH"] = str(_calendar(tmp_path, monkeypatch))
-    status = continuous.evaluateContinuousPaperRunnerStatus(env=env)
+    status = continuous.evaluateContinuousPaperRunnerStatus(env=env, at_kst="2026-06-05T09:30:00")
     assert status["paperOrderEnabled"] is True
     assert status["paperOrderApproval"]["reason"] == "operator_order_approval_verified"
 
@@ -548,6 +574,8 @@ def test_tick_with_fake_transport_processes_safe_krx_paper_intent_when_order_ena
     assert payload["account_truth"]["sellable_quantity"] is None
     assert payload["account_truth"]["cancelable_order_status"] == "skipped_provider_unsupported"
     assert payload["account_truth"]["cancelable_order_count"] == 0
+    assert payload["paper_experiment_ready"] is True
+    assert payload["paper_experiment_readiness"]["blockers"] == []
     assert payload["executionPreflight"]["riskOverlay"]["risk_overlay"]["account_truth_source"] == "kis_paper_read_steps"
     assert any(step.get("step") == "ws_fill_notice" and step.get("tr_id") == "H0STCNI9" for step in payload["steps"])
     assert any(
@@ -564,6 +592,64 @@ def test_tick_with_fake_transport_processes_safe_krx_paper_intent_when_order_ena
     )
     assert any(step.get("step") == "cash_order" and step.get("broker_endpoint_called") is True for step in payload["steps"])
     assert any("/order-cash" in call["url"] for call in transport.calls)
+
+
+def test_tick_blocks_order_when_paper_session_notional_cap_exceeded(tmp_path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    data_root = tmp_path / "data"
+    state_dir = data_root / "state"
+    state_dir.mkdir(parents=True)
+    (state_dir / "kis-paper-runner-state.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "kis_paper_runner_state/v0",
+                "submitted_order_history": [
+                    {
+                        "idempotency_key": "already-submitted-1",
+                        "symbol": "000660",
+                        "submitted_at_kst": "2026-06-05T09:10:00+09:00",
+                        "notional_krw": 1_950_000,
+                    }
+                ],
+                "pending_orders": [],
+                "consumed_intent_keys": ["already-submitted-1"],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    env = _env()
+    env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _mark_order_grade_source(env)
+    _order_approval(tmp_path, env)
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(data_root)
+    env["HWISTOCK_MAX_PAPER_NOTIONAL_KRW"] = "2000000"
+    transport = FakeTransport()
+    adapter = KisPaperAdapter(env=env, transport=transport)
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=adapter,
+        at_kst="2026-06-05T09:30:00",
+        intent={
+            "intent_id": "test-session-cap-1",
+            "idempotency_key": "test-session-cap-1",
+            "symbol": "005930",
+            "side": "buy",
+            "quantity": 1,
+            "order_price": 70000,
+            "venue_route": "KRX",
+            "broker_adapter": "kis_paper",
+            "available_cash_krw": 2_000_000,
+            "planned_order_cash_krw": 100_000,
+            "current_holdings_count": 0,
+            "paper_only": True,
+        },
+    )
+    cash_order = [step for step in payload["steps"] if step.get("step") == "cash_order"][-1]
+    assert cash_order["status"] == "blocked_paper_session_limit"
+    assert "max_paper_notional_krw_exceeded" in cash_order["errors"]
+    assert not any("/order-cash" in call["url"] for call in transport.calls)
 
 
 def test_tick_preflight_uses_kis_account_truth_not_intent_cash(tmp_path, monkeypatch):

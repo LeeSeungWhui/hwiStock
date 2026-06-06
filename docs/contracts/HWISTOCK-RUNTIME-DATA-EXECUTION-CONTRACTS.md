@@ -236,8 +236,18 @@ KIS broker transport is allowed only when all conditions pass:
 - base URL alias is `kis_paper_vts`;
 - order route is KRX broker cash order;
 - weekday-only calendar fallback is forbidden for any paper-order approval path;
-- order approval requires an order-grade KIS market data source and a configured
-  calendar file, not only an approval JSON/run id;
+- order approval requires `HWISTOCK_OPERATION_MODE = paper_experiment`,
+  `HWISTOCK_KIS_PAPER_ORDER_ENABLED = true`, an order-grade KIS market data
+  source, and a configured calendar file, not only an approval JSON/run id;
+- the approval JSON must include `mode` or
+  `operation_mode = paper_experiment`, `allow_paper_orders = true`,
+  `valid_for_date_kst`, optional `valid_until_kst`, `max_daily_orders`,
+  `max_notional_krw`, and `live_money_scope = not_applicable`;
+- the paper runner must enforce the approval caps by counting submitted and
+  pending paper orders for the approved KST date and estimating new notional
+  before transport;
+- no per-order human approval is required inside a valid `paper_experiment`
+  session approval;
 - TR ID alias exists in the adapter allowlist from the capability matrix;
 - account identity is a redacted adapter account alias, not a raw account number;
 - startup self-test proves no unapproved/unknown endpoint is configured.
