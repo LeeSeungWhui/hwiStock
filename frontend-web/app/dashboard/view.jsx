@@ -22,9 +22,9 @@ import {
 /* 1. 상수 ======================================================================================================================= */
 const AI_CONVERSATION_ENDPOINT = "/api/v1/hwistock/ai/conversation";
 
-const lucidCardClass = "border-slate-700/80 bg-slate-900/90 text-slate-100 shadow-lg shadow-black/20";
-const lucidCardHeaderClass = "border-slate-700/80 [&_h3]:text-slate-100 [&_p]:text-slate-400";
-const lucidCardBodyClass = "text-slate-200";
+const lucidCardClass = "!border-slate-700/80 !bg-slate-900/90 !text-slate-100 shadow-lg shadow-black/20";
+const lucidCardHeaderClass = "!border-slate-700/80 [&_h3]:!text-slate-100 [&_p]:!text-slate-400";
+const lucidCardBodyClass = "!text-slate-200";
 
 const healthVariantMap = {
   ok: "success",
@@ -199,6 +199,21 @@ const formatOperatorMessage = (value) => {
   return text;
 };
 
+const severityToneMap = {
+  calm: {
+    panel: "border-emerald-700/50 bg-emerald-950/35 text-emerald-50",
+    accent: "bg-emerald-400",
+    emphasis: "border-emerald-600/40 bg-emerald-950/40 text-emerald-100",
+    chip: "border-emerald-700/50 bg-emerald-950/70 text-emerald-100",
+  },
+  danger: {
+    panel: "border-rose-700/80 bg-gradient-to-r from-rose-950/90 via-rose-950/70 to-slate-950 text-rose-50",
+    accent: "bg-rose-500",
+    emphasis: "border-rose-600/40 bg-rose-950/45 text-rose-50",
+    chip: "border-rose-600/50 bg-rose-950/80 text-rose-50",
+  },
+};
+
 const initialConversationState = {
   question: "",
   thread: [],
@@ -239,26 +254,28 @@ const conversationReducer = (state, action) => {
 
 /* 9. 내부 컴포넌트 ============================================================================================================== */
 const StatusChip = ({ label, value, variant = "neutral" }) => (
-  <div className="flex min-w-[120px] flex-col gap-0.5 rounded-md border border-slate-600/70 bg-slate-800/80 px-3 py-2">
-    <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{label}</span>
-    <Badge variant={healthVariantMap[String(value).toLowerCase()] || variant} size="sm" pill>
-      {humanizeStatusToken(value)}
-    </Badge>
+  <div className="flex min-w-[112px] flex-col gap-1 rounded-md border border-slate-700/70 bg-slate-900/90 px-2.5 py-2">
+    <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</span>
+    <div>
+      <Badge variant={healthVariantMap[String(value).toLowerCase()] || variant} size="sm">
+        {humanizeStatusToken(value)}
+      </Badge>
+    </div>
   </div>
 );
 
 const SummaryRow = ({ label, children }) => (
-  <div className="flex items-center justify-between gap-3 border-b border-slate-700/60 py-2 last:border-b-0">
+  <div className="flex items-center justify-between gap-3 border-b border-slate-700/60 py-1.5 last:border-b-0">
     <span className="text-xs font-medium text-slate-400">{label}</span>
     <div className="text-right text-slate-100">{children}</div>
   </div>
 );
 
 const SectionNavPill = ({ label, active = false, href }) => {
-  const baseClass = "rounded-full border px-3 py-1 text-xs font-medium transition-colors";
+  const baseClass = "rounded-md border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] transition-colors";
   const activeClass = active
-    ? "border-cyan-500/60 bg-cyan-950/50 text-cyan-200"
-    : "border-slate-600/70 bg-slate-800/60 text-slate-300 hover:border-slate-500 hover:text-slate-100";
+    ? "border-cyan-500/60 bg-cyan-950/35 text-cyan-200"
+    : "border-slate-700/70 bg-slate-900/70 text-slate-400 hover:border-slate-500 hover:text-slate-100";
   if (href) {
     return (
       <a href={href} className={`${baseClass} ${activeClass}`}>
@@ -277,50 +294,70 @@ const ReadinessTruthBanner = ({ readinessTruth, usesFallback }) => {
     && truth.paperObservationAccepted
     && !usesFallback;
   const blockerList = Array.isArray(truth.blockers) ? truth.blockers : [];
+  const tone = ready ? severityToneMap.calm : severityToneMap.danger;
+  const readinessSignalLabel = ready ? "READY" : "NOT READY";
   return (
     <section
       role="alert"
       aria-labelledby="operator-readiness-heading"
-      className={`rounded-lg border px-4 py-3 shadow-md ${
-        ready
-          ? "border-emerald-600/50 bg-emerald-950/40 text-emerald-100"
-          : "border-rose-600/50 bg-rose-950/40 text-rose-50"
-      }`}
+      className={`relative overflow-hidden rounded-lg border border-l-4 px-4 py-3 shadow-lg ${tone.panel}`}
       data-testid="operator-readiness-truth"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide opacity-80">
+      <div className={`absolute inset-y-0 left-0 w-1.5 ${tone.accent}`} aria-hidden="true" />
+      <div className="flex flex-wrap items-start justify-between gap-3 pl-1">
+        <div className="space-y-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-80">
             {LANG_KO.view.readiness.title}
           </p>
-          <h2 id="operator-readiness-heading" className="mt-0.5 text-base font-bold">
+          <h2 id="operator-readiness-heading" className="text-base font-bold">
             {ready ? LANG_KO.view.readiness.ready : LANG_KO.view.readiness.notReady}
           </h2>
-          <p className="mt-1 text-sm opacity-90">
+          <p className="text-sm opacity-90">
             {formatOperatorMessage(truth.operatorMessage)}
           </p>
         </div>
-        <Badge variant={ready ? "success" : "danger"} size="md">
-          {formatHeadline(truth.headline, ready)}
-        </Badge>
+        <div className={`rounded-md border px-2.5 py-2 text-right ${tone.emphasis}`}>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] opacity-80">
+            {readinessSignalLabel}
+          </div>
+          <div className="mt-1 text-sm font-semibold">
+            {formatHeadline(truth.headline, ready)}
+          </div>
+        </div>
       </div>
-      <div className="mt-3 grid gap-2 text-xs opacity-90 sm:grid-cols-2 lg:grid-cols-6">
-        <div><strong>{LANG_KO.view.readiness.paperNetwork}</strong>: {formatReadinessState("paperNetworkEnabled", truth.paperNetworkEnabled)}</div>
-        <div><strong>{LANG_KO.view.readiness.paperOrderEnabled}</strong>: {formatReadinessState("paperOrderEnabled", truth.paperOrderEnabled)}</div>
-        <div><strong>{LANG_KO.view.readiness.paperOrders}</strong>: {formatReadinessState("paperOrdersSubmitted", truth.paperOrdersSubmitted)}</div>
-        <div><strong>{LANG_KO.view.readiness.observation}</strong>: {formatReadinessState("paperObservationAccepted", truth.paperObservationAccepted)}</div>
-        <div><strong>{LANG_KO.view.readiness.operational}</strong>: {formatReadinessState("operationalTradingReadiness", truth.operationalTradingReadiness)}</div>
-        <div><strong>{LANG_KO.view.readiness.orderGate}</strong>: {humanizeStatusToken(truth.orderGate || "unknown")}</div>
+      <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-6">
+        <div className="rounded-md border border-black/20 bg-black/15 px-2.5 py-2">
+          <strong>{LANG_KO.view.readiness.paperNetwork}</strong>: {formatReadinessState("paperNetworkEnabled", truth.paperNetworkEnabled)}
+        </div>
+        <div className="rounded-md border border-black/20 bg-black/15 px-2.5 py-2">
+          <strong>{LANG_KO.view.readiness.paperOrderEnabled}</strong>: {formatReadinessState("paperOrderEnabled", truth.paperOrderEnabled)}
+        </div>
+        <div className="rounded-md border border-black/20 bg-black/15 px-2.5 py-2">
+          <strong>{LANG_KO.view.readiness.paperOrders}</strong>: {formatReadinessState("paperOrdersSubmitted", truth.paperOrdersSubmitted)}
+        </div>
+        <div className="rounded-md border border-black/20 bg-black/15 px-2.5 py-2">
+          <strong>{LANG_KO.view.readiness.observation}</strong>: {formatReadinessState("paperObservationAccepted", truth.paperObservationAccepted)}
+        </div>
+        <div className="rounded-md border border-black/20 bg-black/15 px-2.5 py-2">
+          <strong>{LANG_KO.view.readiness.operational}</strong>: {formatReadinessState("operationalTradingReadiness", truth.operationalTradingReadiness)}
+        </div>
+        <div className="rounded-md border border-black/20 bg-black/15 px-2.5 py-2">
+          <strong>{LANG_KO.view.readiness.orderGate}</strong>: {humanizeStatusToken(truth.orderGate || "unknown")}
+        </div>
       </div>
       {usesFallback ? (
         <p className="mt-2 text-xs font-semibold text-amber-200">{LANG_KO.view.readiness.fallbackWarning}</p>
       ) : null}
       {blockerList.length ? (
-        <div className="mt-2 flex flex-wrap gap-1" aria-label={LANG_KO.view.readiness.blockers}>
+        <div className="mt-2 flex flex-wrap gap-1.5" aria-label={LANG_KO.view.readiness.blockers}>
           {blockerList.map((blocker) => (
-            <Badge key={blocker} variant="danger" size="sm" title={blocker}>
+            <span
+              key={blocker}
+              title={blocker}
+              className={`rounded-md border px-2 py-1 text-[11px] font-semibold ${tone.chip}`}
+            >
               {humanizeStatusToken(blocker)}
-            </Badge>
+            </span>
           ))}
         </div>
       ) : null}
@@ -440,11 +477,11 @@ const AiConversationPanel = ({ loading: pageLoading }) => {
             {LANG_KO.view.aiConversation.disclaimer}
           </p>
 
-          <div className="max-h-56 space-y-2 overflow-y-auto rounded-md border border-slate-700/60 bg-slate-950/40 p-2">
+          <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-md border border-slate-700/60 bg-slate-950/40 p-2">
             {thread.length ? thread.map((turn, index) => (
               <article
                 key={`conversation-turn-${index}`}
-                className={`rounded-md px-3 py-2 text-sm ${
+                className={`rounded-md px-2.5 py-2 text-sm ${
                   turn.role === "user"
                     ? "border border-slate-600/50 bg-slate-800/60 text-slate-200"
                     : turn.refused
@@ -580,17 +617,21 @@ const OperatorConsoleView = ({
 
   /* 10. 렌더링 ==================================================================================================================== */
   return (
-    <div className="space-y-3 rounded-xl bg-slate-950 p-3 text-slate-100" data-testid="hwistock-operator-console">
-      <header className="rounded-lg border border-slate-700/80 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 px-4 py-3 shadow-md">
+    <div className="space-y-2.5 rounded-xl border border-slate-800/80 bg-slate-950 p-3 text-slate-100 shadow-2xl shadow-black/20" data-testid="hwistock-operator-console">
+      <header className="rounded-lg border border-slate-800/80 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 px-4 py-3 shadow-md">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-lg font-semibold tracking-tight text-slate-50">{LANG_KO.view.consoleTitle}</h1>
             <p className="mt-0.5 text-xs text-slate-400">{LANG_KO.view.consoleSubtitle}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline" size="sm">{dataSourceLabel}</Badge>
+            <span className="rounded-md border border-slate-700 bg-slate-900/80 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.14em] text-slate-300">
+              {dataSourceLabel}
+            </span>
             {usesFallback ? (
-              <Badge variant="warning" size="sm">폴백 데이터</Badge>
+              <span className="rounded-md border border-amber-500/40 bg-amber-950/30 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.14em] text-amber-200">
+                폴백 데이터
+              </span>
             ) : null}
           </div>
         </div>
@@ -635,7 +676,7 @@ const OperatorConsoleView = ({
 
       <section
         aria-label={LANG_KO.view.statusStrip.ariaLabel}
-        className="grid gap-2 rounded-lg border border-slate-700/80 bg-slate-900/80 p-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"
+        className="grid gap-2 rounded-lg border border-slate-800/80 bg-slate-950/80 p-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"
         data-testid="operator-status-strip"
       >
         {loading ? (
@@ -654,8 +695,8 @@ const OperatorConsoleView = ({
         )}
       </section>
 
-      <div className="grid gap-3 xl:grid-cols-12">
-        <section className="space-y-3 xl:col-span-3" aria-label={LANG_KO.view.panes.summary} data-testid="operator-pane-summary">
+      <div className="grid gap-2.5 xl:grid-cols-12">
+        <section className="space-y-2.5 xl:col-span-3" aria-label={LANG_KO.view.panes.summary} data-testid="operator-pane-summary">
           <Card
             title={LANG_KO.view.panes.summary}
             className={lucidCardClass}
@@ -710,7 +751,7 @@ const OperatorConsoleView = ({
           </Card>
         </section>
 
-        <section className="space-y-3 xl:col-span-5" aria-label={LANG_KO.view.panes.data} data-testid="operator-pane-data">
+        <section className="space-y-2.5 xl:col-span-5" aria-label={LANG_KO.view.panes.data} data-testid="operator-pane-data">
           <Card
             title={LANG_KO.view.holdings.title}
             data-testid="operator-holdings"
@@ -725,25 +766,25 @@ const OperatorConsoleView = ({
                 <table className="min-w-full text-left text-sm">
                   <thead className="border-b border-slate-600/70 text-xs uppercase tracking-wide text-slate-400">
                     <tr>
-                      <th className="py-2 pr-3">{LANG_KO.view.holdings.columns.symbol}</th>
-                      <th className="py-2 pr-3">{LANG_KO.view.holdings.columns.name}</th>
-                      <th className="py-2 pr-3">{LANG_KO.view.holdings.columns.qty}</th>
-                      <th className="py-2 pr-3">{LANG_KO.view.holdings.columns.pnl}</th>
-                      <th className="py-2">{LANG_KO.view.holdings.columns.weight}</th>
+                      <th className="py-1.5 pr-3">{LANG_KO.view.holdings.columns.symbol}</th>
+                      <th className="py-1.5 pr-3">{LANG_KO.view.holdings.columns.name}</th>
+                      <th className="py-1.5 pr-3">{LANG_KO.view.holdings.columns.qty}</th>
+                      <th className="py-1.5 pr-3">{LANG_KO.view.holdings.columns.pnl}</th>
+                      <th className="py-1.5">{LANG_KO.view.holdings.columns.weight}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {snapshot.holdings.length ? snapshot.holdings.map((row) => (
                       <tr key={`${row.symbol}-${row.name}`} className="border-b border-slate-700/50 last:border-0">
-                        <td className="py-2 pr-3 font-mono text-xs text-slate-300">{row.symbol}</td>
-                        <td className="py-2 pr-3 text-slate-100">{row.name}</td>
-                        <td className="py-2 pr-3 text-slate-300">{row.qty}</td>
-                        <td className="py-2 pr-3 font-mono text-xs text-slate-200">{formatSignedNumber(row.pnl)}</td>
-                        <td className="py-2 text-slate-400">{row.weight}</td>
+                        <td className="py-1.5 pr-3 font-mono text-xs text-slate-300">{row.symbol}</td>
+                        <td className="py-1.5 pr-3 text-slate-100">{row.name}</td>
+                        <td className="py-1.5 pr-3 text-slate-300">{row.qty}</td>
+                        <td className="py-1.5 pr-3 font-mono text-xs text-slate-200">{formatSignedNumber(row.pnl)}</td>
+                        <td className="py-1.5 text-slate-400">{row.weight}</td>
                       </tr>
                     )) : (
                       <tr>
-                        <td colSpan={5} className="py-4 text-sm text-slate-400">
+                        <td colSpan={5} className="py-3 text-sm text-slate-400">
                           {LANG_KO.view.holdings.empty}
                         </td>
                       </tr>
@@ -764,17 +805,17 @@ const OperatorConsoleView = ({
             {loading ? (
               <Skeleton variant="text" lines={4} />
             ) : (
-              <ul className="space-y-2">
+              <ul className="space-y-1.5">
                 {snapshot.candidates.length ? snapshot.candidates.map((item) => (
                   <li
                     key={`${item.symbol}-${item.name}`}
-                    className="flex items-center justify-between rounded-md border border-slate-700/60 bg-slate-800/40 px-3 py-2"
+                    className="flex items-center justify-between rounded-md border border-slate-700/60 bg-slate-800/40 px-3 py-1.5"
                   >
                     <div>
                       <div className="text-sm font-medium text-slate-100">{item.name}</div>
                       <div className="font-mono text-xs text-slate-400">{item.symbol}</div>
                       {item.reason ? (
-                        <div className="mt-1 text-xs text-slate-400">{item.reason}</div>
+                        <div className="mt-0.5 text-xs text-slate-400">{item.reason}</div>
                       ) : null}
                     </div>
                     <div className="flex items-center gap-2">
@@ -785,7 +826,7 @@ const OperatorConsoleView = ({
                     </div>
                   </li>
                 )) : (
-                  <li className="rounded-md border border-slate-700/60 px-3 py-4 text-sm text-slate-400">
+                  <li className="rounded-md border border-slate-700/60 px-3 py-3 text-sm text-slate-400">
                     {LANG_KO.view.candidates.empty}
                   </li>
                 )}
@@ -803,17 +844,17 @@ const OperatorConsoleView = ({
             {loading ? (
               <Skeleton variant="text" lines={4} />
             ) : (
-              <ol className="space-y-2">
+              <ol className="space-y-1.5">
                 {snapshot.intelligence.length ? snapshot.intelligence.map((item, index) => (
-                  <li key={`${item.at}-${index}`} className="rounded-md border border-slate-700/60 bg-slate-800/40 px-3 py-2">
+                  <li key={`${item.at}-${index}`} className="rounded-md border border-slate-700/60 bg-slate-800/40 px-3 py-1.5">
                     <div className="flex items-center justify-between gap-2 text-xs text-slate-400">
                       <span>{item.at}</span>
                       <Badge variant="outline" size="sm">{item.source}</Badge>
                     </div>
-                    <p className="mt-1 text-sm text-slate-200">{item.title}</p>
+                    <p className="mt-0.5 text-sm text-slate-200">{item.title}</p>
                   </li>
                 )) : (
-                  <li className="rounded-md border border-slate-700/60 px-3 py-4 text-sm text-slate-400">
+                  <li className="rounded-md border border-slate-700/60 px-3 py-3 text-sm text-slate-400">
                     {LANG_KO.view.intelligence.empty}
                   </li>
                 )}
@@ -822,7 +863,7 @@ const OperatorConsoleView = ({
           </Card>
         </section>
 
-        <section className="space-y-3 xl:col-span-4" aria-label={LANG_KO.view.panes.review} data-testid="operator-pane-review">
+        <section className="space-y-2.5 xl:col-span-4" aria-label={LANG_KO.view.panes.review} data-testid="operator-pane-review">
           <div id="operator-ai-report">
             <AiReportViewer messages={snapshot.aiThread} loading={loading} />
           </div>
@@ -841,11 +882,11 @@ const OperatorConsoleView = ({
             {loading ? (
               <Skeleton variant="text" lines={5} />
             ) : (
-              <ul className="space-y-2">
+              <ul className="space-y-1.5">
                 {snapshot.auditLog.length ? snapshot.auditLog.map((entry, index) => (
                   <li
                     key={`${entry.at}-${entry.code}-${index}`}
-                    className="rounded-md border border-slate-700/60 bg-slate-800/40 px-3 py-2"
+                    className="rounded-md border border-slate-700/60 bg-slate-800/40 px-3 py-1.5"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs text-slate-400">{entry.at}</span>
@@ -856,12 +897,12 @@ const OperatorConsoleView = ({
                         {entry.code}
                       </Badge>
                     </div>
-                    <p className="mt-1 text-sm text-slate-300" title={entry.message}>
+                    <p className="mt-0.5 text-sm text-slate-300" title={entry.message}>
                       {formatAuditMessage(entry.message)}
                     </p>
                   </li>
                 )) : (
-                  <li className="rounded-md border border-slate-700/60 px-3 py-4 text-sm text-slate-400">
+                  <li className="rounded-md border border-slate-700/60 px-3 py-3 text-sm text-slate-400">
                     {LANG_KO.view.audit.empty}
                   </li>
                 )}

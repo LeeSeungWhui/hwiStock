@@ -114,6 +114,8 @@ describe("hwiStock operator console view", () => {
     expect(screen.getByText("준비 전")).toBeInTheDocument();
     expect(screen.getByText(/주문 실행 허용/)).toBeInTheDocument();
     expect(screen.getAllByText("시장 시간표 설정 필요").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("operator-readiness-truth")).toHaveClass("border-l-4");
+    expect(screen.getByTestId("operator-status-strip")).toHaveClass("bg-slate-950/80");
   });
 
   test("AI 대화 패널은 읽기 전용 안내와 질문 입력을 노출한다", () => {

@@ -125,3 +125,21 @@ The conversation panel must:
 - Backend conversation endpoint prove and audit logging (QA-013 through QA-015)
 - Browser/tunnel re-Prove with interactive conversation flow
 - Mobile layout (deferred unless a future unit adds scope)
+
+## 9. Gemini Pro Screenshot Follow-up (2026-06-05)
+
+After the dashboard was deployed and captured, a second `agy-designer` review
+with Gemini 3.1 Pro (High) found that the inner Lucid Command view and the
+surrounding dashboard shell were visually inconsistent:
+
+- the common header/sidebar/footer still used a light template treatment while
+  the operator view used `slate-950`;
+- the readiness warning needed stronger severity contrast;
+- tables, lists, and report/audit cards needed denser operator-console spacing;
+- dashboard-local badges/status chips should be flatter and less toy-like.
+
+This artifact therefore applies to the whole `/dashboard` route family shell,
+not only `frontend-web/app/dashboard/view.jsx`. The desired direction remains a
+dark high-trust operational console with cyan information accents, amber
+warning, rose danger, compact rows, and read-only controls that do not resemble
+trade execution.

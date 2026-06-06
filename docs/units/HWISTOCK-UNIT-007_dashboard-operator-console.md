@@ -39,6 +39,7 @@ evidence_refs:
   - docs/evidence/RUN-20260605_unit-007-ai-conversation-backend-go-check.md
 corrective_set_refs:
   - docs/set/READY-SET-CORRECTION-20260605_dashboard-ai-conversation.md
+  - docs/set/READY-SET-CORRECTION-20260605_dashboard-dark-console-shell.md
 links:
   - HWISTOCK-MOD-006
 ---
@@ -129,6 +130,9 @@ Define the read-only web dashboard and AI conversation surface for hwiStock.
 - Decision: Lucid Command dark desktop-first operator cockpit design artifact
   recorded at
   `docs/design/HWISTOCK-DESIGN-20260605_lucid-command-dashboard.md`.
+- Decision: 2026-06-05 Gemini Pro screenshot follow-up requires the whole
+  `/dashboard` route family shell to match the dark Lucid Command operator
+  cockpit, not only the inner dashboard content.
 - Design review evidence:
   `docs/evidence/RUN-20260604_dashboard-design-review.md`.
 - Findings intake:

@@ -7,7 +7,7 @@
  * 설명: 대시보드 레이아웃 클라이언트 컴포넌트
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Header from "@/app/common/layout/Header";
@@ -37,6 +37,8 @@ const DashboardLayoutClient = ({ children }) => {
     sidebarOpen: false,
     isDesktopViewport: false,
   });
+  const uiRef = useRef(ui);
+  uiRef.current = ui;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -103,24 +105,26 @@ const DashboardLayoutClient = ({ children }) => {
      * @updated 2026-02-27
      */
     const syncViewport = () => {
-      ui.isDesktopViewport = mediaQuery.matches;
-      ui.sidebarOpen = mediaQuery.matches;
+      const layoutUi = uiRef.current;
+      layoutUi.isDesktopViewport = mediaQuery.matches;
+      layoutUi.sidebarOpen = mediaQuery.matches;
     };
 
     syncViewport();
     mediaQuery.addEventListener("change", syncViewport);
     return () => mediaQuery.removeEventListener("change", syncViewport);
-  }, [ui]);
+  }, []);
 
   /**
    * @description 모바일 뷰포트에서 route 변경 시 사이드바를 닫음
    * 처리 규칙: pathname/searchParams 변경마다 ui.sidebarOpen=false를 반영한다.
    */
   useEffect(() => {
-    if (!ui.isDesktopViewport) {
-      ui.sidebarOpen = false;
+    const layoutUi = uiRef.current;
+    if (!layoutUi.isDesktopViewport) {
+      layoutUi.sidebarOpen = false;
     }
-  }, [pathname, searchParamText, ui]);
+  }, [pathname, searchParamText]);
 
   /* 9. 내부 컴포넌트 ============================================================================================================== */
 
@@ -128,23 +132,33 @@ const DashboardLayoutClient = ({ children }) => {
 
   /* 10. 렌더링 ==================================================================================================================== */
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50">
+    <div className="flex min-h-screen flex-col bg-slate-950 text-slate-100">
       <div className="sticky top-0 z-40">
         <Header
-          title={layoutMeta.title}
-          subtitle={layoutMeta.subtitle}
+          title={<span className="text-slate-100">{layoutMeta.title}</span>}
+          subtitle={<span className="text-slate-400">{layoutMeta.subtitle}</span>}
           menuList={layoutMeta.menuList}
           subMenuList={layoutMeta.subMenuList}
           onToggleSidebar={() => {
             ui.sidebarOpen = !ui.sidebarOpen;
           }}
-          text={layoutMeta.text}
+          text={<span className="text-slate-400">{layoutMeta.text}</span>}
+          className={[
+            "!border-slate-800 !bg-slate-950/95 !shadow-lg !shadow-black/20 backdrop-blur",
+            "[&_button]:!border-slate-700 [&_button]:!text-slate-300 [&_button]:hover:!bg-slate-800/80 [&_button]:hover:!text-slate-100",
+            "[&_nav_a]:!border-slate-800 [&_nav_a]:!bg-slate-900/70 [&_nav_a]:!text-slate-300 [&_nav_a]:hover:!bg-slate-800/80 [&_nav_a]:hover:!text-slate-100",
+            "[&_nav_a[aria-current='page']]:!border-cyan-500/50 [&_nav_a[aria-current='page']]:!bg-cyan-950/40 [&_nav_a[aria-current='page']]:!text-cyan-200",
+            "[&_nav_button]:!border-slate-800 [&_nav_button]:!bg-slate-900/70 [&_nav_button]:!text-slate-300 [&_nav_button]:hover:!bg-slate-800/80 [&_nav_button]:hover:!text-slate-100",
+            "[&_nav_div[role='menu']]:!border-slate-700 [&_nav_div[role='menu']]:!bg-slate-900 [&_nav_div[role='menu']]:!shadow-xl [&_nav_div[role='menu']]:!shadow-black/30",
+            "[&_nav_div[role='menu']_a]:!text-slate-300 [&_nav_div[role='menu']_a]:hover:!bg-slate-800/80 [&_nav_div[role='menu']_a]:hover:!text-slate-100",
+            "[&_nav_div[role='menu']_a[aria-current='page']]:!bg-cyan-950/40 [&_nav_div[role='menu']_a[aria-current='page']]:!text-cyan-200",
+          ].join(" ")}
           logo={(
             <Link
               href="/"
-              className="inline-flex items-center gap-2 rounded-md border border-blue-100 bg-blue-50 px-2 py-1 text-blue-700 transition hover:bg-blue-100"
+              className="inline-flex items-center gap-2 rounded-md border border-slate-700 bg-slate-900/90 px-2.5 py-1.5 text-cyan-200 transition hover:border-cyan-500/40 hover:bg-slate-800/90"
             >
-              <Icon icon="ri:RiCodeBoxLine" className="text-blue-600" />
+              <Icon icon="ri:RiCodeBoxLine" className="text-cyan-300" />
               <span className="text-sm font-semibold">{LANG_KO.layoutMeta.brandName}</span>
             </Link>
           )}
@@ -152,7 +166,7 @@ const DashboardLayoutClient = ({ children }) => {
           <Button
             size="sm"
             variant="ghost"
-            className="px-2 text-gray-600 hover:text-gray-900 sm:px-3"
+            className="border border-transparent px-2 text-slate-300 hover:border-slate-700 hover:bg-slate-800/80 hover:text-slate-100 sm:px-3"
             onClick={() => {
               router.push("/");
             }}
@@ -160,7 +174,12 @@ const DashboardLayoutClient = ({ children }) => {
             <Icon icon="ri:RiHome6Line" className="text-base sm:hidden" />
             <span className="hidden sm:inline">{LANG_KO.layoutMeta.layoutAction.goHome}</span>
           </Button>
-          <Button size="sm" variant="secondary" className="px-2 sm:px-3" onClick={handleLogout}>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="border border-cyan-500/40 bg-cyan-950/40 px-2 text-cyan-100 hover:border-cyan-400/60 hover:bg-cyan-900/50 sm:px-3"
+            onClick={handleLogout}
+          >
             {LANG_KO.layoutMeta.layoutAction.logout}
           </Button>
         </Header>
@@ -174,20 +193,29 @@ const DashboardLayoutClient = ({ children }) => {
             ui.sidebarOpen = false;
           }}
           logo={
-            <span className="inline-flex items-center rounded-md bg-gradient-to-r from-[#1e3a5f] to-[#312e81] px-2 py-1 text-xs font-semibold text-white">
+            <span className="inline-flex items-center rounded-md border border-slate-700 bg-slate-900/90 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200">
               {LANG_KO.layoutMeta.brandName}
             </span>
           }
-          footerSlot={`© ${currentYear} ${LANG_KO.layoutMeta.brandName}`}
+          footerSlot={<span className="text-slate-500">© {currentYear} {LANG_KO.layoutMeta.brandName}</span>}
+          className={[
+            "!border-slate-800 !bg-slate-950/95 !shadow-xl !shadow-black/30",
+            "[&_.text-gray-900]:!text-slate-100 [&_.text-gray-700]:!text-slate-300 [&_.text-gray-600]:!text-slate-300 [&_.text-gray-500]:!text-slate-500",
+            "[&_.border-gray-200]:!border-slate-800 [&_.border-gray-100]:!border-slate-800",
+            "[&_.bg-white]:!bg-slate-950/95 [&_.bg-gray-100]:!bg-slate-800/80 [&_.bg-gray-50]:!bg-slate-900/70",
+            "[&_[aria-current='page']]:!bg-cyan-950/40 [&_[aria-current='page']]:!text-cyan-200 [&_[aria-current='page']]:!ring-cyan-500/30",
+            "[&_button]:hover:!bg-slate-800/80 [&_a]:hover:!bg-slate-800/70",
+          ].join(" ")}
         />
-        <main className="min-w-0 flex-1 overflow-y-auto px-4 py-4 lg:px-4">
+        <main className="min-w-0 flex-1 overflow-y-auto bg-slate-950 px-3 py-3 lg:px-3">
           {children}
         </main>
       </div>
       <Footer
-        logo={<span className="font-semibold text-blue-600">{LANG_KO.layoutMeta.brandName}</span>}
+        logo={<span className="font-semibold uppercase tracking-[0.18em] text-cyan-200">{LANG_KO.layoutMeta.brandName}</span>}
         textObj={{ footerText: `© ${currentYear} ${LANG_KO.layoutMeta.brandName}` }}
         linkList={LANG_KO.layoutMeta.footerLinkList}
+        className="!border-slate-800 !bg-slate-950 !text-slate-400 [&_a]:!text-slate-400 [&_a]:hover:!text-slate-100 [&_[class*='text-gray-900']]:!text-slate-100 [&_[class*='text-gray-500']]:!text-slate-500"
       />
     </div>
   );

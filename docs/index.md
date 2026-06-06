@@ -321,6 +321,8 @@ Go-Check evidence are now historical, not current Go authorization.
   - `docs/set/READY-SET-CORRECTION-20260605_dashboard-ai-conversation.md`
 - Current UNIT-007 Lucid Command dashboard Go evidence:
   - `docs/evidence/RUN-20260605_unit-007-lucid-command-dashboard-go.md`
+- Current UNIT-007 Gemini screenshot follow-up dark-shell Go-Check evidence:
+  - `docs/evidence/RUN-20260606_unit-007-dashboard-dark-shell-go-check.md`
 - Current UNIT-007 AI conversation backend Go-Check evidence:
   - `docs/evidence/RUN-20260605_unit-007-ai-conversation-backend-go-check.md`
 - Current Pro review fail-closed follow-up evidence:
@@ -350,6 +352,7 @@ proves the conversation endpoint, grounded local answer/refusal, and local audit
 logging. Browser/tunnel Prove remains pending
 (`docs/evidence/RUN-20260605_unit-007-lucid-command-dashboard-go.md`;
 `docs/evidence/RUN-20260605_unit-007-ai-conversation-backend-go-check.md`;
+`docs/evidence/RUN-20260606_unit-007-dashboard-dark-shell-go-check.md`;
 `docs/set/READY-SET-CORRECTION-20260605_dashboard-ai-conversation.md`).
 Current local dashboard/API defaults are dashboard/frontend `127.0.0.1:5000`
 and backend/API `127.0.0.1:5001`; hwibuntu access uses SSH local forwarding, recorded in
@@ -514,9 +517,11 @@ timer installation, while operational readiness remains false.
 - `docs/modules/HWISTOCK-MOD-006_dashboard-operator-console.md`: read-only
   dashboard/operator console, stored AI report viewer, and interactive AI
   conversation surface contract; Lucid Command frontend report/conversation UI
-  is validated, backend conversation answer/refusal/audit is focused-tested, and
-  browser/tunnel Prove remains pending
+  is validated, Gemini screenshot follow-up dark-shell Go-Check has local
+  browser proof, backend conversation answer/refusal/audit is focused-tested,
+  and browser/tunnel Prove remains pending
   (`docs/evidence/RUN-20260605_unit-007-lucid-command-dashboard-go.md`;
+  `docs/evidence/RUN-20260606_unit-007-dashboard-dark-shell-go-check.md`;
   `docs/evidence/RUN-20260605_unit-007-ai-conversation-backend-go-check.md`;
   `docs/set/READY-SET-CORRECTION-20260605_dashboard-ai-conversation.md`).
 - `docs/modules/HWISTOCK-MOD-007_data-evidence-storage.md`: date-based data,
@@ -581,6 +586,7 @@ timer installation, while operational readiness remains false.
   hwibuntu access through SSH local forwarding
   (`docs/evidence/RUN-20260605_unit-007-go-check-rebaseline.md`;
   `docs/evidence/RUN-20260605_unit-007-lucid-command-dashboard-go.md`;
+  `docs/evidence/RUN-20260606_unit-007-dashboard-dark-shell-go-check.md`;
   `docs/evidence/RUN-20260605_unit-007-ai-conversation-backend-go-check.md`;
   `docs/evidence/RUN-20260605_port-tunnel-5000-5001-sync.md`;
   `docs/set/READY-SET-CORRECTION-20260605_dashboard-ai-conversation.md`).
@@ -653,6 +659,7 @@ timer installation, while operational readiness remains false.
   dashboard/API `5000`/`5001` port defaults with SSH local forwarding
   (`docs/evidence/RUN-20260605_unit-007-go-check-rebaseline.md`;
   `docs/evidence/RUN-20260605_unit-007-lucid-command-dashboard-go.md`;
+  `docs/evidence/RUN-20260606_unit-007-dashboard-dark-shell-go-check.md`;
   `docs/evidence/RUN-20260605_unit-007-ai-conversation-backend-go-check.md`;
   `docs/evidence/RUN-20260605_port-tunnel-5000-5001-sync.md`;
   `docs/set/READY-SET-CORRECTION-20260605_dashboard-ai-conversation.md`).
@@ -855,6 +862,11 @@ timer installation, while operational readiness remains false.
   UNIT-007 Lucid Command dashboard Go evidence for frontend report/conversation
   split, AI conversation input and POST wiring, focused tests, rule-gate, lint,
   diff check, and production build.
+- `docs/evidence/RUN-20260606_unit-007-dashboard-dark-shell-go-check.md`:
+  current UNIT-007 Gemini screenshot follow-up Go-Check evidence for the dark
+  high-trust dashboard shell, readiness banner visual priority, dense cockpit
+  spacing, shared Card dark override, focused tests, rule-gate, production
+  build, and local production-style browser screenshot proof.
 - `docs/evidence/RUN-20260605_unit-007-ai-conversation-backend-go-check.md`:
   current UNIT-007 backend Go-Check evidence for
   `POST /api/v1/hwistock/ai/conversation`, grounded local answer/refusal,
