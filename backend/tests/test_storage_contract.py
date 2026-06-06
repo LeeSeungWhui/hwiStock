@@ -113,7 +113,7 @@ class StorageContractTests(unittest.TestCase):
             (
                 ArtifactPathClass.daily_close_report,
                 "",
-                "data/reports/2026-06-04/daily-close-2000.json",
+                "data/reports/2026-06-04/daily-close-mode-aware.json",
             ),
             (
                 ArtifactPathClass.evidence,

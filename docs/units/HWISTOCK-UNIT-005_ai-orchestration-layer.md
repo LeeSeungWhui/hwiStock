@@ -185,7 +185,7 @@ docs-only until a future Go unit creates code.
 | --- | --- | --- | --- | --- | --- |
 | `deepseek_pro_hourly_market_analysis` | top of every hour, 24h | DeepSeek Pro | `pro_hourly_input_bundle/v0` | `pro_hourly_market_analysis/v0` | soft 10m, hard 20m |
 | `deepseek_flash_10m_trade_document` | every 10 minutes during active investment-mode decision window | DeepSeek Flash | `flash_10m_input_bundle/v0` | `flash_trade_document/v0` | soft 2m, hard before next bucket |
-| `gpt_morning_watchlist_0715` | 07:15 KST | local Codex CLI / local browser-use / ChatGPT Pro external reviewer when scoped; SSH browser-use forbidden | `overnight_analysis_bundle/v0` | `morning_watchlist/v0` / `morning_review_report/v0` | hard before first Flash bucket |
+| `gpt_morning_watchlist_0715` | 07:15 KST | local Codex CLI / local browser-use / ChatGPT Pro external reviewer when scoped; SSH browser-use forbidden | `overnight_analysis_bundle/v0` | `morning_watchlist/v0` or explicit `NO_TRADE` safe-block | hard before first Flash bucket |
 | `daily_close_mode_aware` | paper after 15:30 KST; live 20:00 KST | DeepSeek Pro | `daily_close_bundle/v0` | `daily_close_report/v0` | soft 20m, hard before next operation day |
 
 Late outputs are invalid for the decision cycle and may only be stored as
@@ -199,7 +199,7 @@ First-pass output schemas:
 - `pro_hourly_market_analysis/v0`
 - `flash_trade_document/v0`
 - `gpt_morning_prompt/v0`
-- `morning_review_report/v0`
+- `morning_watchlist/v0` or explicit `NO_TRADE` safe-block artifact
 - `daily_close_report/v0`
 
 Every output must include `schema_version`, `job_id`, `model_role`,
@@ -236,7 +236,8 @@ current provider pricing.
 
 - AI unavailable: no new AI-originated entry is unlocked.
 - GPT Pro late/unavailable before the first Flash bucket for the active
-  investment mode: use DeepSeek-only morning report and record fallback.
+  investment mode: write either a DeepSeek-derived `morning_watchlist/v0`
+  artifact or an explicit `NO_TRADE` safe-block artifact and record fallback.
 - Malformed, uncited, stale, low-confidence, or policy-violating output:
   rejected and logged.
 - AI output can never bypass deterministic risk gates or broker-boundary gates.

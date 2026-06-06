@@ -152,7 +152,8 @@ AI output never skips step 4 or step 5.
 - DeepSeek Pro market-regime/session analysis: during market hours this is a
   section inside the hourly Pro artifact, not a detached operational subsystem.
 - 07:15 morning-watchlist aggregator/review: combines prior-close/overnight
-  hourly analysis artifacts into a GPT Pro prompt or DeepSeek-only fallback.
+  hourly analysis artifacts into a GPT Pro prompt, a DeepSeek-derived
+  `morning_watchlist/v0`, or an explicit `NO_TRADE` safe-block artifact.
   The GPT Pro prompt must be sent by Codex CLI running on the local
   desktop/workstation through local browser-use and the user's logged-in local
   Chrome. SSH browser-use is forbidden for this path. The job must not reprocess
@@ -179,7 +180,7 @@ not crawl, retrieve, or call broker tools in the first implementation.
 | --- | --- | --- | --- | --- | --- |
 | `deepseek_pro_hourly_market_analysis` | top of every hour, 24h | DeepSeek Pro | `pro_hourly_input_bundle/v0` | `pro_hourly_market_analysis/v0` | soft 10m, hard 20m |
 | `deepseek_flash_10m_trade_document` | every 10 minutes during active investment-mode decision window | DeepSeek Flash | `flash_10m_input_bundle/v0` | `flash_trade_document/v0` | soft 2m, hard before next bucket |
-| `gpt_morning_watchlist_0715` | 07:15 KST | local Codex CLI + local browser-use + ChatGPT Pro external reviewer when scoped; SSH browser-use forbidden | `overnight_analysis_bundle/v0` | `morning_watchlist/v0` / `morning_review_report/v0` | hard before first Flash bucket |
+| `gpt_morning_watchlist_0715` | 07:15 KST | local Codex CLI + local browser-use + ChatGPT Pro external reviewer when scoped; SSH browser-use forbidden | `overnight_analysis_bundle/v0` | `morning_watchlist/v0` or explicit `NO_TRADE` safe-block | hard before first Flash bucket |
 | `daily_close_mode_aware` | paper after 15:30 KST; live 20:00 KST | DeepSeek Pro | `daily_close_bundle/v0` | `daily_close_report/v0` | soft 20m, hard before next operation day |
 
 If a job misses its hard cutoff, the result is invalid for that cycle. Late
@@ -225,9 +226,10 @@ refs, KIS market-data refs, portfolio-conflict status, and risk notes.
 digest, source ids, themes, candidate list, questions for GPT Pro, and explicit
 forbidden actions.
 
-`morning_watchlist/v0` / `morning_review_report/v0` includes: ranked watchlist,
-reasons, risk notes, invalidation conditions, missing data, first-Flash
-applicability, and no-order disclaimer.
+`morning_watchlist/v0` includes: ranked watchlist, reasons, risk notes,
+invalidation conditions, missing data, first-Flash applicability, and no-order
+disclaimer. If no acceptable watchlist can be produced before the first Flash
+bucket, the job must write an explicit `NO_TRADE` safe-block artifact instead.
 
 `daily_close_report/v0` includes: system-calculated PnL references, trade/result
 summaries, AI interpretation, failure notes, and next-day watch themes. AI does
@@ -242,9 +244,11 @@ credit/margin, all-in sizing, stale source data, or a missing risk reference.
 - AI API unavailable: do not unlock new AI-originated operation/adapter entries. Record
   `ai_unavailable` and keep candidates watchlist-only unless a later unit
   explicitly approves a deterministic non-AI entry path.
-- GPT Pro morning review unavailable or late: use DeepSeek-only morning report
-  and record fallback reason. The morning review starts at 07:15 KST and is hard
-  invalid if it misses the first Flash bucket for the active investment mode.
+- GPT Pro morning review unavailable or late: write either a DeepSeek-derived
+  `morning_watchlist/v0` artifact or an explicit `NO_TRADE` safe-block artifact
+  and record the fallback reason. The morning review starts at 07:15 KST and is
+  hard invalid if it misses the first Flash bucket for the active investment
+  mode.
 - AI output malformed: reject the recommendation.
 - AI output lacks source ids: reject the recommendation.
 - AI latency exceeds the configured budget: reject for that decision cycle.

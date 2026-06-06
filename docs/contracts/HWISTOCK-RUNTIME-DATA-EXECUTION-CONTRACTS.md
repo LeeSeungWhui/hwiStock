@@ -5,7 +5,7 @@ type: runtime_contract
 name: Runtime data and execution contracts
 status: set
 owner: hwi
-updated_at: 2026-06-05
+updated_at: 2026-06-06
 profile_refs:
   - PROFILE-HWISTOCK
 module_refs:
@@ -100,6 +100,14 @@ orders.
 Flash writes **at most one finalized decision document per 10-minute market
 decision bucket**.
 
+- Every Flash document must declare:
+  - `investment_mode = paper|live`;
+  - `market_analysis_feed_mode = integrated`;
+  - `execution_venue_mode = krx_only` unless a future NXT Ready-Set explicitly
+    changes it;
+  - `pro_hourly_report_ref`;
+  - `morning_watchlist_ref` for the first active Flash bucket, or a
+    `NO_TRADE` safe-block reason when the watchlist is missing.
 - If the model produces a valid trade document, the artifact is
   `flash_trade_document/v0`.
 - If the model times out, returns malformed data, is unavailable, has stale
@@ -216,8 +224,8 @@ accepted `paper_order_intent/v0` quantity is computed from:
 8. fresh limit-price source and KRX tick rounding rule; and
 9. lot-size rounding with reject-if-below-min-lot behavior.
 
-If computed quantity would breach reserve, holdings slots, stale price, or tick
-rules, the intent is rejected before executor submission.
+If computed quantity would breach the dynamic 75% exposure cap, holdings slots,
+stale price, or tick rules, the intent is rejected before executor submission.
 
 ## 8. Freshness TTLs
 
@@ -257,6 +265,12 @@ KIS broker transport is allowed only when all conditions pass:
 - order route is KRX broker cash order;
 - KRX paper/mock broker submit time is inside `09:00-15:00 KST`; the
   `15:00-15:30 KST` KRX close/market-data period is not an order-submit window;
+- market analysis may use integrated realtime feed context, but integrated feed
+  data alone is not execution authority. KRX quote/session/order-window evidence
+  remains required immediately before broker submit;
+- NXT/SOR/after-hours branches are disabled in paper/mock mode and must fail
+  before broker transport. Future live mode also starts `krx_only`; NXT requires
+  a later owner approval and Ready-Set;
 - weekday-only calendar fallback is forbidden for any paper-order approval path;
 - order approval requires `HWISTOCK_OPERATION_MODE = paper_experiment`,
   `HWISTOCK_KIS_PAPER_ORDER_ENABLED = true`, an order-grade KIS market data
@@ -273,6 +287,21 @@ KIS broker transport is allowed only when all conditions pass:
 - TR ID alias exists in the adapter allowlist from the capability matrix;
 - account identity is a redacted adapter account alias, not a raw account number;
 - startup self-test proves no unapproved/unknown endpoint is configured.
+
+The risk gate must enforce the dynamic 75% exposure cap before transport:
+
+```text
+current_position_value_krw
++ pending_buy_notional_krw
++ new_order_notional_krw
+<= effective_total_deposit_krw * 0.75
+```
+
+`effective_total_deposit_krw` must come from account-truth evidence and is still
+capped by the 2,000,000 KRW hwiStock risk-overlay capital unless a later
+approved profile/unit change raises that cap. Missing account truth fails the
+order closed and records evidence, but it does not by itself block the paper
+experiment process from continuing.
 
 Unknown/unapproved domains, unapproved profile names, raw account ids, unsupported TR IDs,
 or unsupported NXT/SOR/integrated broker routes abort before network transport.

@@ -93,19 +93,22 @@ cancel, balance-changing, or unapproved endpoints.
   - deterministic candidate-universe artifacts built before Flash runs.
 - Implement or wire the KIS intraday market-data collector for the mode-aware
   first-scope adapter-read inputs:
-  - paper/mock mode: KRX realtime trade price/orderbook/market-operation
-    WebSocket, integrated realtime trade price/orderbook/market-operation
-    WebSocket, and the REST inputs below;
-  - real investment mode: all paper/mock inputs plus NXT realtime trade
-    price/orderbook/market-operation WebSocket;
+  - analysis authority: integrated realtime trade price/orderbook/market-operation
+    WebSocket, plus the REST context inputs below;
+  - execution authority: KRX quote/session evidence is required before
+    broker submit; integrated feed cannot authorize execution by itself;
+  - paper/mock mode: NXT realtime inputs are rejected;
+  - future live mode: default remains `krx_only`; NXT realtime inputs are
+    enabled only after separate owner approval and Ready-Set;
   - REST `volume-rank`;
   - REST `ranking/volume-power` or equivalent execution-strength upper-rank
     endpoint;
   - REST `ranking/fluctuation`;
   - REST program-trading aggregate status where adapter-supported.
-  NXT signal inputs must be rejected in paper/mock mode and enabled only in real
-  investment mode. SOR broker-facing market-data branches remain disabled unless
-  a future approved contract adds them.
+  NXT signal inputs must be rejected in paper/mock mode and in future live mode
+  unless the NXT approval flags and Ready-Set are present. SOR broker-facing
+  market-data branches remain disabled unless a future approved contract adds
+  them.
 - Respect the active investment-mode schedule:
   - paper/mock market-data context may continue until `15:30 KST`;
   - paper/mock new entry-intent generation is limited to `09:00-15:00 KST`;
@@ -186,7 +189,7 @@ cancel, balance-changing, or unapproved endpoints.
 | AC-11 | P0 | Pending waits are superseded safely | A new accepted trade document cancels prior unfilled `WAIT_BUY` orders unless renewed explicitly and still gate-valid. |
 | AC-12 | P0 | UNIT-013 is adapter-read only | KIS order/cancel/modify endpoints are not called by this unit; unsupported NXT/SOR broker-facing branches write disabled/fallback evidence. |
 | AC-13 | P0 | Flash cannot invent candidate symbols | A Flash action whose ticker is absent from deterministic `compiled_watch/v0` is rejected and produces no order intent. |
-| AC-14 | P0 | KIS signal collector is mode-gated | UNIT-013 attempts only the mode-enabled KRX/integrated/NXT realtime market-data inputs plus approved REST rank/program-trading inputs; paper/mock mode rejects NXT inputs, real investment mode enables NXT inputs, and any KIS order/cancel/modify endpoint remains safe-blocked. |
+| AC-14 | P0 | KIS signal collector is authority-gated | UNIT-013 attempts only integrated-analysis feed inputs plus approved REST rank/program-trading inputs by default; KRX remains execution authority for UNIT-014; paper/mock rejects NXT inputs, future live also rejects NXT until separate approval/Ready-Set, and any KIS order/cancel/modify endpoint remains safe-blocked. |
 | AC-15 | P0 | Paper/mock entry-intent window ends at 15:00 | Valid KRX market-data context after `15:00 KST` can produce close/watch/reconciliation records, but cannot create a new paper/mock entry `paper_order_intent/v0`. |
 | AC-16 | P0 | Morning watchlist is referenced before first Flash intent | The first active-mode Flash bucket references `morning_watchlist/v0` or the pipeline writes a named safe-block and queues no entry intent. |
 | AC-17 | P0 | Dynamic 75% exposure cap is enforced | Intent generation rejects a new order when current position value plus pending buy notional plus new notional would exceed `effective_total_deposit_krw * 0.75`. |

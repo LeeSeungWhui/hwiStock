@@ -143,9 +143,10 @@ def test_resolve_bind_host_allows_localhost_literals():
 @pytest.mark.parametrize(
     "at_kst,expected_venue",
     [
-        (_kst(8, 30), "NXT"),
+        (_kst(8, 30), "idle"),
         (_kst(9, 30), "KRX"),
-        (_kst(15, 30), "NXT"),
+        (_kst(15, 10), "idle"),
+        (_kst(15, 30), "idle"),
         (_kst(20, 30), "idle"),
     ],
 )
@@ -339,11 +340,14 @@ def test_alert_metadata_local_only():
     assert alerts["externalDelivery"] is False
     paths = [c.get("path", "") for c in alerts["channels"]]
     assert any("data/alerts/" in p for p in paths)
+    assert "daily-close-mode-aware.md" in paths
 
 
 def test_daily_close_template_shape():
     template = runner.daily_close_template()
-    assert template["reportName"] == "daily-close-2000.md"
+    assert template["reportName"] == "daily-close-mode-aware.md"
+    assert template["paperTargetKst"] == "15:30"
+    assert template["futureLiveTargetKst"] == "20:00"
     assert template["externalDelivery"] is False
     assert "runtime_duration" in template["sections"]
 

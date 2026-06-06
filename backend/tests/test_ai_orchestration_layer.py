@@ -106,6 +106,18 @@ def _draft_order_intent(**overrides):
     return payload
 
 
+def _morning_watchlist(**overrides):
+    payload = {
+        "schema_version": "morning_watchlist/v0",
+        "artifact_id": "art_morning_watchlist_20260604_0715",
+        "route": "codex_cli_local_browser_use",
+        "forbidden_actions_acknowledged": True,
+        "items": [{"ticker": "005930", "stance": "eligible_for_flash_review"}],
+    }
+    payload.update(overrides)
+    return payload
+
+
 def _ai_recommendation(**overrides):
     payload = {
         "schema_version": "ai_recommendation/v0",
@@ -141,7 +153,9 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         self.assertFalse(cfg["DEEPSEEK_PRO_ENABLED"])
         self.assertFalse(cfg["DEEPSEEK_FLASH_ENABLED"])
         self.assertFalse(cfg["CHATGPT_PRO_BROWSER_REVIEW_ENABLED"])
-        self.assertEqual(cfg["GPT_PRO_MORNING_REVIEW_CUTOFF_KST"], "07:20")
+        self.assertEqual(cfg["GPT_PRO_MORNING_REVIEW_START_KST"], "07:15")
+        self.assertEqual(cfg["GPT_PRO_APPROVED_ROUTE"], "codex_cli_local_browser_use")
+        self.assertTrue(cfg["MORNING_WATCHLIST_REQUIRED_BEFORE_FIRST_FLASH"])
         self.assertEqual(cfg["DEEPSEEK_PRO_MODEL"], "deepseek-v4-pro")
         self.assertEqual(cfg["DEEPSEEK_FLASH_MODEL"], "deepseek-v4-flash")
         self.assertTrue(ao.validateAiOrchestrationConfig(cfg)["ok"])
@@ -153,9 +167,8 @@ class AiOrchestrationLayerTests(unittest.TestCase):
             {
                 "deepseek_pro_hourly",
                 "deepseek_flash_trade_document_10m",
-                "gpt_prompt_0650",
-                "chatgpt_pro_morning_review",
-                "daily_close_2000",
+                "gpt_morning_watchlist_0715",
+                "daily_close_mode_aware",
             },
         )
         self.assertEqual(
@@ -166,10 +179,12 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         self.assertEqual(registry["deepseek_flash_trade_document_10m"]["model_name"], "deepseek-v4-flash")
         self.assertEqual(registry["deepseek_flash_trade_document_10m"]["max_action_symbols"], 5)
         self.assertEqual(
-            registry["chatgpt_pro_morning_review"]["output_schema"],
-            "morning_review_report/v0",
+            registry["gpt_morning_watchlist_0715"]["output_schema"],
+            "morning_watchlist/v0",
         )
-        self.assertEqual(registry["daily_close_2000"]["output_schema"], "daily_close_report/v0")
+        self.assertEqual(registry["gpt_morning_watchlist_0715"]["approved_route"], "codex_cli_local_browser_use")
+        self.assertFalse(registry["gpt_morning_watchlist_0715"]["ssh_browser_use_allowed"])
+        self.assertEqual(registry["daily_close_mode_aware"]["output_schema"], "daily_close_report/v0")
         for job in registry.values():
             self.assertFalse(job["tool_use_enabled"])
 
@@ -372,11 +387,11 @@ class AiOrchestrationLayerTests(unittest.TestCase):
 
     def testQa013GptProFallbackUsesDeepseekOnlyMorningMode(self):
         report = ao.buildAiFallbackReport(
-            "chatgpt_pro_morning_review",
-            "gpt_pro_unavailable_after_cutoff",
+            "gpt_morning_watchlist_0715",
+            "gpt_pro_unavailable_before_first_flash",
             now_kst="2026-06-04T07:25:00+09:00",
         )
-        self.assertEqual(report["alternate_job_id"], "gpt_prompt_0650")
+        self.assertEqual(report["alternate_job_id"], "deepseek_pro_hourly")
         self.assertEqual(report["morning_review_mode"], "deepseek_only")
         self.assertFalse(report["entry_unlocked"])
 
@@ -405,11 +420,13 @@ class AiOrchestrationLayerTests(unittest.TestCase):
             compiled_watch=compiled_watch,
             portfolio_snapshot={"artifact_id": "art_portfolio_20260604_0905", "holdings": []},
             order_state_snapshot={"artifact_id": "art_order_state_20260604_0905", "pending_orders": []},
+            morning_watchlist=_morning_watchlist(),
             produced_at_kst=NOW_KST,
         )
         self.assertEqual(doc["schema_version"], "flash_trade_document/v0")
         self.assertEqual(doc["model_name"], "deepseek-v4-flash")
         self.assertLessEqual(len(doc["actions"]), 5)
+        self.assertRegex(doc["actions"][0]["action_id"], r"^act_\d{6}_\d{4}_\d{2}$")
         validation = ao.validateFlashTradeDocument(doc, compiled_watch=compiled_watch)
         self.assertTrue(validation["ok"], msg=validation["errors"])
         self.assertFalse(doc["no_broker_call"] is False)
@@ -422,6 +439,7 @@ class AiOrchestrationLayerTests(unittest.TestCase):
             compiled_watch=[{"schema_version": "compiled_watch/v0", "symbol": "005930", "source_ids": KNOWN_SOURCE_IDS}],
             portfolio_snapshot={"artifact_id": "art_portfolio_20260604_0905", "holdings": []},
             order_state_snapshot={"artifact_id": "art_order_state_20260604_0905", "pending_orders": []},
+            morning_watchlist=_morning_watchlist(),
             produced_at_kst=NOW_KST,
         )
         doc["actions"][0]["ticker"] = "999999"
@@ -431,6 +449,20 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         )
         self.assertFalse(validation["ok"])
         self.assertIn("actions_item_0_off_universe_ticker", validation["errors"])
+
+    def testQa012FirstFlashRequiresMorningWatchlistOrSafeBlock(self):
+        doc = ao.buildFlashTradeDocument(
+            pro_artifact={"artifact_id": "art_pro_hourly_20260604_0900"},
+            recent_events=[{"source_event_id": KNOWN_SOURCE_IDS[0]}],
+            kis_market_snapshots=[{"artifact_id": "art_kis_snapshot_20260604_0905"}],
+            compiled_watch=[{"schema_version": "compiled_watch/v0", "symbol": "005930", "source_ids": KNOWN_SOURCE_IDS}],
+            portfolio_snapshot={"artifact_id": "art_portfolio_20260604_0905", "holdings": []},
+            order_state_snapshot={"artifact_id": "art_order_state_20260604_0905", "pending_orders": []},
+            produced_at_kst=NOW_KST,
+        )
+        self.assertEqual(doc["document_kind"], "NO_TRADE")
+        self.assertEqual(doc["no_trade_reason"], "missing_morning_watchlist_for_first_flash_bucket")
+        self.assertTrue(doc["morning_watchlist_required"])
 
     def testQa014DailyCloseReportRequiresSystemCalculatedPnL(self):
         invalid = ao.validateDailyCloseReport(

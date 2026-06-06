@@ -116,8 +116,8 @@ that can run on the home server 24 hours a day in adapter-backed mode, without
 requiring a Codex session to stay alive. The service may run 24 hours, but its
 active trading loop must use the active investment-mode routing policy:
 paper/mock mode is KRX-only for new investment/order decisions from
-09:00-15:00 KST and rejects NXT broker branches; future live mode may use the
-KRX/NXT 08:00-20:00 KST envelope only after support proof and approval.
+09:00-15:00 KST and rejects NXT broker branches; future live mode starts
+`krx_only`; NXT venue routing requires separate owner approval and Ready-Set.
 Separately, the market-intelligence ingestion branch may run 24 hours. hwiStock
 will not use an internal fake broker adapter for the
 first order/fill path. Before explicit KIS adapter approval, the runner may only
@@ -188,7 +188,7 @@ None. This unit uses the existing safety-core module contract.
 | AC-06 | P1 | Continuous operation observation evidence can be produced | Daily summary and operator observation-window formats are defined | evidence summary | QA-006 |
 | AC-07 | P0 | Runner is market-session aware | Out-of-session mode does not run active trading/order loops | calendar/health/log output | QA-007 |
 | AC-08 | P0 | Information ingestion branch is separate | 24h crawler/news/disclosure branch cannot place orders | config/log review | QA-008 |
-| AC-09 | P0 | Venue routing is investment-mode aware | Paper/mock mode routes new KRX investment/order decisions only during 09:00-15:00 KST and rejects NXT; future live mode may use KRX/NXT 08:00-20:00 KST after proof and approval | calendar/route test | QA-009 |
+| AC-09 | P0 | Venue routing is investment-mode aware | Paper/mock mode routes new KRX investment/order decisions only during 09:00-15:00 KST and rejects NXT; future live mode starts `krx_only`, and NXT requires separate approval/Ready-Set | calendar/route test | QA-009 |
 | AC-10 | P0 | Pre-approval execution is dry-run only | Approved order intents are recorded without broker calls, simulated fills, or fake balances before KIS adapter approval | adapter/log review | QA-010 |
 | AC-11 | P0 | KIS/external broker and broker broker-adapter network use requires approval | KIS/external broker endpoints, broker-adapter/demo/testbed endpoints, credentials, and tokens are absent from runner config until an approved KIS unit enables them | config/network review | QA-011 |
 | AC-12 | P0 | Adapter budget is separated from operation capital | Official broker-adapter budget candidate is 10,000,000 KRW while capital baseline remains 2,000,000 KRW cash | config/doc review | QA-012 |

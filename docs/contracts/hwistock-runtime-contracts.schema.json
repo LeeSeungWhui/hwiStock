@@ -1,6 +1,6 @@
 {
   "schema_catalog_version": "hwistock.runtime_contracts/v0",
-  "updated_at": "2026-06-05",
+  "updated_at": "2026-06-06",
   "owner_unit": "HWISTOCK-UNIT-016",
   "common_required_fields": [
     "schema_version",
@@ -247,7 +247,9 @@
     "unsupported_broker_capability",
     "duplicate_trade_doc",
     "duplicate_intent",
-    "submit_unknown_requires_reconciliation"
+    "submit_unknown_requires_reconciliation",
+    "effective_total_deposit_truth_required",
+    "dynamic_exposure_cap_exceeded"
   ],
   "schemas": {
     "news_event/v0": {
@@ -659,7 +661,11 @@
         "input_manifest_hash",
         "market_regime",
         "sections",
-        "no_broker_interface"
+        "no_broker_interface",
+        "input_window_kst",
+        "market_analysis_feed_mode",
+        "source_counts",
+        "missing_source_warnings"
       ],
       "fields": {
         "schema_version": {
@@ -692,6 +698,52 @@
         "no_broker_interface": {
           "type": "boolean",
           "const": true
+        },
+        "input_window_kst": {
+          "type": "object",
+          "required_fields": [
+            "start_kst",
+            "end_kst",
+            "window_seconds"
+          ],
+          "fields": {
+            "start_kst": {
+              "type": "string",
+              "format": "kst_datetime"
+            },
+            "end_kst": {
+              "type": "string",
+              "format": "kst_datetime"
+            },
+            "window_seconds": {
+              "type": "integer",
+              "const": 3600
+            }
+          }
+        },
+        "market_analysis_feed_mode": {
+          "type": "string",
+          "const": "integrated"
+        },
+        "source_counts": {
+          "type": "object",
+          "required_fields": [
+            "news_disclosure_events",
+            "kis_market_snapshots"
+          ],
+          "fields": {
+            "news_disclosure_events": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "kis_market_snapshots": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "missing_source_warnings": {
+          "type": "array"
         }
       }
     },
@@ -715,7 +767,15 @@
         "pro_artifact_ref",
         "pro_manifest_completed_at_kst",
         "pro_manifest_cutoff_kst",
-        "pro_manifest_status"
+        "pro_manifest_status",
+        "investment_mode",
+        "market_analysis_feed_mode",
+        "execution_venue_mode",
+        "trade_window_kst",
+        "pro_hourly_report_ref",
+        "morning_watchlist_ref",
+        "max_holdings_after_trade",
+        "max_cash_deployment_ratio"
       ],
       "fields": {
         "schema_version": {
@@ -793,7 +853,18 @@
             "market_data_refs",
             "portfolio_state_refs",
             "portfolio_conflict",
-            "executable_intent_allowed"
+            "executable_intent_allowed",
+            "symbol",
+            "side",
+            "quantity",
+            "entry_price_limit",
+            "target_price",
+            "stop_loss_price",
+            "valid_until_kst",
+            "pro_refs",
+            "morning_watchlist_ref",
+            "max_cash_deployment_ratio",
+            "risk_flags"
           ],
           "item_fields": {
             "action_id": {
@@ -892,6 +963,54 @@
             "executable_intent_allowed": {
               "type": "boolean",
               "const": false
+            },
+            "symbol": {
+              "type": "string",
+              "pattern": "^\\d{6}$"
+            },
+            "side": {
+              "type": "string",
+              "enum": [
+                "BUY",
+                "SELL",
+                "HOLD",
+                "NO_TRADE"
+              ]
+            },
+            "quantity": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "entry_price_limit": {
+              "type": "number",
+              "minimum": 0
+            },
+            "target_price": {
+              "type": "number",
+              "minimum": 0
+            },
+            "stop_loss_price": {
+              "type": "number",
+              "minimum": 0
+            },
+            "valid_until_kst": {
+              "type": "string",
+              "format": "kst_datetime"
+            },
+            "pro_refs": {
+              "type": "array",
+              "min_items": 1
+            },
+            "morning_watchlist_ref": {
+              "type": "string"
+            },
+            "max_cash_deployment_ratio": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.75
+            },
+            "risk_flags": {
+              "type": "array"
             }
           }
         },
@@ -916,6 +1035,41 @@
             "latest_complete",
             "missing_or_stale"
           ]
+        },
+        "investment_mode": {
+          "type": "string",
+          "enum": [
+            "paper",
+            "live"
+          ]
+        },
+        "market_analysis_feed_mode": {
+          "type": "string",
+          "const": "integrated"
+        },
+        "execution_venue_mode": {
+          "type": "string",
+          "const": "krx_only"
+        },
+        "trade_window_kst": {
+          "type": "string",
+          "pattern": "^\\d{2}:\\d{2}-\\d{2}:\\d{2}$"
+        },
+        "pro_hourly_report_ref": {
+          "type": "string"
+        },
+        "morning_watchlist_ref": {
+          "type": "string"
+        },
+        "max_holdings_after_trade": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "max_cash_deployment_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.75
         }
       }
     },
@@ -1206,6 +1360,35 @@
             "reject_if_below_min_lot": {
               "type": "boolean",
               "const": true
+            },
+            "current_position_value_krw": {
+              "type": "number",
+              "minimum": 0
+            },
+            "pending_buy_notional_krw": {
+              "type": "number",
+              "minimum": 0
+            },
+            "new_order_notional_krw": {
+              "type": "number",
+              "minimum": 0
+            },
+            "effective_total_deposit_krw": {
+              "type": "number",
+              "minimum": 0
+            },
+            "max_cash_deployment_ratio": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.75
+            },
+            "max_deployable_notional_krw": {
+              "type": "number",
+              "minimum": 0
+            },
+            "projected_deployed_notional_krw": {
+              "type": "number",
+              "minimum": 0
             }
           }
         },

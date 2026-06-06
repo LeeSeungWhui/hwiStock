@@ -31,8 +31,8 @@ orders. The runner must also distinguish 24-hour service uptime from Korea marke
 session activity, and separate 24-hour information ingestion from trading/order
 routing. Trading venue routing is investment-mode aware: paper/mock mode is
 KRX-only for new investment/order decisions from 09:00-15:00 KST and rejects
-NXT broker branches; future live mode may use KRX/NXT 08:00-20:00 KST only after
-support proof and approval.
+NXT broker branches; future live mode starts `krx_only`, and NXT venue routing
+requires separate owner approval and Ready-Set.
 
 ## 2. Scope
 

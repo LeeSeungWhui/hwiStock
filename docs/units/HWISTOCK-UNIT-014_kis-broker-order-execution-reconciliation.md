@@ -120,6 +120,11 @@ pass. Unapproved adapter operation remains forbidden.
 - In paper/mock mode, place KRX broker cash orders only during `09:00-15:00 KST`;
   after `15:00 KST`, the runner may reconcile, observe, close, or safe-block but
   must not submit a new paper/mock entry order.
+- Integrated market feed is analysis context only. It cannot authorize broker
+  execution without KRX quote/session/order-window evidence immediately before
+  submit.
+- NXT/SOR/after-hours branches are disabled in paper/mock and remain disabled by
+  default in future live mode until separate owner approval and Ready-Set.
 - Support cancel/modify only after provider cancelable-order truth is available
   in the active mode and local pending-order state agrees; paper/mock skips the
   provider-unsupported cancelable query and fails closed on ambiguity.
@@ -136,7 +141,8 @@ pass. Unapproved adapter operation remains forbidden.
 
 - Unapproved domain calls.
 - SOR broker-adapter routing.
-- NXT broker routing while the runtime is in paper/mock mode.
+- NXT broker routing while the runtime is in paper/mock mode or before a future
+  live NXT approval/Ready-Set.
 - Broker account values.
 - Fake broker fills, balances, positions, or PnL.
 - AI/provider calls.
@@ -148,7 +154,7 @@ pass. Unapproved adapter operation remains forbidden.
 | --- | --- | --- | --- |
 | AC-01 | P0 | Adapter domain only | Unapproved/unknown KIS hosts fail before transport. |
 | AC-02 | P0 | Intent consumption is idempotent | The same active intent cannot submit duplicate broker orders. |
-| AC-03 | P0 | Final risk preflight blocks unsafe orders | Kill switch, calendar, stale data, holdings cap, reserve floor, and invalid venue block before KIS call. |
+| AC-03 | P0 | Final risk preflight blocks unsafe orders | Kill switch, calendar, stale data, holdings cap, dynamic 75% exposure cap, and invalid venue block before KIS call. |
 | AC-04 | P0 | KRX broker order path works or fails classified | Broker order attempts produce sanitized success/error evidence with no raw secrets. |
 | AC-05 | P0 | Reconciliation is broker-evidence-backed | Ledger state derives from KIS broker order/fill/balance/buyable/sellable/cancelable evidence. |
 | AC-06 | P0 | Disabled branches do not call broker | Paper/mock NXT and all SOR branches are disabled/fallback-only; provider helper truth is used only through approved query endpoints. |

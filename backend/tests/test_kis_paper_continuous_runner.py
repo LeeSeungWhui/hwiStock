@@ -682,7 +682,7 @@ def test_tick_preflight_uses_kis_account_truth_not_intent_cash(tmp_path, monkeyp
     )
     cash_order = [step for step in payload["steps"] if step.get("step") == "cash_order"][-1]
     assert cash_order["status"] == "blocked_risk_overlay"
-    assert "minimum_cash_reserve_breach" in cash_order["errors"]
+    assert "dynamic_exposure_cap_exceeded" in cash_order["errors"]
     assert payload["executionPreflight"]["riskOverlay"]["risk_overlay"]["available_cash_krw"] == 1_720_000
     assert not any("/order-cash" in call["url"] for call in transport.calls)
 
@@ -770,7 +770,7 @@ def test_tick_blocks_saturday_even_with_future_calendar_valid_until(tmp_path, mo
     assert not any("/order-cash" in call["url"] for call in transport.calls)
 
 
-def test_tick_blocks_non_krx_or_reserve_breach_before_order(tmp_path, monkeypatch):
+def test_tick_blocks_non_krx_or_dynamic_exposure_breach_before_order(tmp_path, monkeypatch):
     _calendar(tmp_path, monkeypatch)
     env = _env()
     env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
@@ -798,7 +798,7 @@ def test_tick_blocks_non_krx_or_reserve_breach_before_order(tmp_path, monkeypatc
     cash_order = [step for step in payload["steps"] if step.get("step") == "cash_order"][-1]
     assert cash_order["status"] == "blocked_risk_overlay"
     assert "kis_paper_order_route_must_be_krx" in cash_order["errors"]
-    assert "minimum_cash_reserve_breach" in cash_order["errors"]
+    assert "dynamic_exposure_cap_exceeded" in cash_order["errors"]
     order_calls = [call for call in transport.calls if "/order-cash" in call["url"]]
     assert order_calls == []
 

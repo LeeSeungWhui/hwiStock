@@ -233,7 +233,18 @@
         "finalized_at_kst": "2026-06-05T09:04:00+09:00",
         "atomic_rename_complete": true,
         "manifest_hash_verified": true
-      }
+      },
+      "input_window_kst": {
+        "start_kst": "2026-06-05T08:00:00+09:00",
+        "end_kst": "2026-06-05T09:00:00+09:00",
+        "window_seconds": 3600
+      },
+      "market_analysis_feed_mode": "integrated",
+      "source_counts": {
+        "news_disclosure_events": 2,
+        "kis_market_snapshots": 1
+      },
+      "missing_source_warnings": []
     },
     {
       "schema_version": "portfolio_snapshot/v0",
@@ -348,7 +359,8 @@
         "art_pro_hourly_20260605_0900",
         "art_kis_snapshot_20260605_090300",
         "art_portfolio_20260605_090455",
-        "art_order_state_20260605_090455"
+        "art_order_state_20260605_090455",
+        "art_morning_watchlist_20260605_0715"
       ],
       "validation": {
         "ok": true,
@@ -403,9 +415,24 @@
             "pending_order_exists": false,
             "active_exit_exists": false,
             "cooldown_active": false,
-            "position_locked": false
+            "position_locked": false,
+            "has_conflict": false,
+            "reasons": []
           },
-          "executable_intent_allowed": false
+          "executable_intent_allowed": false,
+          "symbol": "005930",
+          "side": "BUY",
+          "quantity": 4,
+          "entry_price_limit": 70000,
+          "target_price": 72000,
+          "stop_loss_price": 69000,
+          "valid_until_kst": "2026-06-05T09:50:00+09:00",
+          "pro_refs": [
+            "art_pro_hourly_20260605_0900"
+          ],
+          "morning_watchlist_ref": "art_morning_watchlist_20260605_0715",
+          "max_cash_deployment_ratio": 0.75,
+          "risk_flags": []
         }
       ],
       "publication": {
@@ -422,7 +449,15 @@
       "pro_artifact_ref": "art_pro_hourly_20260605_0900",
       "pro_manifest_completed_at_kst": "2026-06-05T09:00:30+09:00",
       "pro_manifest_cutoff_kst": "2026-06-05T09:39:45+09:00",
-      "pro_manifest_status": "latest_complete"
+      "pro_manifest_status": "latest_complete",
+      "investment_mode": "paper",
+      "market_analysis_feed_mode": "integrated",
+      "execution_venue_mode": "krx_only",
+      "trade_window_kst": "09:00-15:00",
+      "pro_hourly_report_ref": "art_pro_hourly_20260605_0900",
+      "morning_watchlist_ref": "art_morning_watchlist_20260605_0715",
+      "max_holdings_after_trade": 5,
+      "max_cash_deployment_ratio": 0.75
     },
     {
       "schema_version": "paper_order_intent/v0",
@@ -462,7 +497,7 @@
         "price_source_freshness_seconds": 2
       },
       "quantity_rule": {
-        "sizing_formula_version": "risk_overlay_v1_cash_reserve_025",
+        "sizing_formula_version": "risk_overlay_v2_dynamic_exposure_075",
         "risk_overlay_capital_krw": 2000000,
         "minimum_cash_reserve_ratio": 0.25,
         "available_cash_before_order": 2000000,
@@ -473,7 +508,14 @@
         "tick_rounding_rule": "krx_tick_floor_to_valid_limit",
         "lot_size": 1,
         "computed_quantity": 4,
-        "reject_if_below_min_lot": true
+        "reject_if_below_min_lot": true,
+        "current_position_value_krw": 0,
+        "pending_buy_notional_krw": 0,
+        "new_order_notional_krw": 280000,
+        "effective_total_deposit_krw": 2000000,
+        "max_cash_deployment_ratio": 0.75,
+        "max_deployable_notional_krw": 1500000,
+        "projected_deployed_notional_krw": 280000
       },
       "max_cash_krw": 280000,
       "gate_results": [

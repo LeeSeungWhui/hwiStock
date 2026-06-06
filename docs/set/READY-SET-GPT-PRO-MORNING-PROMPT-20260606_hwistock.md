@@ -31,8 +31,8 @@ automation, reverse Unix socket Chrome bridges, remote Chrome, or headless
 browser automation.
 
 If local Codex CLI or local browser-use is unavailable, the job must write a
-named safe-block or use the DeepSeek-only fallback. It must not silently switch
-routes.
+named `NO_TRADE` safe-block artifact or a DeepSeek-derived
+`morning_watchlist/v0` artifact. It must not silently switch routes.
 
 ## 2. Prompt Template
 

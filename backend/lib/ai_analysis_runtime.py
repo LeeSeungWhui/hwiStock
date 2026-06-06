@@ -24,9 +24,11 @@ if str(BACKEND_ROOT) not in sys.path:
 
 try:
     from lib import ai_orchestration as ao
+    from lib import runtime_policy as rp
     from lib import trading_engine
 except ImportError:  # pragma: no cover
     from backend.lib import ai_orchestration as ao
+    from backend.lib import runtime_policy as rp
     from backend.lib import trading_engine
 
 KST = timezone(timedelta(hours=9))
@@ -71,6 +73,34 @@ def _read_recent_events(data_root: Path, *, limit: Optional[int] = None, at: Opt
             }
         )
     return rows[-row_limit:]
+
+
+def _parse_optional_kst(value: Any) -> Optional[datetime]:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=KST)
+    return parsed.astimezone(KST)
+
+
+def _read_events_for_hour_window(data_root: Path, *, at: datetime, limit: int = 200) -> tuple[List[Dict[str, Any]], Dict[str, str]]:
+    window = rp.proHourlyInputWindow(at)
+    start = _parse_optional_kst(window["start_kst"])
+    end = _parse_optional_kst(window["end_kst"])
+    rows = _read_recent_events(data_root, limit=limit, at=at)
+    if not start or not end:
+        return rows, window
+    filtered = []
+    for row in rows:
+        published = _parse_optional_kst(row.get("published_at_kst"))
+        if published is None or start <= published < end:
+            filtered.append(row)
+    return filtered, window
 
 
 def _read_json_artifact(path: Path) -> Optional[Dict[str, Any]]:
@@ -118,6 +148,19 @@ def _read_compiled_watch(data_root: Path, *, at: datetime) -> List[Dict[str, Any
     if payload.get("schema_version") == "compiled_watch/v0":
         return [payload]
     return []
+
+
+def _read_morning_watchlist(data_root: Path, *, at: datetime) -> Optional[Dict[str, Any]]:
+    day = at.date().isoformat()
+    candidates = [
+        _latest_named_json(data_root, "morning-watchlist", day, "morning-watchlist-latest.json"),
+        _latest_named_json(data_root, "ai", day, "morning-watchlist-latest.json"),
+    ]
+    for path in candidates:
+        payload = _read_json_artifact(path) if path else None
+        if isinstance(payload, Mapping):
+            return dict(payload)
+    return None
 
 
 def _build_prompt(events: Sequence[Mapping[str, Any]], *, produced_at_kst: str) -> str:
@@ -499,7 +542,7 @@ def run_pro_hourly_once(
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
     now = at or _now_kst()
-    events = _read_recent_events(data_root, at=now)
+    events, input_window = _read_events_for_hour_window(data_root, at=now)
     kis_snapshots = _read_recent_kis_snapshots(data_root, at=now)
     selected_model = model or os.getenv("HWISTOCK_DEEPSEEK_MODEL", ao.DEEPSEEK_PRO_MODEL)
     provider: Optional[Dict[str, Any]] = None
@@ -522,6 +565,7 @@ def run_pro_hourly_once(
         kis_market_snapshots=kis_snapshots,
         produced_at_kst=now.isoformat(),
         provider_status=provider_status,
+        input_window_kst=input_window,
     )
     artifact["model_name"] = selected_model
     artifact["provider"] = _provider_meta(provider)
@@ -578,6 +622,7 @@ def run_flash_trade_document_once(
     portfolio = _read_json_artifact(_latest_json_file(data_root, "portfolio", day) or Path()) or _default_portfolio_snapshot(now)
     order_state = _read_json_artifact(_latest_json_file(data_root, "orders", day) or Path()) or _default_order_state_snapshot(now, data_root=data_root)
     previous_docs = _read_previous_trade_documents(data_root, at=now)
+    morning_watchlist = _read_morning_watchlist(data_root, at=now)
     selected_model = model or os.getenv("HWISTOCK_DEEPSEEK_MODEL", ao.DEEPSEEK_FLASH_MODEL)
     provider: Optional[Dict[str, Any]] = None
     provider_json: Dict[str, Any] = {}
@@ -607,6 +652,10 @@ def run_flash_trade_document_once(
         portfolio_snapshot=portfolio,
         order_state_snapshot=order_state,
         previous_trade_documents=previous_docs,
+        morning_watchlist=morning_watchlist,
+        investment_mode=rp.runtimePolicyFromEnv(os.environ)["investment_mode"],
+        market_analysis_feed_mode=rp.runtimePolicyFromEnv(os.environ)["market_analysis_feed_mode"],
+        execution_venue_mode=rp.runtimePolicyFromEnv(os.environ)["execution_venue_mode"],
         produced_at_kst=now.isoformat(),
     )
     artifact["model_name"] = selected_model

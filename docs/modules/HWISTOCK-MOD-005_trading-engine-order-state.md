@@ -53,10 +53,11 @@ execution adapter.
 - For current foundation risk gating, `SOR` is normalized to underlying `KRX`
   metadata and `AUTO_SESSION` requires an explicit resolved underlying
   `session_venue_hint` of `KRX` or `NXT` before UNIT-004 validation runs.
-- During KIS operation runs, venue routing is mode-gated: paper/mock mode enables
-  KRX plus integrated market-data only and keeps NXT order/realtime branches
-  disabled; real investment mode enables KRX and NXT order/realtime branches
-  while SOR remains disabled until a future approved contract proves it.
+- During KIS operation runs, venue routing is mode-gated: paper/mock mode uses
+  integrated market-data for analysis and KRX-only execution while keeping NXT
+  order/realtime branches disabled. Future live mode also starts `krx_only`;
+  NXT requires separate owner approval and Ready-Set while SOR remains disabled
+  until a future approved contract proves it.
 - Sell decisions are driven by stop-loss trigger, configured exit condition,
   signal invalidation, time/flat rule, or operator kill switch.
 - The order state machine must represent at least: `draft_intent`, `eligible`,
@@ -65,8 +66,9 @@ execution adapter.
   `failed`.
 - Internal fake broker execution is not used.
 - Before KIS adapter approval, the engine may use a no-order dry-run recorder only.
-- The first broker-backed execution adapter is KIS with mode-gated KRX/NXT
-  routing and provider account-truth preflights.
+- The first broker-backed execution adapter is KIS with paper/mock KRX-only
+  routing, future-live `krx_only` default routing, and provider account-truth
+  preflights. NXT routing requires separate owner approval and Ready-Set.
 - Account-affecting orders remain forbidden until an operator-selected adapter-backed
   observation window has approved evidence and explicit user go/no-go.
 
@@ -189,9 +191,10 @@ Future interfaces:
   watcher rules.
 - Decision: NXT/SOR are venue/session parameters over the same state machine.
 - Decision: KIS adapter routing is mode-gated. Paper/mock mode proves KRX order
-  plus KRX/integrated market-data and account-truth helpers; real investment
-  mode may route KRX/NXT where KIS capability flags allow it; SOR remains
-  disabled until separately approved.
+  plus integrated market-data/account-truth analysis helpers; future live mode
+  starts `krx_only` and may route NXT only after separate owner approval and
+  Ready-Set where KIS capability flags allow it; SOR remains disabled until
+  separately approved.
 - Decision: first condition contract is `condition_card/v0` JSON with explicit
   source ids, venue route, watch conditions, risk refs, entry intent, and exit
   plan.

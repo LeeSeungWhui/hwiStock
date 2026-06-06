@@ -115,13 +115,17 @@ The operational trading program is one coordinated system with these branches:
    - Collects mode-aware KIS broker adapter-supported realtime
      price/orderbook/market-operation data and 1-3-minute REST ranking/analysis
      snapshots.
-   - Paper/mock mode enables KRX + integrated realtime inputs:
-     - KRX realtime trade price/orderbook/market operation
-       (`H0STCNT0`, `H0STASP0`, `H0STMKO0`);
-     - integrated realtime trade price/orderbook/market operation
-       (`H0UNCNT0`, `H0UNASP0`, `H0UNMKO0`).
-   - Real investment mode additionally enables NXT realtime trade
-     price/orderbook/market operation (`H0NXCNT0`, `H0NXASP0`, `H0NXMKO0`).
+   - Market-analysis feed policy:
+     - default analysis authority is KIS integrated realtime feed
+       (`H0UNCNT0`, `H0UNASP0`, `H0UNMKO0`);
+     - Pro hourly reports, Flash 10-minute trade documents, ranking/scoring, and
+       watchlist updates use integrated feed context by default;
+     - KRX realtime/quote/session evidence is execution authority for
+       paper/mock broker submit checks, not proof that integrated feed alone can
+       execute.
+   - Paper/mock mode disables NXT-only feed and every NXT/SOR/after-hours
+     broker-facing branch. Future live mode also starts `krx_only` until a
+     separate owner approval and Ready-Set enable NXT venue routing.
    - REST signal inputs, refreshed every 1-3 minutes during market hours:
      - volume rank (`volume-rank`);
      - fluctuation rank (`ranking/fluctuation`);
@@ -135,8 +139,8 @@ The operational trading program is one coordinated system with these branches:
      cancelable, realized-PnL, and holiday TRs as unsupported, so the runtime
      skips them and fails closed where the missing truth matters.
    - NXT broker-facing market-data collection is disabled in paper/mock mode and
-     enabled only in real investment mode; SOR remains disabled unless a later
-     support-confirmation gate adds it.
+     remains disabled by default in future live mode; SOR remains disabled
+     unless a later support-confirmation gate adds it.
    - Paper/mock mode may collect KRX/integrated market-data context until the
      KRX close at `15:30 KST`, but investment/order-decision and entry-intent
      windows close at `15:00 KST`.

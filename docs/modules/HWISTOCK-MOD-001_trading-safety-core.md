@@ -188,7 +188,7 @@ deployment is forbidden by default.
 | environment | docs/backtest/adapter-backed/operation | environment labels and gates | account-affecting order execution | QA scenario |
 | test gate | operator-selected adapter-backed observation window | operation-readiness prerequisite; not runner duration | shortcut approval or hardcoded period | evidence summary |
 | runtime | home-server runner | 24h service health/restart/kill switch | Codex-as-runtime | service smoke evidence |
-| scheduler | Korea KRX/NXT routing calendar | 09-15 KRX, 08-09/15-20 NXT, idle outside envelope | extra session-mode split | calendar smoke evidence |
+| scheduler | Korea market routing calendar | paper/mock 09:00-15:00 KRX-only order window; future live starts `krx_only`; NXT requires separate approval/Ready-Set | extra session-mode split | calendar smoke evidence |
 | information branch | news/disclosure ingestion | 24h collection and normalization | direct order placement | source/evidence logs |
 | strategy/risk rulebook | `HWISTOCK-MOD-003` | stock filters, cash-reserve and holdings checks, exits, minimal stop policy | profit promises and broad account-level loss automation by default | adapter/backtest evidence |
 | AI orchestration | `HWISTOCK-MOD-004` | candidate synthesis and structured recommendations | direct broker/order control | schema + policy-gate evidence |
@@ -277,8 +277,8 @@ Future interfaces may include:
   uptime must be separated from market-session trading activity.
 - Decision: runtime has two branches: 24-hour market intelligence ingestion and
   investment-mode-aware trading/order routing. Paper/mock mode is KRX-only
-  09:00-15:00 KST for new investment/order decisions; future live mode may use
-  KRX/NXT 08:00-20:00 KST only after support proof and approval.
+  09:00-15:00 KST for new investment/order decisions; future live mode starts
+  `krx_only`; NXT venue routing requires separate owner approval and Ready-Set.
 - Decision: strategy direction is short-term day trading (`단타`).
 - Decision: capital policy is cash-only; credit, margin, 미수, borrowed funds, and
   leveraged capital are forbidden by default.

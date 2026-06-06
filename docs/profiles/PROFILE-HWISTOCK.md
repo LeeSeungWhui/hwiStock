@@ -69,9 +69,10 @@ branches:
 - `market_intelligence`: 24-hour ingestion of permitted public news, articles,
   disclosures, chart/market-data context, and related signals.
 - `trading`: simple session-aware strategy/risk/order loop. KIS mode is explicit:
-  paper/mock mode enables KRX plus integrated market-data/account-truth helpers
-  and rejects NXT broker branches; real investment mode enables KRX and NXT
-  where KIS capability flags allow it. SOR remains disabled until a future
+  paper/mock mode uses integrated market-data/account-truth helpers for analysis
+  and KRX-only broker execution; NXT broker branches are rejected. Future live
+  mode also starts `krx_only`; NXT requires separate owner approval and
+  Ready-Set before routing can be enabled. SOR remains disabled until a future
   approved contract proves it.
 
 This project is tooling and automation work, not investment advice. Strategy
@@ -164,12 +165,13 @@ but Ready-Set reasoning must separate investment mode from
    until terms/access are explicitly recorded.
 2. `kis_intraday_market_collector` runs continuously during the approved
    intraday window and collects mode-aware KIS broker adapter-supported market
-   data: paper/mock mode enables KRX + integrated WebSocket realtime
-   trade/orderbook/market-operation inputs plus REST ranking/analysis snapshots
-   every 1-3 minutes such as volume rank, fluctuation, volume power, and
-   program-trading aggregate status where supported. Real investment mode
-   additionally enables NXT WebSocket realtime trade/orderbook/market-operation
-   inputs. Paper/mock market-data context may run through the KRX public
+   data: integrated WebSocket realtime trade/orderbook/market-operation inputs
+   are the default market-analysis authority, plus REST ranking/analysis
+   snapshots every 1-3 minutes such as volume rank, fluctuation, volume power,
+   and program-trading aggregate status where supported. KRX quote/session
+   evidence remains execution authority. NXT inputs are disabled in paper/mock
+   and future live mode until a separate owner approval and Ready-Set. Paper/mock
+   market-data context may run through the KRX public
    regular-session close at `15:30 KST`, but paper/mock investment/order
    decisions stop at `15:00 KST`. SOR KIS broker-facing collection remains
    disabled or fallback-only until later support confirmation.
@@ -276,9 +278,11 @@ summary or whole-project prompt.
 - KRX session truth: KRX public regular-session context is 09:00-15:30 KST
 - Paper/mock KRX investment/order-decision truth: 09:00-15:00 KST; 15:00-15:30
   KST is close/market-data/reconciliation context only
-- Current KIS investment-mode policy: paper/mock mode enables KRX plus
-  integrated market-data/account-truth helpers; real investment mode enables
-  KRX and NXT where KIS capability flags allow it
+- Current KIS investment-mode policy: paper/mock mode uses KIS integrated
+  realtime feeds as the default market-analysis authority and KRX-only
+  quote/session/order checks as the executable-order authority. Future live mode
+  also defaults to `execution_venue_mode = krx_only`; NXT venue routing remains
+  disabled until a separate owner approval and Ready-Set explicitly enable it.
 - SOR broker route policy: disabled/fallback before KIS transport unless future
   approved proof changes this
 - Broker/API direction: Korea Investment & Securities Open API (`KIS`)
@@ -493,9 +497,10 @@ Manual checklist review always includes:
   broker network adapters disabled until approved; broker-provided broker-adapter
   APIs allowed only after UNIT-009 docs verification plus explicit
   broker-network smoke approval
-- KIS broker adapter capability must expose explicit mode-gated support:
-  paper/mock KRX plus integrated market-data/account-truth helpers, real
-  investment KRX/NXT where supported, and SOR disabled unless separately proved
+- KIS broker adapter capability must expose explicit authority separation:
+  integrated realtime feeds are analysis authority, KRX is paper/mock execution
+  authority, NXT is disabled in paper/mock and future-only, and SOR remains
+  disabled unless separately proved and approved.
 - market-session-aware scheduler for Korea domestic trading days, holidays, and
   exceptional sessions
 - branch separation between 24-hour information ingestion and market-session

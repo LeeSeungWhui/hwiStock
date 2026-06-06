@@ -154,7 +154,7 @@ _DEFAULT_ARTIFACT_FILENAMES: Dict[str, str] = {
     "position": "positions.jsonl",
     "pnl": "pnl.json",
     "morning_report": "morning-0700.json",
-    "daily_close_report": "daily-close-2000.json",
+    "daily_close_report": "daily-close-mode-aware.json",
     "evidence": "paper-day.json",
 }
 

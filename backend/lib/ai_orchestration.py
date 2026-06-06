@@ -14,8 +14,10 @@ import re
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set
 
 try:
+    from lib import runtime_policy as rp
     from lib import strategy_risk as sr
 except ImportError:  # pragma: no cover - package-style imports
+    from backend.lib import runtime_policy as rp
     from backend.lib import strategy_risk as sr
 
 KST = timezone(timedelta(hours=9))
@@ -42,44 +44,42 @@ JOB_REGISTRY: Dict[str, Dict[str, Any]] = {
         "schedule": "top-of-hour, 24h",
         "model_role": "deepseek_pro",
         "model_name": DEEPSEEK_PRO_MODEL,
-        "input_schema": "intel_delta_bundle/v0",
+        "input_schema": "pro_hourly_input_bundle/v0",
         "output_schema": PRO_HOURLY_SCHEMA,
+        "market_analysis_feed_mode": rp.MARKET_ANALYSIS_FEED_INTEGRATED,
         "includes_market_regime": True,
         "soft_latency_seconds": 600,
         "hard_latency_seconds": 1200,
         "tool_use_enabled": False,
     },
     "deepseek_flash_trade_document_10m": {
-        "schedule": "every 10 minutes, market hours",
+        "schedule": "every 10 minutes during active investment-mode decision window",
         "model_role": "deepseek_flash",
         "model_name": DEEPSEEK_FLASH_MODEL,
-        "input_schema": "candidate_context_bundle/v0",
+        "input_schema": "flash_10m_input_bundle/v0",
         "output_schema": FLASH_TRADE_DOCUMENT_SCHEMA,
+        "market_analysis_feed_mode": rp.MARKET_ANALYSIS_FEED_INTEGRATED,
+        "execution_venue_mode": rp.EXECUTION_VENUE_KRX_ONLY,
         "max_action_symbols": 5,
         "requires_compiled_watch": True,
+        "requires_morning_watchlist_before_first_bucket": True,
         "requires_portfolio_or_order_state": True,
-        "soft_latency_seconds": 15,
-        "hard_latency_seconds": 30,
+        "soft_latency_seconds": 120,
+        "hard_latency_seconds": 600,
         "tool_use_enabled": False,
     },
-    "gpt_prompt_0650": {
-        "schedule": "06:50 KST",
-        "model_role": "local_orchestrator",
-        "input_schema": "overnight_analysis_bundle/v0",
-        "output_schema": "gpt_morning_prompt/v0",
-        "hard_cutoff_kst": "07:00",
+    "gpt_morning_watchlist_0715": {
+        "schedule": "07:15 KST",
+        "model_role": "local_codex_cli_browser_use_chatgpt_pro",
+        "input_schema": "morning_watchlist_input_bundle/v0",
+        "output_schema": "morning_watchlist/v0",
+        "approved_route": "codex_cli_local_browser_use",
+        "ssh_browser_use_allowed": False,
+        "artifact_or_safe_block_required_before_first_flash": True,
         "tool_use_enabled": False,
     },
-    "chatgpt_pro_morning_review": {
-        "schedule": "07:00 KST",
-        "model_role": "chatgpt_pro_browser",
-        "input_schema": "gpt_morning_prompt/v0",
-        "output_schema": "morning_review_report/v0",
-        "hard_cutoff_kst": "07:20",
-        "tool_use_enabled": False,
-    },
-    "daily_close_2000": {
-        "schedule": "20:00 KST",
+    "daily_close_mode_aware": {
+        "schedule": "paper after 15:30 KST; live at 20:00 KST",
         "model_role": "deepseek_pro",
         "input_schema": "daily_close_bundle/v0",
         "output_schema": "daily_close_report/v0",
@@ -169,7 +169,9 @@ def loadAiOrchestrationConfig() -> Dict[str, Any]:
         "DEEPSEEK_PRO_ENABLED": False,
         "DEEPSEEK_FLASH_ENABLED": False,
         "CHATGPT_PRO_BROWSER_REVIEW_ENABLED": False,
-        "GPT_PRO_MORNING_REVIEW_CUTOFF_KST": "07:20",
+        "GPT_PRO_MORNING_REVIEW_START_KST": "07:15",
+        "GPT_PRO_APPROVED_ROUTE": "codex_cli_local_browser_use",
+        "MORNING_WATCHLIST_REQUIRED_BEFORE_FIRST_FLASH": True,
         "DEEPSEEK_PRO_MODEL": DEEPSEEK_PRO_MODEL,
         "DEEPSEEK_FLASH_MODEL": DEEPSEEK_FLASH_MODEL,
         "AI_TOOL_USE_ENABLED": False,
@@ -206,8 +208,12 @@ def validateAiOrchestrationConfig(
         errors.append("deepseek_flash_must_be_disabled_by_default")
     if payload.get("CHATGPT_PRO_BROWSER_REVIEW_ENABLED") is not False:
         errors.append("chatgpt_pro_browser_review_must_be_disabled_by_default")
-    if payload.get("GPT_PRO_MORNING_REVIEW_CUTOFF_KST") != "07:20":
-        errors.append("gpt_pro_morning_review_cutoff_must_be_0720")
+    if payload.get("GPT_PRO_MORNING_REVIEW_START_KST") != "07:15":
+        errors.append("gpt_pro_morning_review_start_must_be_0715")
+    if payload.get("GPT_PRO_APPROVED_ROUTE") != "codex_cli_local_browser_use":
+        errors.append("gpt_pro_route_must_be_codex_cli_local_browser_use")
+    if payload.get("MORNING_WATCHLIST_REQUIRED_BEFORE_FIRST_FLASH") is not True:
+        errors.append("morning_watchlist_or_safe_block_required_before_first_flash")
     if payload.get("DEEPSEEK_PRO_MODEL") != DEEPSEEK_PRO_MODEL:
         errors.append("deepseek_pro_model_must_be_deepseek_v4_pro")
     if payload.get("DEEPSEEK_FLASH_MODEL") != DEEPSEEK_FLASH_MODEL:
@@ -263,6 +269,7 @@ def buildProHourlyMarketAnalysis(
     kis_market_snapshots: Optional[Sequence[Mapping[str, Any]]] = None,
     produced_at_kst: Optional[str] = None,
     provider_status: str = "safe_block_no_provider_network",
+    input_window_kst: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     produced_at = produced_at_kst or _default_now_kst()
     event_rows = [deepcopy(dict(event)) for event in (events or [])]
@@ -287,6 +294,8 @@ def buildProHourlyMarketAnalysis(
         "model_name": DEEPSEEK_PRO_MODEL,
         "prompt_schema_version": "pro_hourly_prompt/v0",
         "produced_at_kst": produced_at,
+        "input_window_kst": dict(input_window_kst or {}),
+        "market_analysis_feed_mode": rp.MARKET_ANALYSIS_FEED_INTEGRATED,
         "provider_status": provider_status,
         "validation_status": "safe_block" if safe_block else "accepted",
         "document_kind": "NO_TRADE" if safe_block else "MARKET_ANALYSIS",
@@ -294,6 +303,13 @@ def buildProHourlyMarketAnalysis(
         "market_data_refs": market_refs,
         "source_event_count": len(event_rows),
         "kis_market_snapshot_count": len(kis_rows),
+        "source_counts": {
+            "news_disclosure_events": len(event_rows),
+            "kis_market_snapshots": len(kis_rows),
+        },
+        "missing_source_warnings": []
+        if event_rows or kis_rows
+        else ["no_news_disclosure_or_market_events_in_hour_window"],
         "market_regime": {
             "included_in_pro_artifact": True,
             "session_analysis": "insufficient_inputs" if safe_block else "source_and_kis_context_available",
@@ -348,9 +364,41 @@ def buildFlashTradeDocument(
     portfolio_snapshot: Optional[Mapping[str, Any]] = None,
     order_state_snapshot: Optional[Mapping[str, Any]] = None,
     previous_trade_documents: Optional[Sequence[Mapping[str, Any]]] = None,
+    morning_watchlist: Optional[Mapping[str, Any]] = None,
+    investment_mode: str = rp.PAPER_INVESTMENT_MODE,
+    market_analysis_feed_mode: str = rp.MARKET_ANALYSIS_FEED_INTEGRATED,
+    execution_venue_mode: str = rp.EXECUTION_VENUE_KRX_ONLY,
     produced_at_kst: Optional[str] = None,
 ) -> Dict[str, Any]:
     produced_at = produced_at_kst or _default_now_kst()
+    produced_dt = _parse_kst_timestamp(produced_at, "produced_at_kst", [])
+    mode = rp.normalizeInvestmentMode(investment_mode)
+    market_feed = rp.normalizeMarketAnalysisFeedMode(market_analysis_feed_mode)
+    execution_mode = rp.normalizeExecutionVenueMode(execution_venue_mode)
+    morning = deepcopy(dict(morning_watchlist or {}))
+    morning_ref = str(
+        morning.get("artifact_id")
+        or morning.get("watchlist_id")
+        or morning.get("safe_block_id")
+        or ""
+    ).strip()
+    if produced_dt and rp.isFirstFlashBucket(produced_dt, investment_mode=mode) and not morning_ref:
+        sentinel = buildNoTradeSentinel(
+            job_id="deepseek_flash_trade_document_10m",
+            reason="missing_morning_watchlist_for_first_flash_bucket",
+            produced_at_kst=produced_at,
+        )
+        sentinel.update(
+            {
+                "investment_mode": mode,
+                "market_analysis_feed_mode": market_feed,
+                "execution_venue_mode": execution_mode,
+                "morning_watchlist_ref": "",
+                "morning_watchlist_required": True,
+                "max_cash_deployment_ratio": rp.MAX_CASH_DEPLOYMENT_RATIO,
+            }
+        )
+        return sentinel
     watch_rows = [deepcopy(dict(row)) for row in (compiled_watch or [])]
     event_rows = [deepcopy(dict(event)) for event in (recent_events or [])]
     market_rows = [deepcopy(dict(row)) for row in (kis_market_snapshots or [])]
@@ -392,9 +440,10 @@ def buildFlashTradeDocument(
     ]
     portfolio_ref = str(portfolio.get("artifact_id") or portfolio.get("snapshot_id") or "art_portfolio_fixture").strip()
     order_state_ref = str(order_state.get("artifact_id") or order_state.get("snapshot_id") or "art_order_state_fixture").strip()
+    order_open, order_close = rp.orderWindowForMode(mode)
 
     actions: List[Dict[str, Any]] = []
-    for row in watch_rows[:5]:
+    for index, row in enumerate(watch_rows[:5], start=1):
         symbol = str(row.get("symbol") or row.get("ticker") or "").strip()
         if not symbol:
             continue
@@ -408,26 +457,56 @@ def buildFlashTradeDocument(
         entry_intent = row.get("entry_intent") if isinstance(row.get("entry_intent"), Mapping) else {}
         exit_plan = row.get("exit_plan") if isinstance(row.get("exit_plan"), Mapping) else {}
         action = "NO_TRADE" if conflict_reasons else "WAIT_BUY"
+        entry_zone = list(entry_intent.get("entry_zone") or entry_intent.get("entryZone") or [])
+        entry_price_limit = entry_zone[0] if entry_zone else entry_intent.get("entry_price_limit")
+        stop_loss = entry_intent.get("stop_loss") or exit_plan.get("stop_loss")
+        take_profit = entry_intent.get("take_profit") or exit_plan.get("take_profit")
+        valid_until_kst = (
+            entry_intent.get("valid_until_kst")
+            or entry_intent.get("cancel_if_not_filled_until")
+            or row.get("valid_until_kst")
+        )
+        if not valid_until_kst:
+            valid_until_kst = (produced_dt + timedelta(minutes=10)).isoformat() if produced_dt else produced_at
+        bucket_hhmm = produced_dt.astimezone(KST).strftime("%H%M") if produced_dt else "0000"
         actions.append(
             {
+                "action_id": f"act_{symbol}_{bucket_hhmm}_{index:02d}",
+                "symbol": symbol,
                 "ticker": symbol,
                 "name": str(row.get("name") or row.get("symbol_name") or symbol),
                 "action": action,
-                "entry_zone": list(entry_intent.get("entry_zone") or entry_intent.get("entryZone") or []),
-                "take_profit": entry_intent.get("take_profit") or exit_plan.get("take_profit"),
-                "stop_loss": entry_intent.get("stop_loss") or exit_plan.get("stop_loss"),
+                "side": "BUY" if action in {"WAIT_BUY", "BUY_NOW"} else ("SELL" if action == "SELL" else action),
+                "quantity": int(entry_intent.get("quantity") or row.get("quantity") or 0),
+                "entry_zone": entry_zone,
+                "entry_price_limit": entry_price_limit or 0,
+                "target_price": take_profit or 0,
+                "take_profit": take_profit,
+                "stop_loss_price": stop_loss or 0,
+                "stop_loss": stop_loss,
                 "trailing_stop_pct": entry_intent.get("trailing_stop_pct") or exit_plan.get("trailing_stop_pct"),
-                "cancel_if_not_filled_until": entry_intent.get("cancel_if_not_filled_until")
-                or row.get("valid_until_kst"),
+                "cancel_if_not_filled_until": valid_until_kst,
+                "valid_until": valid_until_kst,
+                "valid_until_kst": valid_until_kst,
                 "position_size_pct": entry_intent.get("position_size_pct"),
+                "max_cash_deployment_ratio": rp.MAX_CASH_DEPLOYMENT_RATIO,
                 "source_refs": source_refs or list(row.get("source_ids") or []),
+                "pro_refs": [str(dict(pro_artifact).get("artifact_id") or "")],
+                "morning_watchlist_ref": morning_ref,
                 "market_data_refs": market_refs,
                 "portfolio_state_refs": [portfolio_ref, order_state_ref],
                 "portfolio_conflict": {
+                    "already_holding": "already_holding_symbol" in conflict_reasons,
+                    "pending_order_exists": "pending_order_exists" in conflict_reasons,
+                    "active_exit_exists": False,
+                    "cooldown_active": False,
+                    "position_locked": False,
                     "has_conflict": bool(conflict_reasons),
                     "reasons": conflict_reasons,
                 },
                 "reason": "portfolio/order conflict" if conflict_reasons else "compiled watch candidate with source/KIS context",
+                "risk_flags": conflict_reasons,
+                "executable_intent_allowed": False,
                 "paper_only": True,
                 "no_live_order": True,
             }
@@ -449,9 +528,16 @@ def buildFlashTradeDocument(
         "model_name": DEEPSEEK_FLASH_MODEL,
         "prompt_schema_version": "flash_trade_document_prompt/v0",
         "produced_at_kst": produced_at,
+        "investment_mode": mode,
+        "market_analysis_feed_mode": market_feed,
+        "execution_venue_mode": execution_mode,
+        "trade_window_kst": f"{order_open.strftime('%H:%M')}-{order_close.strftime('%H:%M')}",
         "bucket_id": _ten_minute_bucket_id(produced_at),
         "document_kind": "TRADE_ACTIONS",
+        "pro_hourly_report_ref": str(dict(pro_artifact).get("artifact_id") or ""),
         "pro_hourly_ref": str(dict(pro_artifact).get("artifact_id") or ""),
+        "morning_watchlist_ref": morning_ref,
+        "morning_watchlist_required": bool(produced_dt and rp.isFirstFlashBucket(produced_dt, investment_mode=mode)),
         "source_refs": source_refs,
         "market_data_refs": market_refs,
         "compiled_watch_refs": [
@@ -465,6 +551,8 @@ def buildFlashTradeDocument(
             str(doc.get("artifact_id") or doc.get("document_id") or "") for doc in previous_docs
         ],
         "actions": actions,
+        "max_holdings_after_trade": rp.MAX_SIMULTANEOUS_HOLDINGS,
+        "max_cash_deployment_ratio": rp.MAX_CASH_DEPLOYMENT_RATIO,
         "validation_status": "pending",
         "entry_unlocked": False,
         "no_broker_call": True,
@@ -484,6 +572,16 @@ def validateFlashTradeDocument(
 
     if payload.get("schema_version") != FLASH_TRADE_DOCUMENT_SCHEMA:
         errors.append("schema_version_must_be_flash_trade_document_v0")
+    if payload.get("investment_mode") not in {None, rp.PAPER_INVESTMENT_MODE, rp.LIVE_INVESTMENT_MODE}:
+        errors.append("investment_mode_invalid")
+    if payload.get("market_analysis_feed_mode") not in {None, rp.MARKET_ANALYSIS_FEED_INTEGRATED}:
+        errors.append("market_analysis_feed_mode_must_be_integrated")
+    if payload.get("execution_venue_mode") not in {None, rp.EXECUTION_VENUE_KRX_ONLY}:
+        errors.append("execution_venue_mode_must_be_krx_only")
+    if payload.get("document_kind") != "NO_TRADE" and not payload.get("pro_hourly_report_ref"):
+        errors.append("pro_hourly_report_ref_required")
+    if payload.get("morning_watchlist_required") is True and not payload.get("morning_watchlist_ref"):
+        errors.append("morning_watchlist_ref_required_for_first_flash_bucket")
     if payload.get("model_name") != DEEPSEEK_FLASH_MODEL:
         errors.append("flash_model_must_be_deepseek_v4_flash")
     if payload.get("no_broker_call") is not True or payload.get("no_order_submission") is not True:
@@ -522,8 +620,14 @@ def validateFlashTradeDocument(
         if action_type not in {"WAIT_BUY", "BUY_NOW", "HOLD", "SELL", "NO_TRADE"}:
             errors.append(f"actions_item_{index}_action_invalid")
         if action_type in {"WAIT_BUY", "BUY_NOW"}:
+            if str(action.get("side") or "").strip().upper() not in {"BUY"}:
+                errors.append(f"actions_item_{index}_side_buy_required")
+            if action.get("valid_until_kst") in (None, ""):
+                errors.append(f"actions_item_{index}_valid_until_kst_required")
             if not action.get("source_refs"):
                 errors.append(f"actions_item_{index}_source_refs_required")
+            if not action.get("pro_refs"):
+                errors.append(f"actions_item_{index}_pro_refs_required")
             if not action.get("market_data_refs"):
                 errors.append(f"actions_item_{index}_market_data_refs_required")
             if not action.get("portfolio_state_refs"):
@@ -966,8 +1070,8 @@ def buildAiFallbackReport(
     produced_at = now_kst or _default_now_kst()
     fallback_reason = str(reason or "").strip() or "ai_unavailable"
     alternate_job_id = None
-    if job_id == "chatgpt_pro_morning_review":
-        alternate_job_id = "gpt_prompt_0650"
+    if job_id == "gpt_morning_watchlist_0715":
+        alternate_job_id = "deepseek_pro_hourly"
 
     return {
         "schema_version": "ai_fallback_report/v0",

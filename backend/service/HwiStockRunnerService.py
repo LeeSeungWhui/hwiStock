@@ -16,6 +16,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 from zoneinfo import ZoneInfo
 
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(_BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_ROOT))
+
+try:
+    from lib import runtime_policy as rp
+except ImportError:  # pragma: no cover - package-style imports
+    from backend.lib import runtime_policy as rp
+
 KST = ZoneInfo("Asia/Seoul")
 DEFAULT_BIND_HOST = "127.0.0.1"
 _LOOPBACK_LITERALS = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -188,35 +197,8 @@ def parseKstTime(value: Optional[str]) -> datetime:
 
 
 def routeVenueAtKst(at: datetime) -> Dict[str, Any]:
-    """Simple KRX/NXT/idle routing for 08:00-20:00 KST envelope."""
-    local = at.astimezone(KST)
-    t = local.time()
-    nxt_pre = time(8, 0) <= t < time(9, 0)
-    krx = time(9, 0) <= t < time(15, 0)
-    nxt_post = time(15, 0) <= t < time(20, 0)
-    in_envelope = time(8, 0) <= t < time(20, 0)
-
-    if not in_envelope:
-        venue = "idle"
-        session = "off_hours"
-    elif krx:
-        venue = "KRX"
-        session = "krx_regular"
-    elif nxt_pre or nxt_post:
-        venue = "NXT"
-        session = "nxt_extended"
-    else:
-        venue = "idle"
-        session = "off_hours"
-
-    return {
-        "atKst": local.isoformat(),
-        "dateKst": local.date().isoformat(),
-        "venue": venue,
-        "session": session,
-        "inTradingEnvelope": in_envelope,
-        "routingPolicy": "KRX 09:00-15:00; NXT 08:00-09:00 and 15:00-20:00; idle otherwise",
-    }
+    """Execution route policy: integrated feed for analysis, KRX-only for paper orders."""
+    return rp.routeForExecutionAt(at, env=os.environ)
 
 
 def calendarPath() -> Path:
@@ -291,7 +273,7 @@ def calendarSessionState(dayPayload: Mapping[str, Any], at: datetime) -> Dict[st
     )
     krxSessionOpen = krxOpen <= t < krxClose
     krxOrderSessionOpen = krxOrderOpen <= t < krxOrderClose
-    nxtSessionOpen = bool(dayPayload.get("nxtEnabled", dayPayload.get("nxt_enabled", True))) and nxtOpen <= t < nxtClose
+    nxtSessionOpen = bool(dayPayload.get("nxtEnabled", dayPayload.get("nxt_enabled", False))) and nxtOpen <= t < nxtClose
     return {
         "sessionOpen": krxSessionOpen or nxtSessionOpen,
         "krxSessionOpen": krxSessionOpen,
@@ -485,7 +467,7 @@ def alertChannelsMetadata() -> Dict[str, Any]:
             {"type": "systemd_journal", "enabled": True},
             {"type": "file", "path": f"data/alerts/{today}/alerts.jsonl", "enabled": True},
             {"type": "dashboard_audit_panel", "enabled": False, "note": "when implemented"},
-            {"type": "daily_close_report", "path": "daily-close-2000.md", "enabled": True},
+            {"type": "daily_close_report", "path": "daily-close-mode-aware.md", "enabled": True},
         ],
     }
 
@@ -534,6 +516,10 @@ def getRunnerStatus(atKst: Optional[str] = None) -> Dict[str, Any]:
         "runnerId": "hwistock-paper-runner-skeleton",
         "mode": "paper_sandbox",
         "operationMode": os.getenv("HWISTOCK_OPERATION_MODE", "observe_only"),
+        "investmentMode": rp.runtimePolicyFromEnv(os.environ)["investment_mode"],
+        "marketAnalysisFeedMode": rp.runtimePolicyFromEnv(os.environ)["market_analysis_feed_mode"],
+        "executionVenueMode": rp.runtimePolicyFromEnv(os.environ)["execution_venue_mode"],
+        "nxtEnabled": rp.runtimePolicyFromEnv(os.environ)["nxt_enabled"],
         "liveOrdersEnabled": False,
         "brokerCallsEnabled": False,
         "orderExecution": "no_order_dry_run",
@@ -569,6 +555,13 @@ def getRunnerStatus(atKst: Optional[str] = None) -> Dict[str, Any]:
             "paperObservationAccepted": False,
             "note": "live/production readiness is not applicable to KIS paper/mock experiment startup; paper experiment readiness is evaluated by the continuous KIS paper runner",
         },
+        "currentReadiness": {
+            "paper_experiment_start": "go_target",
+            "paper_order_submission_ready": "conditional_go",
+            "full_owner_defined_ai_loop_ready": "follow_up_required",
+            "live_money_operational_readiness": "not_applicable",
+            "production_quality_readiness": "partial_non_blocking",
+        },
     }
 
 
@@ -586,8 +579,10 @@ def previewRoute(atKst: str) -> Dict[str, Any]:
 def dailyCloseTemplate() -> Dict[str, Any]:
     today = date.today().isoformat()
     return {
-        "reportName": "daily-close-2000.md",
+        "reportName": "daily-close-mode-aware.md",
         "date": today,
+        "paperTargetKst": "15:30",
+        "futureLiveTargetKst": "20:00",
         "sections": [
             "runtime_duration",
             "mode",

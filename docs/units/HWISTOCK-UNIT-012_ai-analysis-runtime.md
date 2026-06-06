@@ -81,12 +81,15 @@ The current contract is:
 - Paper/mock Flash buckets that can create new entry intents are limited to
   `09:00-15:00 KST`. KRX market-data context after `15:00 KST` through
   `15:30 KST` may support close/reconciliation/watch records only.
-- ChatGPT Pro / morning watchlist: optional `07:15 KST` external morning review
-  through **Codex CLI local browser-use** when scoped. The CLI must run on the
+- ChatGPT Pro / morning watchlist: the GPT Pro route is optional and
+  fallback-capable, but the first Flash bucket requires either
+  `morning_watchlist/v0` or an explicit `NO_TRADE` safe-block. When GPT Pro is
+  used, it runs at `07:15 KST` through **Codex CLI local browser-use** on the
   local desktop/workstation against the user's logged-in local Chrome ChatGPT
-  Pro session. SSH browser-use is forbidden. The path must write
-  `morning_watchlist/v0` or a named safe-block before the first Flash bucket for
-  the active investment mode (`09:00 KST` paper/mock, `08:00 KST` future live).
+  Pro session. SSH browser-use is forbidden.
+- Market-analysis feed authority is `integrated` by default. Pro hourly, Flash,
+  watchlist scoring, and market context use KIS integrated realtime feed
+  artifacts; executable order checks remain KRX-only.
 
 AI output remains non-executable. The deterministic strategy/risk/order layers
 own all broker-order eligibility.
@@ -104,7 +107,8 @@ own all broker-order eligibility.
   - `flash_trade_document/v0`
   - `gpt_morning_prompt/v0`
   - `morning_watchlist/v0`
-  - `morning_review_report/v0`
+  - explicit `NO_TRADE` safe-block artifact before the first Flash bucket when
+    no acceptable morning watchlist is available
   - `daily_close_report/v0`
 - `flash_trade_document/v0` is one document per Flash 10-minute decision tick.
   Its `actions` list must contain at most five symbols. For each action it must
@@ -168,11 +172,13 @@ This unit should make the runtime match the profile:
 - DeepSeek Pro hourly artifact by official model id;
 - DeepSeek Flash 10-minute trade-document artifact by official model id;
 - separate schedule/command paths for Pro and Flash;
+- `market_analysis_feed_mode=integrated` and
+  `execution_venue_mode=krx_only` in Flash/runtime artifacts;
 - `07:15 KST` morning watchlist path and first-Flash dependency;
 - paper/mock `09:00-15:00 KST` decision window versus `15:30 KST`
   market-data/close context;
 - `NO_TRADE` safe blocks when source, provider, schema, freshness, or session
   gates fail;
-- ChatGPT Pro as a separate optional local Codex CLI browser-use review path,
-  not part of the always-on runtime loop; never use SSH browser-use for this
-  path.
+- ChatGPT Pro as a separate optional local Codex CLI browser-use route, while
+  the morning watchlist artifact or explicit safe-block remains mandatory before
+  the first Flash bucket; never use SSH browser-use for this path.

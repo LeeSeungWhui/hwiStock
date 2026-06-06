@@ -8,6 +8,8 @@ profile_id: PROFILE-HWISTOCK
 updated_at: 2026-06-06
 current_authority_for:
   - investment_mode_schedule
+  - integrated_market_analysis_feed_policy
+  - krx_only_execution_authority
   - morning_watchlist_requirement
   - gpt_pro_local_browser_use_route
   - flash_10m_trade_document_requirement
@@ -51,14 +53,32 @@ The runtime must separate operation stage from investment mode:
 | --- | --- | --- |
 | operation stage | `paper_experiment`, `live_production`, future dry-run labels | says whether the current run is an experiment, live operation, or non-order validation |
 | investment mode | `paper`, `live` | says which broker-market capability set and schedule apply |
+| market-analysis feed mode | `integrated` | says which KIS feed family is the default input for AI/context/ranking |
+| execution venue mode | `krx_only`, future `krx_nxt` | says which venue can authorize broker submit |
 
 Canonical docs variable:
 
 - `HWISTOCK_INVESTMENT_MODE=paper|live`
+- `HWISTOCK_MARKET_ANALYSIS_FEED_MODE=integrated`
+- `HWISTOCK_EXECUTION_VENUE_MODE=krx_only`
+- `HWISTOCK_NXT_ENABLED=false`
 
 Existing KIS-specific env/config names may temporarily map into this canonical
 mode during implementation, but Ready-Set docs must reason in terms of
 `HWISTOCK_INVESTMENT_MODE`.
+
+Market-analysis feed policy:
+
+- hwiStock uses KIS integrated realtime feeds as the default market-analysis
+  input.
+- Integrated feeds are used for market context, DeepSeek Pro hourly reports,
+  Flash 10-minute trade documents, ranking/scoring, and watchlist updates.
+- KRX quote/session/order-window evidence remains authoritative for executable
+  order checks in paper/mock mode.
+- Paper/mock mode never enables NXT broker submission and never uses NXT-only
+  feeds as execution authority.
+- Separate KRX/NXT feeds are diagnostic-only unless a future live-mode
+  Ready-Set explicitly enables NXT venue routing.
 
 ## 3. Mode-Aware Schedule Contract
 
@@ -68,6 +88,8 @@ mode during implementation, but Ready-Set docs must reason in terms of
 | `deepseek_pro_hourly` | top of every hour, 24h | top of every hour, 24h |
 | `gpt_morning_watchlist` | starts `07:15 KST`, hard cutoff before the first paper Flash bucket at `09:00 KST` | starts `07:15 KST`, hard cutoff before the first live Flash bucket at `08:00 KST` |
 | `kis_intraday_market_collector` | KRX + integrated market-data context during `09:00-15:30 KST` where supported | KRX/NXT/integrated market-data context during `08:00-20:00 KST` where capability flags prove support |
+| market-analysis feed authority | integrated feed by default | integrated feed by default |
+| execution venue authority | KRX-only; NXT disabled | KRX-only by default; NXT disabled until future owner approval and Ready-Set |
 | `deepseek_flash_decision_10m` | every 10 minutes during `09:00-15:00 KST`; first paper Flash must reference the morning watchlist or safe-block | every 10 minutes during `08:00-20:00 KST`; first live Flash must reference the morning watchlist or safe-block |
 | `trade_document_executor` / broker order submit | KIS paper/mock KRX cash orders only during `09:00-15:00 KST` and only inside a valid `paper_experiment` session approval | venue/capability based KRX/NXT only after future live approval and proof |
 | daily close / operation summary | after paper KRX market-data close, target `15:30 KST`; no new paper entries after `15:00 KST` | target `20:00 KST` |
@@ -109,6 +131,10 @@ operation scenario is ready:
 The GPT Pro morning path is a bounded external-review sidecar, not part of the
 broker executor and not an SSH browser task.
 
+The GPT Pro route is optional/fallback-capable, but a
+`morning_watchlist/v0` artifact or explicit `NO_TRADE` safe-block artifact is
+mandatory before the first Flash bucket.
+
 Required route:
 
 ```text
@@ -145,8 +171,8 @@ The requested GPT Pro output format must be `morning_watchlist/v0` compatible:
 - no executable broker-order fields.
 
 If local Codex CLI or local browser-use is unavailable, the morning path must
-write a named safe-block or use the DeepSeek-only fallback. It must not silently
-switch to SSH browser-use.
+write a named `NO_TRADE` safe-block artifact or a DeepSeek-derived
+`morning_watchlist/v0` artifact. It must not silently switch to SSH browser-use.
 
 Prompt template source:
 

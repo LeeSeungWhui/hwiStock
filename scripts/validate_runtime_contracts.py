@@ -258,6 +258,35 @@ def validate_quantity_rule(artifact: Mapping[str, Any], errors: list[str]) -> No
         return
     if computed_quantity % lot_size != 0:
         errors.append("quantity_rule_lot_rounding_invalid")
+    dynamic_fields = [
+        "current_position_value_krw",
+        "pending_buy_notional_krw",
+        "new_order_notional_krw",
+        "effective_total_deposit_krw",
+        "max_cash_deployment_ratio",
+        "max_deployable_notional_krw",
+        "projected_deployed_notional_krw",
+    ]
+    if any(field in rule for field in dynamic_fields):
+        if any(
+            not isinstance(rule.get(field), (int, float)) or isinstance(rule.get(field), bool)
+            for field in dynamic_fields
+        ):
+            errors.append("quantity_rule_dynamic_exposure_fields_required")
+            return
+        current_position = float(rule["current_position_value_krw"])
+        pending_buy = float(rule["pending_buy_notional_krw"])
+        new_order = float(rule["new_order_notional_krw"])
+        effective_total = float(rule["effective_total_deposit_krw"])
+        deployment_ratio = float(rule["max_cash_deployment_ratio"])
+        expected_cap = min(float(rule["risk_overlay_capital_krw"]), effective_total) * deployment_ratio
+        projected = current_position + pending_buy + new_order
+        if abs(float(rule["max_deployable_notional_krw"]) - expected_cap) > 1:
+            errors.append("quantity_rule_dynamic_exposure_cap_mismatch")
+        if abs(float(rule["projected_deployed_notional_krw"]) - projected) > 1:
+            errors.append("quantity_rule_dynamic_exposure_projection_mismatch")
+        if projected > expected_cap:
+            errors.append("quantity_rule_dynamic_exposure_breach")
     risk_capital = float(rule["risk_overlay_capital_krw"])
     reserve_ratio = float(rule["minimum_cash_reserve_ratio"])
     already_reserved = float(rule["reserved_cash_before_order"])

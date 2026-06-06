@@ -72,7 +72,9 @@ def test_unit013_kis_collector_is_mode_aware_and_blocks_extra_endpoint():
     assert payload["schema_version"] == "kis_market_snapshot/v0"
     assert payload["status"] == "safe_block_paper_read_network_disabled"
     assert payload["signal_input_allowlist"] == list(kis_collector.ALLOWED_SIGNAL_INPUTS)
-    assert payload["enabled_venues"] == ["KRX", "INTEGRATED"]
+    assert payload["market_analysis_feed_mode"] == "integrated"
+    assert payload["execution_venue_mode"] == "krx_only"
+    assert payload["enabled_venues"] == ["INTEGRATED", "KRX"]
     assert payload["order_cancel_modify_called"] is False
 
 
@@ -82,19 +84,34 @@ def test_unit013_kis_collector_gates_nxt_by_investment_mode():
     )
     paper_validation = kis_collector.validateKisSignalInputScope(paper_config)
     assert paper_config["investment_mode"] == "paper"
-    assert paper_config["enabled_venues"] == ["KRX", "INTEGRATED"]
+    assert paper_config["enabled_venues"] == ["INTEGRATED", "KRX"]
     assert paper_validation["ok"] is False
     assert "kis_signal_input_not_enabled_for_mode:nxt_realtime_trade_price_ws" in paper_validation["errors"]
+
+    live_default_config = kis_collector.loadKisSignalCollectorConfig(
+        {
+            "HWISTOCK_KIS_INVESTMENT_MODE": "live",
+            "HWISTOCK_KIS_SIGNAL_INPUTS": "nxt_realtime_trade_price_ws",
+        }
+    )
+    live_default_validation = kis_collector.validateKisSignalInputScope(live_default_config)
+    assert live_default_config["investment_mode"] == "live"
+    assert live_default_config["enabled_venues"] == ["INTEGRATED", "KRX"]
+    assert live_default_validation["ok"] is False
+    assert "kis_signal_input_not_enabled_for_mode:nxt_realtime_trade_price_ws" in live_default_validation["errors"]
 
     real_config = kis_collector.loadKisSignalCollectorConfig(
         {
             "HWISTOCK_KIS_INVESTMENT_MODE": "real",
+            "HWISTOCK_EXECUTION_VENUE_MODE": "krx_nxt",
+            "HWISTOCK_NXT_ENABLED": "true",
+            "HWISTOCK_NXT_READY_SET_APPROVED": "true",
             "HWISTOCK_KIS_SIGNAL_INPUTS": "nxt_realtime_trade_price_ws",
         }
     )
     real_validation = kis_collector.validateKisSignalInputScope(real_config)
-    assert real_config["investment_mode"] == "real"
-    assert real_config["enabled_venues"] == ["KRX", "INTEGRATED", "NXT"]
+    assert real_config["investment_mode"] == "live"
+    assert real_config["enabled_venues"] == ["INTEGRATED", "KRX", "NXT"]
     assert real_validation["ok"] is True
 
 

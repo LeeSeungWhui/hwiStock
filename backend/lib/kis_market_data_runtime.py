@@ -25,17 +25,19 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 try:
+    from lib import runtime_policy as rp
     from lib.kis_paper_token_cache import loadKisPaperAccessToken, tokenCacheRevokeSkippedStep
     from service.kis_paper_adapter import KisPaperAdapter, UrllibJsonTransport
 except ImportError:  # pragma: no cover
+    from backend.lib import runtime_policy as rp
     from backend.lib.kis_paper_token_cache import loadKisPaperAccessToken, tokenCacheRevokeSkippedStep
     from backend.service.kis_paper_adapter import KisPaperAdapter, UrllibJsonTransport
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_ROOT = Path(os.getenv("HWISTOCK_DATA_DIR", str(REPO_ROOT / "data")))
 
-PAPER_MODE = "paper"
-REAL_MODE = "real"
+PAPER_MODE = rp.PAPER_INVESTMENT_MODE
+REAL_MODE = rp.LIVE_INVESTMENT_MODE
 
 REALTIME_SIGNAL_SPECS: Dict[str, Dict[str, str]] = {
     "krx_realtime_trade_price_ws": {
@@ -101,15 +103,20 @@ REST_SIGNAL_INPUTS: tuple[str, ...] = (
     "rest_program_trading_aggregate",
 )
 
-PAPER_SIGNAL_INPUTS: tuple[str, ...] = (
-    "krx_realtime_trade_price_ws",
-    "krx_realtime_orderbook_ws",
-    "krx_market_operation_ws",
+INTEGRATED_ANALYSIS_SIGNAL_INPUTS: tuple[str, ...] = (
     "integrated_realtime_trade_price_ws",
     "integrated_realtime_orderbook_ws",
     "integrated_market_operation_ws",
     *REST_SIGNAL_INPUTS,
 )
+
+KRX_EXECUTION_SIGNAL_INPUTS: tuple[str, ...] = (
+    "krx_realtime_trade_price_ws",
+    "krx_realtime_orderbook_ws",
+    "krx_market_operation_ws",
+)
+
+PAPER_SIGNAL_INPUTS: tuple[str, ...] = INTEGRATED_ANALYSIS_SIGNAL_INPUTS
 
 REAL_SIGNAL_INPUTS: tuple[str, ...] = (
     *PAPER_SIGNAL_INPUTS,
@@ -237,26 +244,21 @@ def _int_env(env: Mapping[str, str], key: str, default: int) -> int:
 
 
 def normalizeKisInvestmentMode(value: Any) -> str:
-    raw = str(value or "").strip().lower().replace("-", "_")
-    if raw in {"real", "real_investment", "prod", "production", "cash"}:
-        return REAL_MODE
-    return PAPER_MODE
+    return rp.normalizeInvestmentMode(value)
 
 
-def allowedSignalInputsForMode(mode: str) -> tuple[str, ...]:
+def allowedSignalInputsForMode(mode: str, *, nxt_enabled: bool = False) -> tuple[str, ...]:
     normalized = normalizeKisInvestmentMode(mode)
-    return REAL_SIGNAL_INPUTS if normalized == REAL_MODE else PAPER_SIGNAL_INPUTS
+    if normalized == REAL_MODE and nxt_enabled:
+        return REAL_SIGNAL_INPUTS
+    return PAPER_SIGNAL_INPUTS
 
 
 def loadKisSignalCollectorConfig(env: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
     source = env if env is not None else os.environ
-    investment_mode = normalizeKisInvestmentMode(
-        source.get("HWISTOCK_KIS_INVESTMENT_MODE")
-        or source.get("HWISTOCK_INVESTMENT_MODE")
-        or source.get("HWISTOCK_TRADING_MODE")
-        or PAPER_MODE
-    )
-    allowed_inputs = list(allowedSignalInputsForMode(investment_mode))
+    policy = rp.runtimePolicyFromEnv(source)
+    investment_mode = policy["investment_mode"]
+    allowed_inputs = list(allowedSignalInputsForMode(investment_mode, nxt_enabled=policy["nxt_enabled"]))
     raw_inputs = str(source.get("HWISTOCK_KIS_SIGNAL_INPUTS") or "").strip()
     inputs = [
         item.strip()
@@ -267,10 +269,16 @@ def loadKisSignalCollectorConfig(env: Optional[Mapping[str, str]] = None) -> Dic
         "schema_version": "kis_signal_collector_config/v0",
         "collector_id": "kis_intraday_market_collector",
         "investment_mode": investment_mode,
-        "enabled_venues": ["KRX", "INTEGRATED", "NXT"] if investment_mode == REAL_MODE else ["KRX", "INTEGRATED"],
+        "market_analysis_feed_mode": policy["market_analysis_feed_mode"],
+        "execution_venue_mode": policy["execution_venue_mode"],
+        "analysis_authority": "integrated",
+        "execution_authority": "KRX",
+        "nxt_enabled": policy["nxt_enabled"],
+        "enabled_venues": ["INTEGRATED", "KRX", "NXT"] if policy["nxt_enabled"] else ["INTEGRATED", "KRX"],
         "paper_read_network_enabled": _bool_env(source, "HWISTOCK_KIS_MARKET_READ_NETWORK_ENABLED", False),
         "requested_inputs": inputs,
         "allowed_inputs": allowed_inputs,
+        "default_analysis_inputs": list(INTEGRATED_ANALYSIS_SIGNAL_INPUTS),
         "all_known_inputs": list(ALL_SIGNAL_INPUTS),
         "forbidden_transport": "order/cancel/modify/balance/buyable",
         "sample_symbol": str(source.get("HWISTOCK_KIS_HEALTH_SYMBOL", "005930")).strip() or "005930",
@@ -299,6 +307,9 @@ def validateKisSignalInputScope(config: Mapping[str, Any]) -> Dict[str, Any]:
         "requested_inputs": requested,
         "allowed_inputs": sorted(allowed),
         "investment_mode": normalizeKisInvestmentMode(config.get("investment_mode")),
+        "market_analysis_feed_mode": str(config.get("market_analysis_feed_mode") or rp.MARKET_ANALYSIS_FEED_INTEGRATED),
+        "execution_venue_mode": str(config.get("execution_venue_mode") or rp.EXECUTION_VENUE_KRX_ONLY),
+        "nxt_enabled": bool(config.get("nxt_enabled")),
         "enabled_venues": list(config.get("enabled_venues") or []),
         "order_cancel_modify_called": False,
     }
@@ -307,10 +318,13 @@ def validateKisSignalInputScope(config: Mapping[str, Any]) -> Dict[str, Any]:
 def buildKisSignalEndpointAudit(config: Mapping[str, Any]) -> Dict[str, Any]:
     validation = validateKisSignalInputScope(config)
     entries = []
+    allowed_inputs = set(validation["allowed_inputs"])
     for input_id in validation["requested_inputs"]:
         entry = dict(INPUT_ENDPOINT_AUDIT.get(input_id) or {})
         entry["input_id"] = input_id
-        entry["allowed"] = input_id in ALLOWED_SIGNAL_INPUTS
+        entry["allowed"] = input_id in allowed_inputs
+        entry["analysis_authority"] = entry.get("venue") == "INTEGRATED" or input_id in REST_SIGNAL_INPUTS
+        entry["execution_authority"] = entry.get("venue") == "KRX"
         entry["broker_order_surface"] = False
         entry["endpoint_called"] = False
         entries.append(entry)
@@ -351,6 +365,11 @@ def collectKisMarketDataOnce(
         "produced_at_kst": now.isoformat(),
         "collector_scope": f"kis_market_mode_{config['investment_mode']}",
         "investment_mode": config["investment_mode"],
+        "market_analysis_feed_mode": config["market_analysis_feed_mode"],
+        "execution_venue_mode": config["execution_venue_mode"],
+        "analysis_authority": config["analysis_authority"],
+        "execution_authority": config["execution_authority"],
+        "nxt_enabled": config["nxt_enabled"],
         "enabled_venues": config["enabled_venues"],
         "status": "pending",
         "signal_input_allowlist": list(config["allowed_inputs"]),
@@ -361,7 +380,7 @@ def collectKisMarketDataOnce(
         "live_domain_calls_made": live_domain_calls_made,
         "raw_response_stored": False,
         "credential_values_printed": False,
-        "unsupported_nxt_sor_policy": "nxt_enabled_only_in_real_mode",
+        "unsupported_nxt_sor_policy": "nxt_enabled_only_after_live_ready_set_approval",
     }
 
     if not validation["ok"]:

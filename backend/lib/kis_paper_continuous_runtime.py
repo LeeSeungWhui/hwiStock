@@ -23,6 +23,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 try:
+    from lib import runtime_policy as rp
     from lib.kis_paper_token_cache import (
         invalidateKisPaperAccessToken,
         loadKisPaperAccessToken,
@@ -38,6 +39,7 @@ try:
         loadKisPaperCapabilityFlags,
     )
 except ImportError:  # pragma: no cover
+    from backend.lib import runtime_policy as rp
     from backend.lib.kis_paper_token_cache import (
         invalidateKisPaperAccessToken,
         loadKisPaperAccessToken,
@@ -111,6 +113,7 @@ def loadContinuousPaperRunnerConfig(
     now: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     source = env if env is not None else os.environ
+    runtime_policy = rp.runtimePolicyFromEnv(source)
     operation_mode = normalizeOperationMode(source.get("HWISTOCK_OPERATION_MODE"))
     paper_order_requested = _bool_env(source, "HWISTOCK_KIS_PAPER_ORDER_ENABLED", False)
     paper_order_approval = loadPaperOrderApproval(
@@ -128,6 +131,10 @@ def loadContinuousPaperRunnerConfig(
         "runner_id": "hwistock-kis-paper-continuous-runner",
         "schema_version": "kis_paper_continuous_runner_config/v0",
         "operation_mode": operation_mode,
+        "investment_mode": runtime_policy["investment_mode"],
+        "market_analysis_feed_mode": runtime_policy["market_analysis_feed_mode"],
+        "execution_venue_mode": runtime_policy["execution_venue_mode"],
+        "nxt_enabled": runtime_policy["nxt_enabled"],
         "duration_policy": "operator_selected",
         "fixed_duration_days": None,
         "auto_stop_on_duration": False,
@@ -282,11 +289,27 @@ def evaluatePaperRiskOverlay(
         account_source = str(account.get("source") or "kis_read_account_truth")
         available_cash = int(account.get("available_cash_krw") or account.get("buyable_cash_krw") or account.get("cash_balance_krw") or 0)
         current_holdings = int(account.get("current_holdings_count") or account.get("positions_count") or 0)
+        current_position_value = int(account.get("current_position_value_krw") or account.get("stock_eval_krw") or 0)
+        effective_total_deposit = int(
+            account.get("effective_total_deposit_krw")
+            or account.get("total_eval_krw")
+            or (available_cash + current_position_value)
+            or 0
+        )
     else:
         available_cash = int(payload.get("available_cash_krw") or 0)
         current_holdings = int(payload.get("current_holdings_count") or 0)
+        current_position_value = int(payload.get("current_position_value_krw") or payload.get("stock_eval_krw") or 0)
+        effective_total_deposit = int(payload.get("effective_total_deposit_krw") or payload.get("total_deposit_krw") or 0)
     planned_cash = int(payload.get("planned_order_cash_krw") or 0)
-    reserve_floor = int(base_runner.LIVE_CAPITAL_BASELINE_KRW * 0.25)
+    pending_buy_notional = int(payload.get("pending_buy_notional_krw") or 0)
+    exposure = rp.evaluateDynamicExposureCap(
+        current_position_value_krw=current_position_value,
+        pending_buy_notional_krw=pending_buy_notional,
+        new_order_notional_krw=planned_cash,
+        effective_total_deposit_krw=effective_total_deposit,
+        risk_overlay_capital_krw=base_runner.LIVE_CAPITAL_BASELINE_KRW,
+    )
 
     if runner_status.get("killSwitch", {}).get("active"):
         errors.append("kill_switch_active")
@@ -321,8 +344,10 @@ def evaluatePaperRiskOverlay(
         errors.append("planned_order_cash_must_be_positive")
     if side == "buy" and available_cash <= 0:
         errors.append("available_cash_required")
-    if side == "buy" and available_cash and planned_cash and available_cash - planned_cash < reserve_floor:
-        errors.append("minimum_cash_reserve_breach")
+    if side == "buy" and exposure["missing_account_truth"]:
+        errors.append("effective_total_deposit_truth_required")
+    if side == "buy" and not exposure["ok"]:
+        errors.append("dynamic_exposure_cap_exceeded")
 
     return {
         "ok": not errors,
@@ -330,8 +355,8 @@ def evaluatePaperRiskOverlay(
         "risk_overlay": {
             "capital_mode": "cash_only",
             "live_capital_baseline_krw": base_runner.LIVE_CAPITAL_BASELINE_KRW,
-            "minimum_cash_reserve_ratio": 0.25,
-            "reserve_floor_krw": reserve_floor,
+            "max_cash_deployment_ratio": rp.MAX_CASH_DEPLOYMENT_RATIO,
+            "dynamic_exposure_cap": exposure,
             "max_simultaneous_holdings": 5,
             "route": route,
             "session_venue": session_venue,
@@ -340,6 +365,9 @@ def evaluatePaperRiskOverlay(
             "account_truth_present": account_truth_present,
             "available_cash_krw": available_cash,
             "planned_order_cash_krw": planned_cash,
+            "current_position_value_krw": current_position_value,
+            "pending_buy_notional_krw": pending_buy_notional,
+            "effective_total_deposit_krw": effective_total_deposit,
             "current_holdings_count": current_holdings,
             "sellable_quantity": int(account.get("sellable_quantity") or 0) if account_truth_present else 0,
         },
@@ -460,7 +488,14 @@ def evaluateIntentExecutionPreflight(
     reference_now = _status_reference_datetime(status)
     if expiry and expiry <= reference_now:
         errors.append("intent_expired")
-    risk = evaluatePaperRiskOverlay(payload, status=status, account_truth=account_truth)
+    risk_payload = dict(payload)
+    if "pending_buy_notional_krw" not in risk_payload:
+        risk_payload["pending_buy_notional_krw"] = sum(
+            estimateIntentNotionalKrw(row)
+            for row in (order_state.get("pending_orders") or [])
+            if isinstance(row, Mapping) and str(row.get("side") or "buy").lower() == "buy"
+        )
+    risk = evaluatePaperRiskOverlay(risk_payload, status=status, account_truth=account_truth)
     errors.extend(risk.get("errors") or [])
     idempotency_key = str(payload.get("idempotency_key") or payload.get("intent_id") or "").strip()
     if not idempotency_key:
@@ -541,6 +576,10 @@ def buildPaperExperimentReadiness(
         "checks": checks,
         "blockers": [key for key, value in checks.items() if value is not True],
         "operationMode": config.get("operation_mode") or "observe_only",
+        "investmentMode": config.get("investment_mode") or "paper",
+        "marketAnalysisFeedMode": config.get("market_analysis_feed_mode") or "integrated",
+        "executionVenueMode": config.get("execution_venue_mode") or "krx_only",
+        "nxtEnabled": config.get("nxt_enabled") is True,
     }
 
 
@@ -650,6 +689,8 @@ def _account_truth_from_steps(steps: Sequence[Mapping[str, Any]], *, produced_at
             holiday_status = step.get("status")
     buyable_cash = _int_or_none(buyable_summary.get("buyable_cash_krw"))
     cash_balance = _int_or_none(balance_summary.get("cash_balance_krw"))
+    total_eval = _int_or_none(balance_summary.get("total_eval_krw"))
+    stock_eval = _int_or_none(balance_summary.get("stock_eval_krw"))
     sellable_quantity = _int_or_none(sellable_summary.get("sellable_quantity"))
     positions_count = _int_or_none(balance_summary.get("positions_count")) or 0
     available_cash = buyable_cash if buyable_cash is not None else cash_balance
@@ -669,6 +710,10 @@ def _account_truth_from_steps(steps: Sequence[Mapping[str, Any]], *, produced_at
         "cash_balance_krw": cash_balance,
         "buyable_cash_krw": buyable_cash,
         "available_cash_krw": available_cash,
+        "stock_eval_krw": stock_eval,
+        "current_position_value_krw": stock_eval,
+        "total_eval_krw": total_eval,
+        "effective_total_deposit_krw": total_eval,
         "current_holdings_count": positions_count,
         "positions_count": positions_count,
         "credential_values_printed": False,
@@ -732,6 +777,10 @@ def runContinuousPaperTick(
         "timestamp_kst": now.isoformat(),
         "runner_id": config["runner_id"],
         "operation_mode": config["operation_mode"],
+        "investment_mode": config["investment_mode"],
+        "market_analysis_feed_mode": config["market_analysis_feed_mode"],
+        "execution_venue_mode": config["execution_venue_mode"],
+        "nxt_enabled": config["nxt_enabled"],
         "continuous_service": True,
         "duration_policy": "operator_selected",
         "fixed_duration_days": None,
@@ -751,6 +800,7 @@ def runContinuousPaperTick(
             "blocks_paper_operation": False,
         },
         "paper_domain_only": True,
+        "paper_mock_operation_target": True,
         "live_domain_calls_made": False,
         "ai_provider_calls_made": False,
         "public_dashboard_exposed": False,

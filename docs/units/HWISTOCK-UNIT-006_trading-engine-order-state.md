@@ -106,7 +106,7 @@ approval and broker-network gates close.
 | AC-03 | P0 | Buy gate is deterministic | Capital, holdings, stale-data, venue, and stop policy must pass | policy test | QA-003 |
 | AC-04 | P0 | Order state is explicit | partial fill, reject, cancel, retry, and fail states are representable | state test | QA-004 |
 | AC-05 | P0 | Pre-approval path is dry-run only | Approved intents are recorded without broker calls, simulated fills, or fake balances before KIS adapter approval | adapter test | QA-005 |
-| AC-06 | P0 | NXT/SOR are parameterized, not separate strategies | KRX/NXT/SOR routes use the same state machine; paper/mock mode disables NXT broker branches, real investment mode enables NXT where capability flags allow it, and SOR stays disabled/fallback-only | route/capability test | QA-006 |
+| AC-06 | P0 | NXT/SOR are parameterized, not separate strategies | KRX/NXT/SOR routes use the same state machine; paper/mock mode disables NXT broker branches, future live mode starts `krx_only`, NXT requires separate owner approval and Ready-Set, and SOR stays disabled/fallback-only | route/capability test | QA-006 |
 | AC-07 | P0 | Condition schema is deterministic | `condition_card/v0` accepts only known condition types and required source/risk refs | schema test | QA-007 |
 | AC-08 | P0 | KIS broker-adapter capabilities are explicit | Adapter capability flags expose mode-gated KRX/integrated/NXT support plus provider-query-required account-truth helper APIs | capability test | QA-008 |
 | AC-09 | P0 | KIS adapter evidence shape is auditable without broker state application | Order, fill, balance, cancel, disabled-branch, and fallback fixture events are represented without applying broker state changes | reconciliation test | QA-009 |

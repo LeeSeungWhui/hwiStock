@@ -24,9 +24,10 @@ separate branches:
   broker branches, and limits new KRX investment/order decisions to
   `09:00-15:00 KST`. KRX public regular-session/market-data context may continue
   to `15:30 KST`, but `15:00-15:30 KST` is close/market-data/reconciliation
-  context only for paper/mock. Real investment mode enables KRX and NXT where
-  KIS capability flags allow it, using the later `08:00-20:00 KST` envelope. SOR
-  remains disabled until a future approved contract proves it.
+  context only for paper/mock. Future live mode also starts with
+  `execution_venue_mode=krx_only`; NXT venue routing requires explicit owner
+  approval plus a separate Ready-Set before it can use the later `08:00-20:00 KST`
+  envelope. SOR remains disabled until a future approved contract proves it.
 
 Strategy direction is short-term day trading (`단타`) with a fast intraday
 scalping/momentum hypothesis: enter only on approved signals, hold roughly
@@ -126,6 +127,9 @@ strategy/risk/order state machines own executable broker-order decisions.
 | Data/AI artifact pipeline | 🟡 PARTIAL | Local Go-Check evidence exists for Pro/Flash artifacts, source grounding, KIS mode-aware market data, and fail-closed behavior; provider/network observation still needs scoped evidence. | `docs/evidence/RUN-20260605_operational-go-check-units-012-015.md`; `docs/evidence/RUN-20260606_monday-operation-p0-safety-gates-go-check.md` |
 | KIS paper/mock account truth | 🟡 PARTIAL | Supported KIS paper/mock read steps pass in the latest sanitized smoke; provider-unsupported helper TRs are skipped as `skipped_provider_unsupported` and unknown sellable truth is not converted to zero. | `docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md`; `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md` |
 | KIS paper experiment order loop | 🟡 CONDITIONAL GO TARGET | KIS paper/mock KRX order submission is the current Monday experiment target. It is allowed only in `paper_experiment` mode with session approval, caps, KRX session preflight, token/account/balance/buyable truth, duplicate lock, submit-result recording, and evidence-write checks. | `docs/units/HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md`; `docs/contracts/HWISTOCK-RUNTIME-DATA-EXECUTION-CONTRACTS.md`; `docs/evidence/RUN-20260606_paper-experiment-readiness-split-go-check.md` |
+| `paper_experiment_start` | 🟢 GO TARGET | Monday paper/mock experiment startup is the immediate target when the true paper blockers pass. It is not blocked by live-money or production-quality gaps. | `docs/profiles/PROFILE-HWISTOCK.md`; `docs/units/HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md` |
+| `paper_order_submission_ready` | 🟡 CONDITIONAL GO | Paper order submission is allowed only for KIS paper/mock KRX cash orders during `09:00-15:00 KST` with account truth, duplicate lock, exposure cap, and evidence recording. | `docs/contracts/HWISTOCK-RUNTIME-DATA-EXECUTION-CONTRACTS.md`; `docs/qa/QA-HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md` |
+| `full_owner_defined_ai_loop_ready` | 🟠 FOLLOW_UP_REQUIRED | Full owner-defined loop remains incomplete until centralized runtime policy, mandatory morning watchlist/safe-block, mode-aware daily close, integrated-feed analysis, and dynamic 75% exposure checks are all implemented and proved. | `docs/set/READY-SET-CORRECTION-20260606_mode-schedule-ai-loop-followup.md` |
 | Live-money trading readiness | ⚪ NOT_APPLICABLE | Live-money trading is not requested for the current experiment and must not block KIS paper/mock operation. | `docs/profiles/PROFILE-HWISTOCK.md`; `docs/modules/HWISTOCK-MOD-009_operational-automated-trading-program.md` |
 | Production-quality readiness | 🟡 PARTIAL_NON_BLOCKING | Production-quality hardening is still incomplete, but incomplete production quality is not a blocker for the KIS paper/mock experiment. | `docs/profiles/PROFILE-HWISTOCK.md`; `docs/evidence/RUN-20260606_paper-experiment-readiness-split-go-check.md` |
 | Observation acceptance | 🟡 NON_BLOCKING_FOR_PAPER_EXPERIMENT | No operator-selected market-hours observation window has been accepted as final operational proof. This blocks final operation acceptance, not the start of the bounded KIS paper/mock experiment. | `docs/units/HWISTOCK-UNIT-015_operator-console-observation-prove.md`; `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md` |
@@ -148,17 +152,27 @@ Terminology for the current docs:
   has a valid session approval plus caps. It does not require per-order human
   approval inside the approved session.
 - `paper/mock KRX investment/order window` is `09:00-15:00 KST`. The KRX
-  `15:00-15:30 KST` public-session close period is market-data, close, and
-  reconciliation context only.
+  `15:00-15:30 KST` period is close/market-data/reconciliation context only and
+  cannot unlock new entries or broker submits.
+- `market_analysis_feed_mode = integrated` is the default analysis authority for
+  Pro hourly reports, Flash trade documents, watchlist scoring/ranking, and
+  market context.
+- `execution_venue_mode = krx_only` is the default executable-order authority.
+  KRX quote/session checks are required before broker submit. Integrated feed
+  data alone cannot authorize execution.
+- `NXT` is disabled in paper/mock and also disabled by default for future live
+  mode until a separate owner approval plus Ready-Set explicitly enables NXT
+  venue routing.
 - `HWISTOCK_INVESTMENT_MODE=paper|live` is the canonical docs-level investment
   mode. It is separate from operation-stage values such as
   `HWISTOCK_OPERATION_MODE=paper_experiment`.
 - `live_money_trading_ready = not_applicable` and
   `production_quality_ready = partial_non_blocking` do not block the current
   KIS paper/mock experiment.
-- `real investment mode` is a later mode-gated branch for KRX/NXT where KIS
-  capability flags and separate proof allow it. SOR remains disabled unless a
-  future contract proves it.
+- `live investment mode` is a later mode-gated branch that still starts
+  `krx_only`; NXT requires separate owner approval and Ready-Set before it can
+  become an execution-routing input. SOR remains disabled unless a future
+  contract proves it.
 
 ## Current Rebaseline Status
 
@@ -1138,9 +1152,10 @@ timer installation, while operational readiness remains false.
   expand hwiStock's 2,000,000 KRW risk-overlay capital. UNIT-009 Go-Check
   confirms adapter/unapproved endpoint separation and documents mode-gated KIS
   proof via the capability matrix and sanitized smoke cross-reference, but not a
-  sizing-budget change. Current KIS capability is paper/mock KRX plus integrated
-  market-data/account-truth helpers, with NXT enabled only in real investment
-  mode and SOR still disabled.
+  sizing-budget change. Current KIS capability separates integrated
+  market-data/account-truth analysis helpers from KRX-only execution authority;
+  NXT is disabled in paper/mock and future live mode until separate owner
+  approval and Ready-Set, and SOR is still disabled.
 - UI/dashboard scope is selected as read-only status, stored AI reports, logs,
   interactive AI conversation, and operator visibility. Direct buy/sell controls
   are excluded. A report-only AI panel without question input and backend answer

@@ -78,7 +78,7 @@ Out of scope:
 | QA-010 | P0 | adapter | Submit policy-approved `order_intent` before KIS adapter approval | Intent is recorded as no-order dry-run only; no broker endpoint, internal fake broker, simulated fill, or fake balance is reachable | adapter/network log |
 | QA-011 | P0 | safety | Submit AI output naming a KIS/external broker endpoint, broker demo endpoint, unapproved endpoint, or credential | Output is rejected and logged as policy violation | policy log |
 | QA-012 | P0 | schedule | Inspect AI job registry | DeepSeek Pro hourly aggregate analysis, Flash 10-minute trade-document generation, GPT Pro/morning-watchlist 07:15 via local Codex CLI browser-use, and mode-aware daily report jobs are separated; SSH browser-use is forbidden; market-regime/session analysis is inside the Pro hourly artifact for operational runtime | schema/config review |
-| QA-013 | P1 | fallback | Simulate GPT Pro late/unavailable before the first Flash bucket | DeepSeek-only morning report is used and fallback is logged | scheduler/log |
+| QA-013 | P1 | fallback | Simulate GPT Pro late/unavailable before the first Flash bucket | A DeepSeek-derived `morning_watchlist/v0` artifact or explicit `NO_TRADE` safe-block artifact is written and fallback is logged | scheduler/log |
 | QA-014 | P1 | calculation | Generate mode-aware daily report | PnL numbers come from system calculations and AI only explains/interprets them | report review |
 | QA-015 | P0 | tool-boundary | Inspect AI job config and submit output that asks to browse/call tools | First-pass AI jobs accept normalized bundles only; model tool use is disabled and tool requests are rejected | config/policy log |
 | QA-016 | P0 | config | Inspect default AI network/cost config | `AI_NETWORK_ENABLED=false`, provider flags false, and `AI_DAILY_COST_CAP_KRW=0` until explicit approval | config review |
@@ -122,7 +122,7 @@ Current execution evidence:
 | QA-010 | pass | No-order dry-run record validation with no broker/fake/adapter-mode execution. |
 | QA-011 | pass | KIS/broker/demo/testbed/adapter/unapproved endpoint reference rejection tests. |
 | QA-012 | pass | Six-role job registry separation test. |
-| QA-013 | pass | ChatGPT Pro late/unavailable DeepSeek-only fallback test. |
+| QA-013 | pass | ChatGPT Pro late/unavailable fallback requires `morning_watchlist/v0` or explicit `NO_TRADE` safe-block. |
 | QA-014 | pass | Daily close report system-PnL source validation test. |
 | QA-015 | pass | Tool-use disabled and tool request rejection test. |
 | QA-016 | pass | AI network/provider disabled and cost-cap-zero config test. |
