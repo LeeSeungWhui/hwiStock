@@ -19,10 +19,13 @@ separate branches:
 
 - Market intelligence branch: runs 24 hours for news, articles, disclosures, and
   other permitted public information ingestion.
-- Trading branch: uses simple session context inside 08:00-20:00 KST with an
-  explicit KIS investment-mode gate. Paper/mock mode enables KRX plus integrated
-  market-data/account-truth helpers and rejects NXT broker branches; real
-  investment mode enables KRX and NXT where KIS capability flags allow it. SOR
+- Trading branch: uses an explicit KIS investment-mode gate. Paper/mock mode
+  enables KRX plus integrated market-data/account-truth helpers, rejects NXT
+  broker branches, and limits new KRX investment/order decisions to
+  `09:00-15:00 KST`. KRX public regular-session/market-data context may continue
+  to `15:30 KST`, but `15:00-15:30 KST` is close/market-data/reconciliation
+  context only for paper/mock. Real investment mode enables KRX and NXT where
+  KIS capability flags allow it, using the later `08:00-20:00 KST` envelope. SOR
   remains disabled until a future approved contract proves it.
 
 Strategy direction is short-term day trading (`단타`) with a fast intraday
@@ -76,12 +79,21 @@ but the owner-defined runtime target is now precise and file-driven:
 1. 24-hour news/disclosure collection from permitted/free public sources.
 2. Continuous KIS intraday market-data collection during the approved intraday
    window: current price/quote context, ranking/analysis data, and KRX realtime
-   price/orderbook feeds where adapter-supported.
+   price/orderbook feeds where adapter-supported. Paper/mock market-data context
+   may run to `15:30 KST`, but paper/mock investment/order decisions end at
+   `15:00 KST`.
 3. DeepSeek Pro runs on the top of every hour, reads accumulated news,
    disclosures, and KIS market-data files, and writes the hourly analysis file.
    During market hours the market-regime/session analysis is part of this Pro
    artifact, not a separate detached subsystem.
-4. DeepSeek Flash runs every 10 minutes during market hours, reads the latest
+4. The `07:15 KST` morning watchlist path reads prior-close through
+   current-morning analysis/news/disclosure artifacts and writes
+   `morning_watchlist/v0` or a named safe-block before the first Flash bucket for
+   the active investment mode. The approved GPT Pro route is Codex CLI on the
+   local desktop/workstation using local browser-use and the user's logged-in
+   local Chrome. SSH browser-use is forbidden for this path.
+5. DeepSeek Flash runs every 10 minutes during the active investment-mode
+   decision window, reads the latest
    Pro artifact, the recent 10-minute news/disclosure window, KIS REST ranking
    changes, and current KIS price/orderbook data. It also reads the previous
    trade-document chain and/or current portfolio/order-state snapshot so the new
@@ -91,10 +103,15 @@ but the owner-defined runtime target is now precise and file-driven:
    most five symbol actions. Each action must include `WAIT_BUY`, `BUY_NOW`,
    `HOLD`, `SELL`, or `NO_TRADE`, entry/take-profit/stop-loss/trailing/cancel
    windows where relevant, sizing cap, source refs, portfolio-conflict status,
-   and risk notes.
-5. The auto-trading runner watches newly written trade documents and executes
+   and risk notes. The first Flash bucket must reference
+   `morning_watchlist/v0` or safe-block. Paper/mock buckets that can create new
+   entry intents run only during `09:00-15:00 KST`.
+6. The auto-trading runner watches newly written trade documents and executes
    only deterministic-risk-approved, portfolio-state-compatible KIS KRX
    broker-adapter cash orders.
+7. Daily close reporting is mode-aware: paper/mock after the KRX close at
+   `15:30 KST`, future live mode at `20:00 KST`. AI explains system-calculated
+   results; AI does not calculate PnL.
 
 The orchestrator, not the models, moves data between these systems. AI outputs
 create analysis and trade-document artifacts only; deterministic
@@ -130,6 +147,12 @@ Terminology for the current docs:
 - `paper_order_loop_enabled` means the runner is in `paper_experiment` mode and
   has a valid session approval plus caps. It does not require per-order human
   approval inside the approved session.
+- `paper/mock KRX investment/order window` is `09:00-15:00 KST`. The KRX
+  `15:00-15:30 KST` public-session close period is market-data, close, and
+  reconciliation context only.
+- `HWISTOCK_INVESTMENT_MODE=paper|live` is the canonical docs-level investment
+  mode. It is separate from operation-stage values such as
+  `HWISTOCK_OPERATION_MODE=paper_experiment`.
 - `live_money_trading_ready = not_applicable` and
   `production_quality_ready = partial_non_blocking` do not block the current
   KIS paper/mock experiment.
@@ -192,6 +215,8 @@ Current 2026-06-05 operational automated-trading authority:
   `docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md`
 - KIS paper experiment readiness split Go-Check evidence:
   `docs/evidence/RUN-20260606_paper-experiment-readiness-split-go-check.md`
+- Investment-mode schedule / AI-loop Ready-Set follow-up correction:
+  `docs/set/READY-SET-CORRECTION-20260606_mode-schedule-ai-loop-followup.md`
 - Monday operation local calendar cache:
   `config/market-calendar/krx-nxt-trading-days.json`
 
@@ -1147,7 +1172,10 @@ timer installation, while operational readiness remains false.
   automation until terms/access checks, defers KIS broker data, and blocks
   general HTML scraping/unofficial APIs by default.
 - AI provider/model direction is selected for planning: DeepSeek Pro, DeepSeek
-  Flash, and ChatGPT Pro morning review. UNIT-005 closes first-pass schedules,
-  `*/v0` schemas, normalized-bundle-only inputs, GPT Pro 07:20 cutoff, and
-  network disabled / cost cap 0 defaults. Nonzero paid AI API cost/token caps
-  remain a future approval item.
+  Flash, and ChatGPT Pro morning review. UNIT-005 closes first-pass schemas and
+  network disabled / cost cap 0 defaults; the current operational Ready-Set
+  follow-up updates the schedule to a `07:15 KST` morning watchlist, Flash
+  10-minute buckets, paper/mock `09:00-15:00 KST` decision window, and
+  mode-aware daily close. GPT Pro morning prompts must be sent by local Codex
+  CLI through local browser-use, never SSH browser-use. Nonzero paid AI API
+  cost/token caps remain a future approval item.

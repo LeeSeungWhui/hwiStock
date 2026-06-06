@@ -46,6 +46,7 @@ evidence_refs:
   - docs/evidence/RUN-20260606_kis-mode-gated-account-truth-go-check.md
   - docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md
   - docs/evidence/RUN-20260606_paper-experiment-readiness-split-go-check.md
+  - docs/set/READY-SET-CORRECTION-20260606_mode-schedule-ai-loop-followup.md
 ---
 
 # KIS Broker Order Execution And Reconciliation
@@ -66,6 +67,11 @@ evidence_refs:
 > `paper_experiment` approval file may enable KRX paper/mock order submission
 > without per-order human approval. Live-money readiness is `not_applicable`,
 > and production-quality gaps are non-blocking for this paper experiment.
+>
+> Investment-mode schedule correction (2026-06-06): paper/mock KRX broker order
+> submission is limited to `09:00-15:00 KST`. KRX market-data context may
+> continue to `15:30 KST`, but `15:00-15:30 KST` is not a paper/mock new-entry or
+> broker-submit window.
 
 ## 1. Goal
 
@@ -79,8 +85,8 @@ preflight/idempotency/realtime-exit Go-Check passed on 2026-06-05. For the
 current Monday KIS paper/mock experiment, KRX order transport is allowed only
 when `paper_experiment` mode, the session approval file, caps, token/account
 truth, KRX calendar/session preflight, duplicate lock, submit-result recording,
-and evidence-write checks all pass. Unapproved adapter operation remains
-forbidden.
+evidence-write checks, and the paper/mock `09:00-15:00 KST` order window all
+pass. Unapproved adapter operation remains forbidden.
 
 ## 2. Included Scope
 
@@ -94,6 +100,11 @@ forbidden.
 - Re-read current portfolio/order-state immediately before any broker call:
   holdings, available cash, pending orders, active exits, position locks,
   cooldowns, and already-consumed trade-document ids.
+- Recompute the dynamic exposure cap immediately before any broker call:
+  current position value plus pending buy notional plus the new order notional
+  must stay at or below `effective_total_deposit_krw * 0.75`, with the effective
+  base capped by the 2,000,000 KRW risk-overlay capital unless a later approved
+  profile/unit change raises it.
 - Reject conflicts even if the Flash document looked valid when it was written.
 - Acquire the account/symbol lock or equivalent single-writer guard before
   reservation and broker submission.
@@ -106,6 +117,9 @@ forbidden.
   order/fill inquiry before retry after timeout, crash, or ambiguous result.
 - Place broker cash orders only through the configured KIS adapter domain for the
   active investment mode.
+- In paper/mock mode, place KRX broker cash orders only during `09:00-15:00 KST`;
+  after `15:00 KST`, the runner may reconcile, observe, close, or safe-block but
+  must not submit a new paper/mock entry order.
 - Support cancel/modify only after provider cancelable-order truth is available
   in the active mode and local pending-order state agrees; paper/mock skips the
   provider-unsupported cancelable query and fails closed on ambiguity.
@@ -144,6 +158,8 @@ forbidden.
 | AC-10 | P0 | Adapter-only guard aborts before transport | Unknown/unapproved domain, broker account profile, unsupported TR ID, or unsupported venue route fails before network transport. |
 | AC-11 | P0 | Pending WAIT_BUY cleanup is deterministic | A superseding trade document cancels old unfilled waits unless explicitly renewed. |
 | AC-12 | P0 | Exits are monitored in realtime | Stop-loss, take-profit, and trailing-stop checks run from current KIS realtime/quote state and do not depend on the next Flash tick. |
+| AC-13 | P0 | Paper/mock broker submit window ends at 15:00 | Paper/mock KRX broker submit attempts after `15:00 KST` are rejected as off-window, even if KRX market-data context continues to `15:30 KST`. |
+| AC-14 | P0 | Dynamic 75% exposure cap is final-gated | Executor rejects a broker request when authoritative current position value plus pending buy notional plus new order notional would exceed `effective_total_deposit_krw * 0.75`. |
 
 ## 5. Go Notes
 

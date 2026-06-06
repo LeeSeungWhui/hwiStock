@@ -89,7 +89,9 @@ active investment mode:
 
 - paper/mock mode: KRX broker order routing only; integrated realtime/market
   operation inputs are market-data/account-truth helpers, not an integrated
-  broker-order venue.
+  broker-order venue. New paper/mock KRX investment/order decisions are limited
+  to 09:00-15:00 KST; 15:00-15:30 KST is close/market-data/reconciliation
+  context only.
 - real investment mode: KRX and NXT broker order routing where KIS capability
   flags allow it.
 - SOR: disabled before transport until a future approved contract enables it.
@@ -106,7 +108,8 @@ Required channels:
 - systemd journal entries for service lifecycle and failures
 - `data/alerts/YYYY-MM-DD/alerts.jsonl`
 - dashboard audit/error panel when the dashboard unit is implemented
-- `data/reports/YYYY-MM-DD/daily-close-2000.md`
+- `data/reports/YYYY-MM-DD/daily-close-paper-1530.md` for paper/mock mode or
+  `data/reports/YYYY-MM-DD/daily-close-live-2000.md` for future live mode
 
 Required alert event fields:
 
@@ -179,8 +182,9 @@ an explicit user go/no-go approval and a current profile/unit update.
 Each observation day must link:
 
 - `data/evidence/YYYY-MM-DD/paper-day.json`
-- `data/reports/YYYY-MM-DD/morning-0700.md`
-- `data/reports/YYYY-MM-DD/daily-close-2000.md`
+- `data/reports/YYYY-MM-DD/morning-watchlist-0715.md`
+- `data/reports/YYYY-MM-DD/daily-close-paper-1530.md` for paper/mock mode or
+  `data/reports/YYYY-MM-DD/daily-close-live-2000.md` for future live mode
 - alert log path
 - health/service status
 - source collection summary

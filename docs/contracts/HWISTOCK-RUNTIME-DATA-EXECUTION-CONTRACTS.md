@@ -38,11 +38,12 @@ The machine-checkable catalog is
 | 1 | `news_disclosure_collector` | `news_event/v0`, `disclosure_event/v0` | Pro/Flash/context builders | no |
 | 2 | `kis_intraday_market_collector` | `kis_market_snapshot/v0` | Pro/Flash/intent pipeline | no |
 | 3 | `deepseek_pro_hourly` | `pro_hourly_market_analysis/v0` | Flash | no |
-| 4 | `deepseek_flash_decision_10m` | `flash_trade_document/v0` | intent pipeline | no |
-| 5 | portfolio/order reconciler | `portfolio_snapshot/v0`, `order_state_snapshot/v0` | Flash and executor | no |
-| 6 | intent pipeline | `paper_order_intent/v0` | executor | yes, only after gates |
-| 7 | executor | `executor_decision/v0`, `broker_order_request/v0` | KIS broker adapter/reconciliation | request only |
-| 8 | KIS broker adapter/reconciler | `broker_order_result/v0`, `reconciliation_event/v0` | ledger/dashboard/report | no |
+| 4 | `gpt_morning_watchlist` | `morning_watchlist/v0` | first Flash bucket / reports | no |
+| 5 | `deepseek_flash_decision_10m` | `flash_trade_document/v0` | intent pipeline | no |
+| 6 | portfolio/order reconciler | `portfolio_snapshot/v0`, `order_state_snapshot/v0` | Flash and executor | no |
+| 7 | intent pipeline | `paper_order_intent/v0` | executor | yes, only after gates |
+| 8 | executor | `executor_decision/v0`, `broker_order_request/v0` | KIS broker adapter/reconciliation | request only |
+| 9 | KIS broker adapter/reconciler | `broker_order_result/v0`, `reconciliation_event/v0` | ledger/dashboard/report | no |
 
 AI artifacts are never directly executable. The executor reads only
 schema-validated `paper_order_intent/v0` records and still re-checks
@@ -122,6 +123,14 @@ decision bucket**.
   the bucket cutoff. If the Pro manifest is missing, stale, incomplete, or
   fails hash validation, Flash writes `NO_TRADE` with a named reason instead of
   generating clean entry actions.
+- The first Flash bucket for the active investment mode must read a valid
+  `morning_watchlist/v0` manifest or write `NO_TRADE` with a named reason. The
+  first bucket is `09:00 KST` in paper/mock mode and `08:00 KST` in future live
+  mode.
+- Paper/mock Flash buckets that may create new entry intents are limited to
+  `09:00-15:00 KST`. KRX public regular-session/market-data context after
+  `15:00 KST` through `15:30 KST` may produce close/watch/reconciliation
+  artifacts but cannot create clean entry intents.
 - Clean entry actions (`WAIT_BUY` / `BUY_NOW`) require both current portfolio
   and order-state refs. Missing, stale, unavailable, or advisory-only refs may
   produce watch/reject records, but cannot produce a clean
@@ -188,14 +197,24 @@ publication. A partial file or missing manifest is non-executable.
 The sizing calculator is system-owned. AI may propose a sizing hint, but the
 accepted `paper_order_intent/v0` quantity is computed from:
 
-1. `risk_overlay_capital_krw` (baseline 2,000,000 KRW unless a future approved
+1. authoritative `total_deposit_krw` / cash-equivalent account truth from the
+   active paper/mock read path;
+2. `risk_overlay_capital_krw` (baseline 2,000,000 KRW unless a future approved
    profile/unit change overrides it);
-2. `minimum_cash_reserve_ratio` (baseline 0.25);
-3. current available cash and already reserved pending-buy cash;
-4. `max_order_cash_krw = min(action_cash_cap, risk_overlay_capital_krw *
-   (1 - minimum_cash_reserve_ratio) - reserved_cash_before_order)`;
-5. fresh limit-price source and KRX tick rounding rule; and
-6. lot-size rounding with reject-if-below-min-lot behavior.
+3. `effective_total_deposit_krw = min(total_deposit_krw,
+   risk_overlay_capital_krw)` unless a future approved profile/unit change
+   raises the overlay cap;
+4. `minimum_cash_reserve_ratio` (baseline 0.25);
+5. current position value, available cash, reserved cash, and already reserved
+   pending-buy cash;
+6. exposure check:
+   `current_position_value_krw + pending_buy_notional_krw +
+   new_order_notional_krw <= effective_total_deposit_krw * 0.75`;
+7. `max_order_cash_krw = min(action_cash_cap, effective_total_deposit_krw *
+   (1 - minimum_cash_reserve_ratio) - current_position_value_krw -
+   pending_buy_notional_krw)`;
+8. fresh limit-price source and KRX tick rounding rule; and
+9. lot-size rounding with reject-if-below-min-lot behavior.
 
 If computed quantity would breach reserve, holdings slots, stale price, or tick
 rules, the intent is rejected before executor submission.
@@ -231,10 +250,13 @@ runtime rule is:
 KIS broker transport is allowed only when all conditions pass:
 
 - runtime label is `PAPER_ONLY`;
+- active investment mode is `paper`;
 - every executable order intent has `paper_only = true`;
 - broker adapter is `kis_paper`;
 - base URL alias is `kis_paper_vts`;
 - order route is KRX broker cash order;
+- KRX paper/mock broker submit time is inside `09:00-15:00 KST`; the
+  `15:00-15:30 KST` KRX close/market-data period is not an order-submit window;
 - weekday-only calendar fallback is forbidden for any paper-order approval path;
 - order approval requires `HWISTOCK_OPERATION_MODE = paper_experiment`,
   `HWISTOCK_KIS_PAPER_ORDER_ENABLED = true`, an order-grade KIS market data

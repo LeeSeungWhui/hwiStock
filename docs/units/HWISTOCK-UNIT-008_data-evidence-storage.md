@@ -55,8 +55,9 @@ overlap with MyWebTemplate.
 - PostgreSQL database/schema isolation from MyWebTemplate.
 - Date-partitioned artifact layout.
 - Hourly AI analysis files.
-- 07:00 morning report.
-- 20:00 daily close report.
+- 07:15 morning watchlist/report.
+- Mode-aware daily close report: paper/mock after 15:30 KST, future live mode at
+  20:00 KST.
 - Candidate cards.
 - Order/fill/position/PnL logs.
 - Evidence paths for operator-selected operation observation windows.
@@ -80,7 +81,7 @@ overlap with MyWebTemplate.
 | AC-02 | P0 | Database/schema is isolated | hwiStock uses database `hwistock`, schema `hwistock_core`, and `HWISTOCK_DATABASE_URL` without MyWebTemplate table/migration overlap | db config/migration review | QA-002 |
 | AC-03 | P0 | Storage separates data types | Raw, normalized, AI, candidate, trading, report, and evidence artifacts are type-separated by path | path/schema review | QA-003 |
 | AC-04 | P0 | Common artifact fields are required | Every artifact schema includes ids, dates, environment, source links, redaction status, and hash fields where applicable | schema review | QA-004 |
-| AC-05 | P0 | PnL is system-calculated | 20:00 report references computed PnL fields, not AI-calculated numbers | report review | QA-005 |
+| AC-05 | P0 | PnL is system-calculated | Daily close report references computed PnL fields, not AI-calculated numbers | report review | QA-005 |
 | AC-06 | P0 | Evidence is linkable | Operator-selected operation observation windows can link each day to source, AI, candidate, trading, PnL, and report artifacts | evidence review | QA-006 |
 | AC-07 | P0 | Secrets and private identifiers are excluded | Credentials, keys, raw account numbers, and private account ids are absent from artifacts | redaction review | QA-007 |
 | AC-08 | P1 | Artifact links are auditable | PostgreSQL rows can be traced to artifact paths and content hashes | smoke/test output | QA-008 |
@@ -97,16 +98,18 @@ Use KST dates.
 | `data/raw/YYYY-MM-DD/market-data/*.jsonl` | raw permitted quote/candle/order-book bundles when source is approved |
 | `data/normalized/YYYY-MM-DD/events.jsonl` | normalized source events used by AI and candidate generation |
 | `data/ai/YYYY-MM-DD/deepseek-pro/hourly/HH00.json` | hourly aggregate source and market analysis; during market hours includes market-regime/session section |
-| `data/ai/YYYY-MM-DD/deepseek-flash/trade-documents/HHMM.json` | one Flash trade document per market-minute; candidates list max 5 symbols and includes portfolio-conflict status |
+| `data/ai/YYYY-MM-DD/deepseek-flash/trade-documents/HHMM.json` | one Flash trade document per 10-minute decision bucket; candidates list max 5 symbols and includes portfolio-conflict status |
 | `data/candidates/YYYY-MM-DD/*.json` | candidate cards compiled from sources and AI outputs |
 | `data/trading/YYYY-MM-DD/orders.jsonl` | order intents and order-state events |
 | `data/trading/YYYY-MM-DD/fills.jsonl` | fill events from later approved KIS adapter-mode adapters only; no fake broker fills |
 | `data/trading/YYYY-MM-DD/positions.jsonl` | position snapshots and transitions |
 | `data/trading/YYYY-MM-DD/pnl.json` | system-calculated daily PnL |
-| `data/reports/YYYY-MM-DD/morning-0700.json` | structured morning report |
-| `data/reports/YYYY-MM-DD/morning-0700.md` | human-readable morning report |
-| `data/reports/YYYY-MM-DD/daily-close-2000.json` | structured daily close report |
-| `data/reports/YYYY-MM-DD/daily-close-2000.md` | human-readable daily close report |
+| `data/reports/YYYY-MM-DD/morning-watchlist-0715.json` | structured morning watchlist/report |
+| `data/reports/YYYY-MM-DD/morning-watchlist-0715.md` | human-readable morning watchlist/report |
+| `data/reports/YYYY-MM-DD/daily-close-paper-1530.json` | structured paper/mock daily close report |
+| `data/reports/YYYY-MM-DD/daily-close-paper-1530.md` | human-readable paper/mock daily close report |
+| `data/reports/YYYY-MM-DD/daily-close-live-2000.json` | structured future live daily close report |
+| `data/reports/YYYY-MM-DD/daily-close-live-2000.md` | human-readable future live daily close report |
 | `data/evidence/YYYY-MM-DD/paper-day.json` | daily operation evidence manifest |
 | PostgreSQL database `hwistock`, schema `hwistock_core` | normalized application store, trading state, PnL, report metadata, and dashboard query surface |
 

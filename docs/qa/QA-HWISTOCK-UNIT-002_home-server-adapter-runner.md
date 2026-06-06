@@ -29,8 +29,10 @@ Prove that the hwiStock runtime can operate as a 24-hour home-server program in
 adapter-backed mode without depending on a Codex session and without enabling operation
 orders. The runner must also distinguish 24-hour service uptime from Korea market
 session activity, and separate 24-hour information ingestion from trading/order
-routing. Trading venue routing is intentionally simple: KRX for 09:00-15:00 KST,
-NXT for 08:00-09:00 and 15:00-20:00 KST, idle outside 08:00-20:00 KST.
+routing. Trading venue routing is investment-mode aware: paper/mock mode is
+KRX-only for new investment/order decisions from 09:00-15:00 KST and rejects
+NXT broker branches; future live mode may use KRX/NXT 08:00-20:00 KST only after
+support proof and approval.
 
 ## 2. Scope
 
@@ -71,7 +73,7 @@ Out of scope:
 | QA-006 | P1 | evidence | Generate daily summary and observation-window manifest | Summary includes date, runtime duration, mode, failures, dry-run intents or KIS broker orders when approved, risk rejects, and operator-selected observation-window metadata | evidence file |
 | QA-007 | P0 | calendar | Simulate or inspect out-of-envelope state | Service remains healthy but active trading/order loops are idle or disabled outside 08:00-20:00 KST | health/log |
 | QA-008 | P0 | safety | Inspect branch boundaries | News/disclosure ingestion output cannot directly invoke order routing | config/log/code review |
-| QA-009 | P0 | routing | Simulate 08:30, 09:30, 15:30, and 20:30 KST | 08:30 -> NXT, 09:30 -> KRX, 15:30 -> NXT, 20:30 -> idle | route test output |
+| QA-009 | P0 | routing | Simulate paper/mock 08:30, 09:30, 15:00, and 15:30 KST plus future-live 08:30/15:30 when approved | Paper/mock: 08:30 idle/off-window, 09:30 KRX, 15:00 and 15:30 no new entry/order; future live may route NXT only after support proof and approval | route test output |
 | QA-010 | P0 | dry-run | Submit approved order intent before KIS adapter approval | Intent is recorded as no-order dry-run only; no broker call, simulated fill, or fake balance is produced | adapter log |
 | QA-011 | P0 | safety | Inspect config and outbound network attempts | KIS/external broker endpoints, broker broker-adapter/demo/testbed endpoints, credentials, tokens, and broker network calls are absent until approved | config/network log |
 | QA-012 | P0 | config | Inspect adapter budget config/docs | Official broker-adapter budget candidate is 10,000,000 KRW and does not replace the 2,000,000 KRW operation-capital baseline | config/doc review |

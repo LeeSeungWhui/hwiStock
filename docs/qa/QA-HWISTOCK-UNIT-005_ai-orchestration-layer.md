@@ -15,10 +15,12 @@ status: go_check_passed
 ready_set_rebaseline_status: go_check_passed
 implementation_status: go_check_passed
 owner: hwi
-updated_at: 2026-06-05
+updated_at: 2026-06-06
 evidence_refs:
   - docs/evidence/RUN-20260602_unit-005-ai-orchestration-layer-set.md
   - docs/evidence/RUN-20260605_unit-005-go-check-rebaseline.md
+  - docs/set/READY-SET-CORRECTION-20260606_mode-schedule-ai-loop-followup.md
+  - docs/set/READY-SET-GPT-PRO-MORNING-PROMPT-20260606_hwistock.md
 ---
 
 # AI Orchestration Layer QA
@@ -36,9 +38,10 @@ In scope:
 - AI structured output schema
 - DeepSeek Pro hourly aggregate source/market schema with market-regime/session
   section during market hours
-- DeepSeek Flash minute trade-document schema
-- 06:50 GPT prompt generation and 07:00 GPT Pro review fallback
-- 20:00 daily close report schema
+- DeepSeek Flash 10-minute trade-document schema
+- 07:15 GPT morning-watchlist generation through local Codex CLI browser-use and
+  fallback before the first Flash bucket
+- mode-aware daily close report schema
 - draft `order_intent` schema
 - source-id grounding
 - no direct broker/order interface
@@ -74,9 +77,9 @@ Out of scope:
 | QA-009 | P0 | schema | Submit draft `order_intent` with missing risk reference, stale source, or invalid sizing | Intent is rejected before policy approval | schema/policy log |
 | QA-010 | P0 | adapter | Submit policy-approved `order_intent` before KIS adapter approval | Intent is recorded as no-order dry-run only; no broker endpoint, internal fake broker, simulated fill, or fake balance is reachable | adapter/network log |
 | QA-011 | P0 | safety | Submit AI output naming a KIS/external broker endpoint, broker demo endpoint, unapproved endpoint, or credential | Output is rejected and logged as policy violation | policy log |
-| QA-012 | P0 | schedule | Inspect AI job registry | DeepSeek Pro hourly aggregate analysis, Flash minute trade-document generation, GPT Pro 07:00, and 20:00 daily report jobs are separated; market-regime/session analysis is inside the Pro hourly artifact for operational runtime | schema/config review |
-| QA-013 | P1 | fallback | Simulate GPT Pro late/unavailable at 07:00 | DeepSeek-only morning report is used and fallback is logged | scheduler/log |
-| QA-014 | P1 | calculation | Generate 20:00 daily report | PnL numbers come from system calculations and AI only explains/interprets them | report review |
+| QA-012 | P0 | schedule | Inspect AI job registry | DeepSeek Pro hourly aggregate analysis, Flash 10-minute trade-document generation, GPT Pro/morning-watchlist 07:15 via local Codex CLI browser-use, and mode-aware daily report jobs are separated; SSH browser-use is forbidden; market-regime/session analysis is inside the Pro hourly artifact for operational runtime | schema/config review |
+| QA-013 | P1 | fallback | Simulate GPT Pro late/unavailable before the first Flash bucket | DeepSeek-only morning report is used and fallback is logged | scheduler/log |
+| QA-014 | P1 | calculation | Generate mode-aware daily report | PnL numbers come from system calculations and AI only explains/interprets them | report review |
 | QA-015 | P0 | tool-boundary | Inspect AI job config and submit output that asks to browse/call tools | First-pass AI jobs accept normalized bundles only; model tool use is disabled and tool requests are rejected | config/policy log |
 | QA-016 | P0 | config | Inspect default AI network/cost config | `AI_NETWORK_ENABLED=false`, provider flags false, and `AI_DAILY_COST_CAP_KRW=0` until explicit approval | config review |
 

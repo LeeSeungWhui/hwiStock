@@ -20,6 +20,7 @@ owner: hwi
 updated_at: 2026-06-06
 evidence_refs:
   - docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
+  - docs/set/READY-SET-CORRECTION-20260606_mode-schedule-ai-loop-followup.md
 ---
 
 # Signal To Adapter Intent Pipeline QA
@@ -51,6 +52,9 @@ trades.
 | QA-014 | P0 | adapter-read-boundary | Enable UNIT-013 KIS adapter-read collector with broker-adapter credentials | Only market-data endpoints are attempted; order/cancel/modify endpoints remain uncalled; NXT realtime inputs are rejected in paper/mock mode and enabled only in real investment mode | endpoint audit |
 | QA-015 | P0 | candidate-universe | Provide a Flash trade document containing one ticker outside `compiled_watch/v0` | Off-universe action is rejected/watch-only and no `paper_order_intent/v0` is queued for that ticker | queue artifact |
 | QA-016 | P0 | kis-mode-gated-scope | Attempt UNIT-013 collector startup with configured KIS endpoints outside the mode-enabled signal allowlist | Collector safe-blocks the extra endpoint and still proves no order/cancel/modify endpoint call | endpoint audit |
+| QA-017 | P0 | paper-window | Provide otherwise-valid paper/mock Flash actions at 14:50, 15:00, 15:10, and 15:30 KST | 14:50 may queue one valid intent if all gates pass; 15:00 and later produce no new entry `paper_order_intent/v0` and record off-window/close context | queue artifact |
+| QA-018 | P0 | morning-ref | Provide the first active-mode Flash document without `morning_watchlist/v0` ref | Pipeline writes a named safe-block or watch/reject record and queues no new entry intent | queue artifact |
+| QA-019 | P0 | dynamic-exposure | Provide account-truth, current-position, pending-buy, and new-order fixtures that cross the 75% exposure cap | Intent is rejected with a dynamic exposure cap reason before UNIT-014 can consume it | risk log |
 
 ## 3. PASS / FAIL / BLOCKED Rules
 
@@ -62,7 +66,8 @@ trades.
   a held/pending/exiting/cooldown symbol can queue a conflicting new intent, an
   older unfilled wait survives a superseding document without renewal, or
   stale/incomplete artifacts can produce an intent, or Flash can create a adapter
-  intent for a ticker absent from `compiled_watch/v0`.
+  intent for a ticker absent from `compiled_watch/v0`, or paper/mock mode queues
+  a new entry intent at or after `15:00 KST`.
 - BLOCKED: approved KIS market-data source is not available for rows requiring
   fresh market confirmation.
 - BLOCKED: any UNIT-013 path attempts KIS order/cancel/modify transport or

@@ -19,6 +19,7 @@ owner: hwi
 updated_at: 2026-06-05
 evidence_refs:
   - docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
+  - docs/set/READY-SET-CORRECTION-20260606_mode-schedule-ai-loop-followup.md
 ---
 
 # KIS Adapter Order Execution And Reconciliation QA
@@ -46,6 +47,8 @@ reconciliation without unapproved endpoints, duplicate orders, or fake broker st
 | QA-012 | P0 | state-machine | Force illegal order-state transitions | Illegal transition is rejected and valid transition path remains auditable | state log |
 | QA-013 | P0 | supersede-wait | Accept a new trade document while a previous WAIT_BUY remains unfilled | Previous unfilled wait is canceled unless the new document explicitly renews it and final gates still pass | execution log |
 | QA-014 | P0 | realtime-exit | Move realtime/quote fixture through stop-loss, take-profit, and trailing-stop thresholds for a held symbol | Executor emits the appropriate adapter exit decision from realtime state without waiting for the next Flash tick | execution log |
+| QA-015 | P0 | paper-window | Attempt paper/mock KRX broker submit at 14:59, 15:00, 15:10, and 15:30 KST | 14:59 may proceed only if every other gate passes; 15:00 and later reject before broker transport as outside the paper/mock investment/order window | execution log |
+| QA-016 | P0 | dynamic-exposure | Feed an otherwise valid broker request that would exceed authoritative 75% total-deposit exposure after pending buys | Executor rejects before KIS transport with a dynamic exposure cap reason | risk log |
 
 ## 3. PASS / FAIL / BLOCKED Rules
 
@@ -57,6 +60,7 @@ reconciliation without unapproved endpoints, duplicate orders, or fake broker st
   submits an order that conflicts with current holdings, pending orders, active
   exits, cooldowns, or already-consumed trade documents, or ambiguous submit
   paths can retry before broker reconciliation, or exits wait for the next Flash
-  document instead of realtime risk thresholds.
+  document instead of realtime risk thresholds, or paper/mock broker submit is
+  attempted at or after `15:00 KST`.
 - BLOCKED: KIS broker-adapter env unavailable, market closed for order-specific smoke, or
   current KIS adapter limits/rate state prevent safe bounded execution.

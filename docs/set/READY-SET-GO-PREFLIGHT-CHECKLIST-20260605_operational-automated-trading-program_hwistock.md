@@ -9,6 +9,8 @@ updated_at: 2026-06-05
 current_authority: true
 completion_report_ref: docs/set/READY-SET-COMPLETION-20260605_operational-automated-trading-program_hwistock.md
 row_closure_matrix_ref: docs/set/READY-SET-ROW-CLOSURE-20260605_operational-automated-trading-program_hwistock.md
+followup_correction_refs:
+  - docs/set/READY-SET-CORRECTION-20260606_mode-schedule-ai-loop-followup.md
 ---
 
 # Go Preflight Checklist — Operational Automated Trading Program
@@ -32,6 +34,8 @@ program queue.
 | PF-010 | yes | Confirm readiness wording | Service/timer activity, dashboard rendering, local tests, or artifact presence must not be reported as operation readiness. |
 | PF-011 | yes | Confirm dashboard truth gap | If `brokerNetworkEnabled`, `brokerOrdersSubmitted`, `operationObservationAccepted`, `operationalReadiness`, fallback state, or `orderGate` is false/blocked, the operator surface must display it prominently before observation claims. |
 | PF-012 | yes | Confirm runtime entrypoint split | A service-managed backend runtime must not rely on a development `reload=True` entrypoint unless the row explicitly documents a dev-only exception and an operational replacement path. |
+| PF-013 | yes | Confirm investment-mode schedule | `HWISTOCK_INVESTMENT_MODE=paper|live` is separated from operation stage, paper/mock KRX investment/order decisions are limited to `09:00-15:00 KST`, and `15:00-15:30 KST` is close/market-data/reconciliation context only. |
+| PF-014 | yes | Confirm GPT Pro route | GPT Pro morning-watchlist prompts use Codex CLI on the local desktop/workstation with local browser-use; SSH browser-use, remote Chrome, and hwiServer-side browser automation are forbidden. |
 
 ## 2. Row-Specific Preflight
 
@@ -39,9 +43,9 @@ program queue.
 | --- | --- |
 | HWISTOCK-UNIT-011 | Identify which user systemd units will be installed/started. Starting KIS broker order runner is excluded unless a later row scopes it. |
 | HWISTOCK-UNIT-016 | Verify schemas, atomic publication, idempotency keys, `NO_TRADE` sentinel, executor lock/ledger, reservation accounting, order state machine, freshness TTLs, adapter-only guard, and failure-mode QA are documented before implementation Go. |
-| HWISTOCK-UNIT-012 | Confirm UNIT-016 closure first, then check current official DeepSeek model ids, Pro hourly top-of-hour schedule, Flash market-minute schedule, trade-document schema, sentinel behavior, and no-order boundary before provider smoke. AI network/cost caps require explicit scope. |
-| HWISTOCK-UNIT-013 | Confirm UNIT-016 closure first, then verify approved source registry, KIS broker adapter-supported intraday market-data endpoints, KRX realtime support, and schema/freshness/session/risk/reservation/conflict gates. Missing KIS/source/chart data must block intents, not invent them. |
-| HWISTOCK-UNIT-014 | Confirm UNIT-016 closure first, then confirm KIS broker adapter env file existence without printing values, market/session state, adapter domain guard, idempotency storage, write-ahead log, state machine, and exact bounded order scope. |
+| HWISTOCK-UNIT-012 | Confirm UNIT-016 closure first, then check current official DeepSeek model ids, Pro hourly top-of-hour schedule, `07:15 KST` morning watchlist path through local Codex CLI browser-use, Flash 10-minute schedule, paper/mock `09:00-15:00 KST` decision window, trade-document schema, sentinel behavior, and no-order boundary before provider smoke. AI network/cost caps require explicit scope. |
+| HWISTOCK-UNIT-013 | Confirm UNIT-016 closure first, then verify approved source registry, KIS broker adapter-supported intraday market-data endpoints, KRX realtime support, morning-watchlist refs, schema/freshness/session/risk/reservation/conflict gates, dynamic 75% exposure cap, and paper/mock `15:00 KST` entry-intent cutoff. Missing KIS/source/chart data must block intents, not invent them. |
+| HWISTOCK-UNIT-014 | Confirm UNIT-016 closure first, then confirm KIS broker adapter env file existence without printing values, market/session state, paper/mock `09:00-15:00 KST` broker-submit window, dynamic 75% exposure cap, adapter domain guard, idempotency storage, write-ahead log, state machine, and exact bounded order scope. |
 | HWISTOCK-UNIT-015 | Confirm UNIT-016 closure first, then confirm backend/frontend services are started through approved local route and browser/tunnel QA does not expose public/LAN services. |
 
 ## 3. Allowed Network Classes By Row

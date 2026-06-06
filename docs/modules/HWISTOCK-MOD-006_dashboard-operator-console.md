@@ -94,8 +94,8 @@ positions, logs, and daily review. It must not expose direct buy/sell controls.
     order eligibility state
   - holdings/positions and order-state timeline
   - market-intelligence timeline for news/disclosures/source events
-  - AI job/report viewer for hourly Pro analysis, Flash trade documents, 07:00
-    morning review, and 20:00 daily close
+  - AI job/report viewer for hourly Pro analysis, Flash trade documents, 07:15
+    morning watchlist, and mode-aware daily close
   - audit log/error panel
   - AI conversation panel scoped to stored reports and sanitized current state,
     with a real question input, submit flow, answer display, safe refusal display,

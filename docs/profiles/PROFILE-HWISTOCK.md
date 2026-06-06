@@ -82,10 +82,14 @@ Strategy direction is short-term day trading (`단타`) with a fast intraday
 scalping/momentum hypothesis: approved-signal entries, typical 10-20 minute
 holding window, per-trade candidate 1-5% price-move target band, and quick exit
 on invalidated signals or predefined risk triggers. This target band is not a
-daily account return target. The 08:00-20:00 trading envelope is an
-observation/opportunity window, not permission to trade continuously. Capital
-policy is cash-only. Credit, margin, 미수, borrowed funds, or other leveraged
-capital are forbidden by default. Initial starting capital is 2,000,000 KRW cash.
+daily account return target. The later real-investment `08:00-20:00 KST`
+envelope is an observation/opportunity window, not permission to trade
+continuously. The current paper/mock KRX investment/order-decision window is
+`09:00-15:00 KST`; `15:00-15:30 KST` may be market-data/close/reconciliation
+context only and must not unlock new paper/mock KRX entries or order submits.
+Capital policy is cash-only. Credit, margin, 미수, borrowed funds, or other
+leveraged capital are forbidden by default. Initial starting capital is
+2,000,000 KRW cash.
 AI API orchestration may be used for candidate synthesis, ranking, explanation,
 and operation review, but AI outputs cannot directly place orders or override
 deterministic risk controls.
@@ -113,8 +117,10 @@ broker-account/support-confirmation gate. Actual KIS adapter balance and exact
 current rate limits still require a future explicitly approved broker-network
 smoke.
 Broker-adapter account balance is observed broker evidence only. Risk sizing uses
-the hwiStock risk-overlay capital of 2,000,000 KRW unless a future approved
-profile/unit change records a different value.
+authoritative account-truth totals for the current paper experiment's dynamic
+75% exposure calculation, but the effective exposure base must not exceed the
+hwiStock risk-overlay capital of 2,000,000 KRW unless a future approved
+profile/unit change records a higher cap.
 
 Current operational correction: the continuous KIS broker adapter runner foundation
 (`HWISTOCK-UNIT-010`) is not the complete trading program. Actual operation
@@ -145,7 +151,11 @@ crash. In `paper_experiment` mode, a valid session approval plus caps enables
 the KIS paper/mock order loop; no per-order human approval is required inside
 that approved session.
 
-Current owner-defined runtime architecture is file-driven:
+Current owner-defined runtime architecture is file-driven. The canonical
+investment-mode docs variable is `HWISTOCK_INVESTMENT_MODE=paper|live`; existing
+KIS-specific env/config names may map into that canonical mode during migration,
+but Ready-Set reasoning must separate investment mode from
+`HWISTOCK_OPERATION_MODE` such as `paper_experiment`.
 
 1. `news_disclosure_collector` runs 24 hours and collects only permitted/free
    public sources. Initial recommended sources are OpenDART disclosures, NAVER
@@ -159,12 +169,24 @@ Current owner-defined runtime architecture is file-driven:
    every 1-3 minutes such as volume rank, fluctuation, volume power, and
    program-trading aggregate status where supported. Real investment mode
    additionally enables NXT WebSocket realtime trade/orderbook/market-operation
-   inputs. SOR KIS broker-facing collection remains disabled or fallback-only
-   until later support confirmation.
+   inputs. Paper/mock market-data context may run through the KRX public
+   regular-session close at `15:30 KST`, but paper/mock investment/order
+   decisions stop at `15:00 KST`. SOR KIS broker-facing collection remains
+   disabled or fallback-only until later support confirmation.
 3. `deepseek_pro_hourly` runs on the top of every hour. It reads the accumulated
    news/disclosure and KIS market-data files. During market hours it includes
    market-regime/session analysis in the same hourly Pro artifact, not as a
    detached side design.
+3a. `gpt_morning_watchlist` starts at `07:15 KST` when scoped. It is executed by
+   **Codex CLI on the local desktop/workstation using local browser-use** against
+   the user's logged-in local Chrome ChatGPT Pro session. SSH browser-use,
+   reverse-socket Chrome bridges, remote Chrome, and hwiServer-side browser
+   automation are forbidden for this path. The prompt reads the prior close
+   through current-morning Pro/news/disclosure artifacts and writes a
+   `morning_watchlist/v0` artifact or a named safe-block. For paper/mock mode,
+   the first `09:00 KST` Flash bucket must reference that artifact or safe-block;
+   for future live mode, the first `08:00 KST` Flash bucket has the same
+   requirement.
 4. `deepseek_flash_decision_10m` runs every 10 minutes during market hours. It
    reads the latest Pro artifact, the recent 10-minute news/disclosure window,
    KIS REST ranking changes, current KIS market snapshots, and realtime
@@ -177,18 +199,27 @@ Current owner-defined runtime architecture is file-driven:
    action type (`WAIT_BUY`, `BUY_NOW`, `HOLD`, `SELL`, or `NO_TRADE`), entry
    zone if relevant, take-profit, stop-loss, trailing-stop percent,
    cancel-if-not-filled window, size/cash cap, validity window, source refs, and
-   risk notes.
+   risk notes. Paper/mock Flash decision buckets that can create new entry
+   intents are limited to `09:00-15:00 KST`; `15:00-15:30 KST` may produce
+   close/reconciliation/watch records only.
 5. `trade_document_executor` watches newly written trade documents, validates
    them through deterministic strategy/risk gates plus current holdings,
    pending-order, and open-exit checks, and submits only approved KIS KRX
    broker-adapter cash orders. AI artifacts never call broker APIs directly and
    never hold credentials.
+6. `daily_close_report` uses DeepSeek Pro for an operation summary after the
+   relevant close. Paper/mock mode targets the post-KRX-close summary after
+   `15:30 KST`; future live mode targets `20:00 KST`. Daily reports explain
+   system-calculated results and must not calculate PnL in AI prose.
 
-ChatGPT Pro remains optional external review through browser automation when
-available; it is not required for the runtime loop to stay running. When GPT
-Pro review is used for this project, the review packet must include the GitHub
-repository URL and the exact folders and file paths to review, instead of only
-an unscoped architecture summary or whole-project prompt.
+ChatGPT Pro remains optional external review through local Codex CLI
+browser-use when available; it is not required for the runtime loop to stay
+running. The approved hwiStock GPT Pro route is local Codex CLI -> local
+browser-use -> user's logged-in local Chrome. SSH browser-use must not be used
+for morning watchlist or runtime-review prompts. When GPT Pro review is used for
+this project, the review packet must include the GitHub repository URL and the
+exact folders and file paths to review, instead of only an unscoped architecture
+summary or whole-project prompt.
 
 ## 2. Project Layout
 
@@ -243,6 +274,8 @@ an unscoped architecture summary or whole-project prompt.
 - Market scope: Korea domestic stocks (`국장`) first
 - Trading venues/session context: KRX + integrated + NXT
 - KRX session truth: KRX public regular-session context is 09:00-15:30 KST
+- Paper/mock KRX investment/order-decision truth: 09:00-15:00 KST; 15:00-15:30
+  KST is close/market-data/reconciliation context only
 - Current KIS investment-mode policy: paper/mock mode enables KRX plus
   integrated market-data/account-truth helpers; real investment mode enables
   KRX and NXT where KIS capability flags allow it
@@ -328,6 +361,10 @@ an unscoped architecture summary or whole-project prompt.
   `docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md`
 - Current KIS paper/mock experiment readiness split evidence:
   `docs/evidence/RUN-20260606_paper-experiment-readiness-split-go-check.md`
+- Current investment-mode schedule / AI-loop follow-up Ready-Set correction:
+  `docs/set/READY-SET-CORRECTION-20260606_mode-schedule-ai-loop-followup.md`
+- Current GPT Pro morning prompt contract:
+  `docs/set/READY-SET-GPT-PRO-MORNING-PROMPT-20260606_hwistock.md`
 - Current operational implementation / contract units:
   - `docs/units/HWISTOCK-UNIT-011_operational-runtime-supervisor.md`
   - `docs/units/HWISTOCK-UNIT-016_runtime-contract-hardening.md`
@@ -418,6 +455,8 @@ visual basis in the unit and QA scenario before Go.
 
 Project-specific GPT Pro review packet policy:
 
+- Execute hwiStock GPT Pro review/morning prompts from Codex CLI with local
+  browser-use only. Do not use SSH browser-use for this project path.
 - Include the current GitHub repository URL, not only local paths.
 - Include the exact folders and file paths that GPT Pro should review.
 - Keep secret-bearing local config, ignored env files, broker credentials,
@@ -471,9 +510,10 @@ Manual checklist review always includes:
 - all-in single-stock deployment blocked by default
 - operator-selected adapter-backed observation evidence before account-affecting operation;
   the program must not hardcode the observation duration
-- overtrading controls for the 08:00-20:00 envelope are not part of the first
-  minimal risk policy unless a future Set decision adds them; signal-quality and
-  stale-data gates still apply
+- overtrading controls for the later real-investment 08:00-20:00 envelope are
+  not part of the first minimal risk policy unless a future Set decision adds
+  them; the current paper/mock KRX investment/order-decision window remains
+  09:00-15:00 KST, and signal-quality/stale-data gates still apply
 - audit logging for signals, decisions, orders, and failures
 - reproducible evidence for backtest and automated-trading claims
 - PostgreSQL storage isolation: hwiStock must use a separate database/schema
@@ -693,9 +733,11 @@ window metadata, and final go/no-go verdict.
 - Baseline capital allocation, all-in prohibition, risk limits, and kill switch
   policy are drafted in `HWISTOCK-MOD-003`. Current Set decisions: maximum
   simultaneous holdings is 5; order sizing must preserve
-  `minimum_cash_reserve_ratio = 0.25` of total capital; AI may recommend a
-  per-entry stop price, but deterministic risk gates cap accepted stops at a
-  maximum -5% loss envelope.
+  `minimum_cash_reserve_ratio = 0.25` of effective total-deposit exposure, using
+  authoritative account truth and still capped by the 2,000,000 KRW risk-overlay
+  capital unless a later approved profile/unit change raises it; AI may
+  recommend a per-entry stop price, but deterministic risk gates cap accepted
+  stops at a maximum -5% loss envelope.
 - Operation observation acceptance criteria: selected by
   `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md`. The runner is a
   continuous 24-hour service; observation-window start, end, and duration are
@@ -706,9 +748,11 @@ window metadata, and final go/no-go verdict.
   path unless later official evidence changes this. NXT/SOR remain
   venue/session parameters in the engine, but KIS-facing NXT/SOR branches stay
   disabled or explicit-fallback-only and require later
-  broker-account/support-confirmation evidence before account-affecting routing. Internal fake
-  broker simulation is not used. Broker adapter balance is observed evidence
-  only and must not expand hwiStock's 2,000,000 KRW risk-overlay capital.
+  broker-account/support-confirmation evidence before account-affecting routing.
+  Internal fake broker simulation is not used. Broker adapter balance is
+  observed account-truth evidence for the dynamic 75% exposure gate, but it must
+  not expand hwiStock's 2,000,000 KRW risk-overlay capital without a later
+  approved profile/unit cap change.
 - Dashboard/UI need: selected as read-only status/conversation dashboard. Direct
   buy/sell controls are excluded. Default access is local-only
   `127.0.0.1`/SSH-tunnel/Chrome-Remote-Desktop. Design route is no-design
@@ -784,8 +828,10 @@ These must be answered before implementation-ready Go:
 6. Candle intervals for the 10-20 minute strategy: packaged for user approval
    in `docs/set/READY-SET-STRATEGY-DECISION-PACKET-20260602_hwistock.md`.
 7. AI job registry, first-pass `*/v0` schemas, structured actions, normalized
-   bundle input policy, GPT Pro 07:20 cutoff, and fallback behavior: closed by
-   `HWISTOCK-UNIT-005` Set.
+   bundle input policy, and fallback behavior: initially closed by
+   `HWISTOCK-UNIT-005` Set; the current operational Ready-Set follow-up changes
+   the morning review contract to a `07:15 KST` start with hard cutoff before
+   the first Flash bucket for the active investment mode.
 8. AI token/cost caps for provider network calls: defaults are
    `AI_NETWORK_ENABLED=false` and `AI_DAILY_COST_CAP_KRW=0`; nonzero caps require
    a future approved provider-pricing check.
@@ -797,11 +843,14 @@ These must be answered before implementation-ready Go:
    engine, read-only broker-adapter monitor, or UI dashboard?
 12. Preferred stack: closed as Python 3 + FastAPI backend/API/trading runner,
     TypeScript + Next.js/React read-only dashboard, and PostgreSQL storage.
-13. Minimal risk policy: closed for the first docs pass. Maximum simultaneous
-    holdings is 5. Position sizing has no fixed per-symbol cap, but every order
-    must preserve `minimum_cash_reserve_ratio = 0.25` of total capital. Stop
-    policy is AI-assisted per entry, but deterministic risk gates cap accepted
-    stops at a maximum -5% loss envelope.
+13. Minimal risk policy: closed for the first docs pass and corrected by the
+    current operational Ready-Set follow-up. Maximum simultaneous holdings is 5.
+    Position sizing has no fixed per-symbol cap, but every order must preserve
+    `minimum_cash_reserve_ratio = 0.25` of authoritative effective
+    total-deposit exposure, capped by the 2,000,000 KRW risk-overlay capital
+    unless a later approved profile/unit change raises it. Stop policy is
+    AI-assisted per entry, but deterministic risk gates cap accepted stops at a
+    maximum -5% loss envelope.
 14. Should any account-level risk controls such as daily loss halt, max trades,
    or cooldown remain excluded for the first test, or should they be added later
    after adapter evidence?
@@ -835,6 +884,6 @@ These must be answered before implementation-ready Go:
     governed by the 2026-06-05 operational Ready-Set queue. The official
     broker-adapter investment API can be used for operator-selected observation
     windows in the KRX-supported adapter path. Broker-visible adapter balance is
-    observed context only; hwiStock risk sizing must preserve the 2,000,000 KRW
-    risk-overlay capital unless a future explicit profile/unit change says
-    otherwise.
+    observed context for account-truth and dynamic exposure checks; hwiStock
+    risk sizing must not exceed the 2,000,000 KRW risk-overlay capital unless a
+    future explicit profile/unit change says otherwise.

@@ -46,6 +46,7 @@ evidence_refs:
   - docs/evidence/RUN-20260605_owner-selected-naver-kis6-scope.md
   - docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
   - docs/evidence/RUN-20260606_kis-mode-gated-account-truth-go-check.md
+  - docs/set/READY-SET-CORRECTION-20260606_mode-schedule-ai-loop-followup.md
 ---
 
 # Signal To Order Intent Pipeline
@@ -105,6 +106,11 @@ cancel, balance-changing, or unapproved endpoints.
   NXT signal inputs must be rejected in paper/mock mode and enabled only in real
   investment mode. SOR broker-facing market-data branches remain disabled unless
   a future approved contract adds them.
+- Respect the active investment-mode schedule:
+  - paper/mock market-data context may continue until `15:30 KST`;
+  - paper/mock new entry-intent generation is limited to `09:00-15:00 KST`;
+  - future live mode may use `08:00-20:00 KST` only after separate live approval
+    and capability proof.
 - Produce deterministic `condition_card/v0` and `compiled_watch/v0` records.
 - `compiled_watch/v0` is the deterministic candidate universe. Flash may score,
   rank, reject, or explain only symbols already present in that universe. If
@@ -122,11 +128,20 @@ cancel, balance-changing, or unapproved endpoints.
   - reservation accounting shows cash reserve and holding slots remain safe
     under worst-case pending-order fills;
   - calendar/session route is valid;
+  - paper/mock `15:00-15:30 KST` close/market-data context cannot create new
+    entry intents;
+  - the first Flash bucket for the active investment mode includes a valid
+    `morning_watchlist/v0` ref or an explicit safe-block;
   - Flash action fields are valid: `WAIT_BUY`, `BUY_NOW`, `HOLD`, `SELL`, and
     `NO_TRADE`, including validity/cancel windows, entry zone, take-profit,
     stop-loss, trailing-stop percent, position-size cap, and action reason;
   - AI invalidation/stop notes are present;
   - deterministic strategy/risk gates pass;
+  - dynamic exposure gating proves current position value plus pending buy
+    notional plus the new order notional is at or below
+    `effective_total_deposit_krw * 0.75`, with the effective base still capped
+    by the 2,000,000 KRW risk-overlay capital unless a later approved
+    profile/unit change raises it;
   - unapproved endpoint, margin, all-in, fake broker, and stale-data checks pass.
 - Write the intent queue to a durable data path consumed by UNIT-014.
 - Persist rejected actions with reasons so the dashboard and daily report can
@@ -172,6 +187,9 @@ cancel, balance-changing, or unapproved endpoints.
 | AC-12 | P0 | UNIT-013 is adapter-read only | KIS order/cancel/modify endpoints are not called by this unit; unsupported NXT/SOR broker-facing branches write disabled/fallback evidence. |
 | AC-13 | P0 | Flash cannot invent candidate symbols | A Flash action whose ticker is absent from deterministic `compiled_watch/v0` is rejected and produces no order intent. |
 | AC-14 | P0 | KIS signal collector is mode-gated | UNIT-013 attempts only the mode-enabled KRX/integrated/NXT realtime market-data inputs plus approved REST rank/program-trading inputs; paper/mock mode rejects NXT inputs, real investment mode enables NXT inputs, and any KIS order/cancel/modify endpoint remains safe-blocked. |
+| AC-15 | P0 | Paper/mock entry-intent window ends at 15:00 | Valid KRX market-data context after `15:00 KST` can produce close/watch/reconciliation records, but cannot create a new paper/mock entry `paper_order_intent/v0`. |
+| AC-16 | P0 | Morning watchlist is referenced before first Flash intent | The first active-mode Flash bucket references `morning_watchlist/v0` or the pipeline writes a named safe-block and queues no entry intent. |
+| AC-17 | P0 | Dynamic 75% exposure cap is enforced | Intent generation rejects a new order when current position value plus pending buy notional plus new notional would exceed `effective_total_deposit_krw * 0.75`. |
 
 ## 5. Go Notes
 

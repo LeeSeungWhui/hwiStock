@@ -24,6 +24,8 @@ contract_hardening_unit_ref: docs/units/HWISTOCK-UNIT-016_runtime-contract-harde
 contract_hardening_evidence_ref: docs/evidence/RUN-20260605_unit-016-runtime-contract-hardening-set.md
 operational_go_check_evidence_ref: docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
 post_pro_corrective_go_check_evidence_ref: docs/evidence/RUN-20260605_post-pro-corrective-go-check-unit-011-015.md
+followup_correction_refs:
+  - docs/set/READY-SET-CORRECTION-20260606_mode-schedule-ai-loop-followup.md
 ---
 
 # Ready-Set Completion Gate — Operational Automated Trading Program
@@ -98,6 +100,30 @@ The correct target is:
 - broker-evidence-backed reconciliation;
 - read-only operator console; and
 - operator-selected observation evidence.
+
+2026-06-06 investment-mode/AI-loop follow-up correction:
+
+- `HWISTOCK_INVESTMENT_MODE=paper|live` is the canonical docs-level investment
+  mode and is separate from `HWISTOCK_OPERATION_MODE=paper_experiment`.
+- Paper/mock KRX investment/order-decision time is `09:00-15:00 KST`.
+  `15:00-15:30 KST` is KRX close/market-data/reconciliation context only.
+- A `07:15 KST` morning watchlist path must write `morning_watchlist/v0` or a
+  named safe-block before the first Flash bucket for the active investment mode.
+  GPT Pro prompts for this path must be sent by Codex CLI on the local
+  desktop/workstation through local browser-use. SSH browser-use is forbidden.
+- Flash remains a 10-minute decision-document job; paper/mock buckets that can
+  create new entry intents are limited to `09:00-15:00 KST`.
+- Daily close reporting is mode-aware: paper/mock after `15:30 KST`, future live
+  mode at `20:00 KST`.
+- Dynamic exposure gating must use authoritative account truth:
+  current position value plus pending buy notional plus new order notional must
+  stay at or below `effective_total_deposit_krw * 0.75`, with the effective base
+  still capped by the 2,000,000 KRW risk-overlay capital unless a later approved
+  profile/unit change raises it.
+
+This follow-up does not cancel the bounded Monday KIS paper/mock experiment when
+its existing `paper_experiment_ready` blockers pass. It blocks only the stronger
+claim that the complete owner-defined AI operation loop is ready.
 
 ## 3. GPT Pro Review Correction
 

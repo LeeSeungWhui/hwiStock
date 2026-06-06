@@ -38,6 +38,8 @@ evidence_refs:
   - docs/evidence/RUN-20260605_ready-set-operational-automated-trading-program.md
   - docs/evidence/RUN-20260605_gpt-pro-operational-ready-set-review.md
   - docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
+  - docs/set/READY-SET-CORRECTION-20260606_mode-schedule-ai-loop-followup.md
+  - docs/set/READY-SET-GPT-PRO-MORNING-PROMPT-20260606_hwistock.md
 external_refs:
   - https://api-docs.deepseek.com/
   - https://api-docs.deepseek.com/api/list-models
@@ -64,7 +66,8 @@ The current contract is:
 - DeepSeek Pro: top-of-hour aggregate analysis across 24 hours.
 - DeepSeek Pro: during market hours, include market-regime/session analysis in
   the same hourly Pro artifact instead of running it as a detached subsystem.
-- DeepSeek Flash: every 10 minutes during market hours, read the latest Pro
+- DeepSeek Flash: every 10 minutes during the active investment-mode decision
+  window, read the latest Pro
   file, the recent 10-minute NAVER news/OpenDART disclosure window, KIS REST
   ranking changes, current KIS realtime trade/orderbook snapshots, the
   deterministic candidate universe, and risk context. It must also read the
@@ -75,8 +78,15 @@ The current contract is:
   and writes a `NO_TRADE` sentinel artifact when the tick is invalid,
   unavailable, malformed, or off-session. A valid trade document contains at
   most five symbol actions.
-- ChatGPT Pro: optional 07:00 external morning review through browser
-  automation when available before cutoff.
+- Paper/mock Flash buckets that can create new entry intents are limited to
+  `09:00-15:00 KST`. KRX market-data context after `15:00 KST` through
+  `15:30 KST` may support close/reconciliation/watch records only.
+- ChatGPT Pro / morning watchlist: optional `07:15 KST` external morning review
+  through **Codex CLI local browser-use** when scoped. The CLI must run on the
+  local desktop/workstation against the user's logged-in local Chrome ChatGPT
+  Pro session. SSH browser-use is forbidden. The path must write
+  `morning_watchlist/v0` or a named safe-block before the first Flash bucket for
+  the active investment mode (`09:00 KST` paper/mock, `08:00 KST` future live).
 
 AI output remains non-executable. The deterministic strategy/risk/order layers
 own all broker-order eligibility.
@@ -93,6 +103,7 @@ own all broker-order eligibility.
   - `pro_hourly_market_analysis/v0`
   - `flash_trade_document/v0`
   - `gpt_morning_prompt/v0`
+  - `morning_watchlist/v0`
   - `morning_review_report/v0`
   - `daily_close_report/v0`
 - `flash_trade_document/v0` is one document per Flash 10-minute decision tick.
@@ -114,6 +125,9 @@ own all broker-order eligibility.
   - current portfolio/order-state snapshot with holdings, pending orders,
     active exits, cooldowns, cash/reserve state, and position locks.
   Prefer both when available.
+- The first Flash bucket for the active investment mode must include a valid
+  `morning_watchlist/v0` ref or write `NO_TRADE` with a named
+  `morning_watchlist_missing_or_stale` style reason.
 - Enforce source ids, redaction status, prompt/schema versions, latency/cutoff,
   and no-order boundaries.
 - Keep AI provider keys external under `/home/hwi/.config/hwistock/deepseek.env`.
@@ -125,8 +139,8 @@ own all broker-order eligibility.
 - AI order placement.
 - Sending broker credentials, account values, or private account details to AI.
 - Enabling nonzero AI cost caps without explicit approval.
-- Browser automation for ChatGPT Pro unless the Go/Prove route explicitly
-  scopes browser side effects.
+- Any ChatGPT Pro browser automation except the explicitly scoped local Codex
+  CLI + local browser-use path. SSH browser-use remains forbidden for this unit.
 - Profit guarantees or investment advice claims.
 
 ## 4. Acceptance Criteria
@@ -136,12 +150,14 @@ own all broker-order eligibility.
 | AC-01 | P0 | Official DeepSeek model ids are used | Service/config/tests reject `moonbridge` or deprecated aliases as default runtime models. |
 | AC-02 | P0 | Hourly Pro aggregate job exists | A top-of-hour tick writes source-grounded `pro_hourly_market_analysis/v0` or a classified safe block. |
 | AC-03 | P0 | Pro market-regime analysis is integrated | During market hours the Pro artifact includes market-regime/session analysis in the same file; no detached market-regime subsystem is required. |
-| AC-04 | P0 | Flash 10-minute trade document exists | During market hours Flash writes `flash_trade_document/v0` every 10 minutes or safe-blocks; actions are capped at five symbols and include entry/take-profit/stop-loss/trailing/cancel windows where relevant. |
+| AC-04 | P0 | Flash 10-minute trade document exists | During the active investment-mode decision window Flash writes `flash_trade_document/v0` every 10 minutes or safe-blocks; actions are capped at five symbols and include entry/take-profit/stop-loss/trailing/cancel windows where relevant. |
 | AC-05 | P0 | AI outputs are non-executable | No AI artifact can directly invoke broker/order code or bypass deterministic risk gates. |
 | AC-06 | P0 | Secrets and copyrighted bodies are excluded | AI input payload review rejects credentials, account ids, and unapproved full article bodies. |
 | AC-07 | P0 | Missing provider/key is safe | Missing key or provider failure records a safe block and does not unlock new entries. |
 | AC-08 | P0 | Flash is portfolio-aware | Flash input includes previous trade-document and/or portfolio/order-state context, and output marks conflicts instead of proposing duplicate/conflicting entries. |
 | AC-09 | P0 | Flash candidate universe is deterministic | Flash can only score/select symbols from a prebuilt `compiled_watch/v0`; off-universe tickers are rejected and cannot produce order intents. |
+| AC-10 | P0 | Morning watchlist gates the first Flash bucket | The first paper/mock `09:00 KST` Flash bucket, and future live `08:00 KST` bucket, references a valid `morning_watchlist/v0` or writes `NO_TRADE`. |
+| AC-11 | P0 | Paper/mock decision window closes at 15:00 | Paper/mock Flash cannot create new entry intents after `15:00 KST`, even though market-data/close context may continue to `15:30 KST`. |
 
 ## 5. Go Notes
 
@@ -152,7 +168,11 @@ This unit should make the runtime match the profile:
 - DeepSeek Pro hourly artifact by official model id;
 - DeepSeek Flash 10-minute trade-document artifact by official model id;
 - separate schedule/command paths for Pro and Flash;
+- `07:15 KST` morning watchlist path and first-Flash dependency;
+- paper/mock `09:00-15:00 KST` decision window versus `15:30 KST`
+  market-data/close context;
 - `NO_TRADE` safe blocks when source, provider, schema, freshness, or session
   gates fail;
-- ChatGPT Pro as a separate optional browser review path, not part of the
-  always-on runtime loop.
+- ChatGPT Pro as a separate optional local Codex CLI browser-use review path,
+  not part of the always-on runtime loop; never use SSH browser-use for this
+  path.

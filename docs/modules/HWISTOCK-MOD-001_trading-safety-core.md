@@ -104,11 +104,11 @@ deployment is forbidden by default.
   program.
 - 24-hour home-server runtime safety expectations: restartability, health
   checks, audit logging, and kill switch.
-- Market-session gating for Korea domestic stocks across KRX + NXT: active
-  signal/order loops only inside 08:00-20:00 KST on valid trading days. Route
-  09:00-15:00 KST to KRX, and route 08:00-09:00 / 15:00-20:00 KST to NXT.
-  Do not split this into additional session modes unless a future approved unit
-  changes this routing policy.
+- Market-session gating for Korea domestic stocks is investment-mode aware.
+  Paper/mock mode routes new KRX investment/order decisions only during
+  09:00-15:00 KST and rejects NXT broker branches. Future live mode may use the
+  08:00-20:00 KST KRX/NXT envelope only where KIS capability flags and a later
+  approved unit prove support.
 - Branch separation: 24-hour information ingestion must not directly place
   orders; it can only publish normalized signals/events for later strategy/risk
   evaluation.
@@ -275,9 +275,10 @@ Future interfaces may include:
   Codex session.
 - Decision: Korea domestic stocks are the first market scope, and 24-hour service
   uptime must be separated from market-session trading activity.
-- Decision: runtime has two branches: 24-hour market intelligence ingestion, and
-  simple KRX/NXT venue routing with 09:00-15:00 KST on KRX and
-  08:00-09:00 / 15:00-20:00 KST on NXT.
+- Decision: runtime has two branches: 24-hour market intelligence ingestion and
+  investment-mode-aware trading/order routing. Paper/mock mode is KRX-only
+  09:00-15:00 KST for new investment/order decisions; future live mode may use
+  KRX/NXT 08:00-20:00 KST only after support proof and approval.
 - Decision: strategy direction is short-term day trading (`단타`).
 - Decision: capital policy is cash-only; credit, margin, 미수, borrowed funds, and
   leveraged capital are forbidden by default.

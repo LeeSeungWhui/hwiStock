@@ -20,7 +20,7 @@ completeness:
   status: go_check_passed
   audit_ref: docs/evidence/RUN-20260605_unit-005-go-check-rebaseline.md
 owner: hwi
-updated_at: 2026-06-05
+updated_at: 2026-06-06
 last_verified_at: 2026-06-05
 source_inputs:
   - kind: user_prompt
@@ -110,8 +110,10 @@ AI may:
 - propose a non-executable draft `order_intent` for deterministic review
 - flag `exit_review` or `hold_review` for operator/risk review
 - summarize adapter/backtest results after the fact
-- generate 06:50 GPT Pro morning-review prompt from overnight analysis artifacts
-- generate 20:00 daily close analysis from system-calculated PnL and trade logs
+- generate a 07:15 GPT Pro morning-watchlist prompt from overnight/prior-close
+  analysis artifacts
+- generate mode-aware daily close analysis from system-calculated PnL and trade
+  logs: paper/mock after 15:30 KST, future live mode at 20:00 KST
 
 AI may not:
 
@@ -149,20 +151,24 @@ AI output never skips step 4 or step 5.
   source-grounded, and stores hourly artifacts.
 - DeepSeek Pro market-regime/session analysis: during market hours this is a
   section inside the hourly Pro artifact, not a detached operational subsystem.
-- 06:50 aggregator: combines overnight hourly analysis artifacts into a GPT Pro
-  prompt. It must not reprocess all raw news when existing analysis artifacts
-  are sufficient.
-- 07:00 ChatGPT Pro morning review: external web-session reviewer that ranks
-  08:00 watchlist candidates, themes, risks, and invalidation conditions. If it
-  misses the configured cutoff, the system falls back to the DeepSeek-only
-  morning report.
-- DeepSeek Flash minute trade document: during market hours, reads latest Pro
-  analysis, new news/disclosures, KIS price/ranking/realtime snapshots, previous
-  trade documents and/or current portfolio/order-state snapshots, then writes
-  one `flash_trade_document/v0` for the minute. It does not decide final orders.
-- 20:00 daily close report: uses system-calculated profit, loss, net PnL,
-  fees/taxes when available, trade logs, AI candidate results, and market/news
-  context. AI explains; the system calculates numbers.
+- 07:15 morning-watchlist aggregator/review: combines prior-close/overnight
+  hourly analysis artifacts into a GPT Pro prompt or DeepSeek-only fallback.
+  The GPT Pro prompt must be sent by Codex CLI running on the local
+  desktop/workstation through local browser-use and the user's logged-in local
+  Chrome. SSH browser-use is forbidden for this path. The job must not reprocess
+  all raw news when existing analysis artifacts are sufficient. The first Flash
+  bucket for the active investment mode must reference the resulting
+  `morning_watchlist/v0` or safe-block.
+- DeepSeek Flash 10-minute trade document: during the active investment-mode
+  decision window, reads latest Pro analysis, new news/disclosures, KIS
+  price/ranking/realtime snapshots, previous trade documents and/or current
+  portfolio/order-state snapshots, then writes one `flash_trade_document/v0` for
+  the 10-minute decision bucket. It does not decide final orders. Paper/mock
+  entry decision buckets are limited to 09:00-15:00 KST.
+- Daily close report: uses system-calculated profit, loss, net PnL, fees/taxes
+  when available, trade logs, AI candidate results, and market/news context.
+  Paper/mock mode targets the post-KRX-close report after 15:30 KST; future live
+  mode targets 20:00 KST. AI explains; the system calculates numbers.
 
 ### 4.2-2 Job Registry Contract
 
@@ -172,10 +178,9 @@ not crawl, retrieve, or call broker tools in the first implementation.
 | job_id | schedule | model role | input schema | output schema | latency/cutoff |
 | --- | --- | --- | --- | --- | --- |
 | `deepseek_pro_hourly_market_analysis` | top of every hour, 24h | DeepSeek Pro | `pro_hourly_input_bundle/v0` | `pro_hourly_market_analysis/v0` | soft 10m, hard 20m |
-| `deepseek_flash_minute_trade_document` | every minute during market hours | DeepSeek Flash | `flash_minute_input_bundle/v0` | `flash_trade_document/v0` | soft 15s, hard 30s |
-| `gpt_prompt_0650` | 06:50 KST | local orchestrator / DeepSeek Pro summary artifacts | `overnight_analysis_bundle/v0` | `gpt_morning_prompt/v0` | hard 07:00 |
-| `chatgpt_pro_morning_review` | 07:00 KST | ChatGPT Pro external reviewer | `gpt_morning_prompt/v0` | `morning_review_report/v0` | hard 07:20 |
-| `daily_close_2000` | 20:00 KST | DeepSeek Pro | `daily_close_bundle/v0` | `daily_close_report/v0` | soft 20m, hard 21:00 |
+| `deepseek_flash_10m_trade_document` | every 10 minutes during active investment-mode decision window | DeepSeek Flash | `flash_10m_input_bundle/v0` | `flash_trade_document/v0` | soft 2m, hard before next bucket |
+| `gpt_morning_watchlist_0715` | 07:15 KST | local Codex CLI + local browser-use + ChatGPT Pro external reviewer when scoped; SSH browser-use forbidden | `overnight_analysis_bundle/v0` | `morning_watchlist/v0` / `morning_review_report/v0` | hard before first Flash bucket |
+| `daily_close_mode_aware` | paper after 15:30 KST; live 20:00 KST | DeepSeek Pro | `daily_close_bundle/v0` | `daily_close_report/v0` | soft 20m, hard before next operation day |
 
 If a job misses its hard cutoff, the result is invalid for that cycle. Late
 outputs may be stored as commentary but cannot unlock entries or overwrite
@@ -211,16 +216,18 @@ disclosure/news source ids, KIS market-data refs, risk notes, novelty/dedup
 flags, `next_watch` candidates, and during market hours a market-regime/session
 section. It cannot include executable order fields.
 
-`flash_trade_document/v0` is one document per Flash minute tick. Its
-`candidates` list contains at most five symbols. Each candidate includes entry
+`flash_trade_document/v0` is one document per Flash 10-minute decision bucket.
+Its `candidates` list contains at most five symbols. Each candidate includes entry
 price/rule, take-profit, stop-loss, sizing/cash cap, validity window, source
 refs, KIS market-data refs, portfolio-conflict status, and risk notes.
 
-`gpt_morning_prompt/v0` includes: overnight analysis digest, source ids, themes,
-candidate list, questions for GPT Pro, and explicit forbidden actions.
+`gpt_morning_prompt/v0` includes: prior-close/overnight/current-morning analysis
+digest, source ids, themes, candidate list, questions for GPT Pro, and explicit
+forbidden actions.
 
-`morning_review_report/v0` includes: ranked watchlist, reasons, risk notes,
-invalidation conditions, missing data, and no-order disclaimer.
+`morning_watchlist/v0` / `morning_review_report/v0` includes: ranked watchlist,
+reasons, risk notes, invalidation conditions, missing data, first-Flash
+applicability, and no-order disclaimer.
 
 `daily_close_report/v0` includes: system-calculated PnL references, trade/result
 summaries, AI interpretation, failure notes, and next-day watch themes. AI does
@@ -236,7 +243,8 @@ credit/margin, all-in sizing, stale source data, or a missing risk reference.
   `ai_unavailable` and keep candidates watchlist-only unless a later unit
   explicitly approves a deterministic non-AI entry path.
 - GPT Pro morning review unavailable or late: use DeepSeek-only morning report
-  and record fallback reason. GPT Pro hard cutoff is 07:20 KST.
+  and record fallback reason. The morning review starts at 07:15 KST and is hard
+  invalid if it misses the first Flash bucket for the active investment mode.
 - AI output malformed: reject the recommendation.
 - AI output lacks source ids: reject the recommendation.
 - AI latency exceeds the configured budget: reject for that decision cycle.
@@ -284,7 +292,7 @@ Default config values:
 - `DEEPSEEK_PRO_ENABLED=false`
 - `DEEPSEEK_FLASH_ENABLED=false`
 - `CHATGPT_PRO_BROWSER_REVIEW_ENABLED=false`
-- `GPT_PRO_MORNING_REVIEW_CUTOFF_KST=07:20`
+- `GPT_PRO_MORNING_REVIEW_START_KST=07:15`
 
 Before enabling real AI network calls, a future Set/Go unit must set nonzero
 cost and token caps from current provider pricing and record approval evidence.
@@ -298,7 +306,7 @@ Future interfaces may include:
 - AI provider adapter
 - DeepSeek Pro adapter
 - DeepSeek Flash adapter
-- ChatGPT Pro browser-automation adapter
+- ChatGPT Pro local Codex CLI browser-use adapter
 - prompt/schema registry
 - signal bundle builder
 - AI output validator
@@ -361,13 +369,15 @@ Future interfaces may include:
   broker endpoints are forbidden until a later approved unit.
 - Decision: DeepSeek Pro is the hourly aggregate source/market analyst; during
   market hours the same artifact includes market-regime/session analysis.
-- Decision: DeepSeek Flash writes one market-minute trade document whose
-  candidates list contains at most five symbols and is aware of prior trade
-  documents and/or current portfolio/order state.
-- Decision: ChatGPT Pro is the 07:00 morning external reviewer through browser
-  automation when available before cutoff.
-- Decision: 20:00 daily close report includes system-calculated PnL and AI
-  interpretation.
+- Decision: DeepSeek Flash writes one 10-minute trade document whose candidates
+  list contains at most five symbols and is aware of prior trade documents
+  and/or current portfolio/order state.
+- Decision: ChatGPT Pro morning watchlist starts at 07:15 KST through local
+  Codex CLI and local browser-use when scoped; SSH browser-use is forbidden. The
+  first active-mode Flash bucket requires its output or a named safe-block.
+- Decision: daily close report includes system-calculated PnL and AI
+  interpretation; paper/mock mode targets after 15:30 KST and future live mode
+  targets 20:00 KST.
 - Decision: official broker broker-adapter API use is deferred pending KIS API
   portal verification and explicit approval.
 - Decision: first-pass AI schemas are versioned as `*/v0`, with a job registry
@@ -375,7 +385,8 @@ Future interfaces may include:
 - Decision: AI tool use is disabled; models receive normalized bundles only.
 - Decision: AI network is disabled by default and has a KRW cap of 0 until a
   future approved network/cost unit sets nonzero caps from current pricing.
-- Decision: GPT Pro morning review hard cutoff is 07:20 KST.
+- Decision: GPT Pro morning review is invalid if it misses the first Flash
+  bucket for the active investment mode.
 - Decision: AI failure does not unlock new AI-originated entries; late or
   malformed output is stored only as rejected/fallback commentary.
 - Open: exact nonzero token/cost caps for paid AI API calls require future
@@ -387,6 +398,7 @@ Future interfaces may include:
 - `docs/evidence/RUN-20260605_unit-005-go-preflight-rebaseline.md`
 - `docs/evidence/RUN-20260605_unit-005-go-check-rebaseline.md`
 - `docs/evidence/RUN-20260602_unit-005-ai-orchestration-layer-set.md`
+- `docs/set/READY-SET-GPT-PRO-MORNING-PROMPT-20260606_hwistock.md`
 
 ## 12. Design References
 

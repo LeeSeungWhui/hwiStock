@@ -53,10 +53,12 @@ future operation-readiness review reproducible.
 - PnL numbers are calculated by the system, not by AI.
 - AI may interpret PnL and candidate outcomes, but AI output must reference
   system-calculated fields instead of inventing or recalculating numbers.
-- 07:00 morning reports synthesize overnight analysis artifacts.
-- 20:00 daily reports combine system-calculated profit, loss, net PnL,
+- 07:15 morning watchlist/reports synthesize prior-close and overnight analysis
+  artifacts.
+- Mode-aware daily reports combine system-calculated profit, loss, net PnL,
   fees/taxes when available, trade logs, AI candidate outcomes, and AI
-  interpretation.
+  interpretation. Paper/mock targets after 15:30 KST; future live mode targets
+  20:00 KST.
 - Every adapter/operation-readiness claim must link named evidence.
 - Artifact writes are append-only by default. Corrections create a new artifact
   with `supersedes_artifact_id`; they do not mutate historical trading or AI
@@ -106,10 +108,12 @@ date on which the artifact was collected.
 - `data/trading/YYYY-MM-DD/fills.jsonl`
 - `data/trading/YYYY-MM-DD/positions.jsonl`
 - `data/trading/YYYY-MM-DD/pnl.json`
-- `data/reports/YYYY-MM-DD/morning-0700.json`
-- `data/reports/YYYY-MM-DD/morning-0700.md`
-- `data/reports/YYYY-MM-DD/daily-close-2000.json`
-- `data/reports/YYYY-MM-DD/daily-close-2000.md`
+- `data/reports/YYYY-MM-DD/morning-watchlist-0715.json`
+- `data/reports/YYYY-MM-DD/morning-watchlist-0715.md`
+- `data/reports/YYYY-MM-DD/daily-close-paper-1530.json`
+- `data/reports/YYYY-MM-DD/daily-close-paper-1530.md`
+- `data/reports/YYYY-MM-DD/daily-close-live-2000.json`
+- `data/reports/YYYY-MM-DD/daily-close-live-2000.md`
 - `data/evidence/YYYY-MM-DD/paper-day.json`
 - PostgreSQL database: logical name `hwistock`
 - PostgreSQL schema: `hwistock_core`

@@ -45,9 +45,12 @@ evidence_refs:
   - docs/evidence/RUN-20260606_monday-operation-p0-safety-gates-go-check.md
   - docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md
   - docs/evidence/RUN-20260606_paper-experiment-readiness-split-go-check.md
+  - docs/set/READY-SET-CORRECTION-20260606_mode-schedule-ai-loop-followup.md
 contract_refs:
   - docs/contracts/HWISTOCK-RUNTIME-DATA-EXECUTION-CONTRACTS.md
   - docs/contracts/hwistock-runtime-contracts.schema.json
+prompt_refs:
+  - docs/set/READY-SET-GPT-PRO-MORNING-PROMPT-20260606_hwistock.md
 ---
 
 # Operational Automated Trading Program
@@ -70,6 +73,12 @@ contract_refs:
 > under `paper_experiment` session approval, caps, KRX session/calendar
 > preflight, account truth, duplicate lock, submit-result recording, and
 > evidence-write success.
+>
+> Investment-mode schedule correction (2026-06-06): paper/mock KRX
+> investment/order-decision time is `09:00-15:00 KST`. KRX public
+> regular-session/market-data context may continue through `15:30 KST`, but
+> `15:00-15:30 KST` is close/market-data/reconciliation context only and must not
+> unlock new paper/mock KRX entries or broker order submissions.
 
 ## 1. Purpose
 
@@ -128,12 +137,28 @@ The operational trading program is one coordinated system with these branches:
    - NXT broker-facing market-data collection is disabled in paper/mock mode and
      enabled only in real investment mode; SOR remains disabled unless a later
      support-confirmation gate adds it.
+   - Paper/mock mode may collect KRX/integrated market-data context until the
+     KRX close at `15:30 KST`, but investment/order-decision and entry-intent
+     windows close at `15:00 KST`.
 3. `deepseek_pro_hourly`
    - Runs on the top of every hour.
    - Reads accumulated news/disclosure files and KIS market-data snapshots.
    - During market hours, market-regime/session analysis is included in the
      same hourly Pro file. It must not be designed as a detached subsystem.
    - Writes `pro_hourly_market_analysis/v0`.
+3a. `gpt_morning_watchlist`
+   - Starts at `07:15 KST` when the route is scoped.
+   - Executes through Codex CLI on the local desktop/workstation using local
+     browser-use and the user's logged-in local Chrome ChatGPT Pro session.
+   - SSH browser-use, reverse-socket Chrome bridges, remote Chrome, and
+     hwiServer-side browser automation are forbidden for this path.
+   - Reads the prior close through current-morning Pro/news/disclosure
+     artifacts, including weekend carry-over when the next trading day is
+     Monday.
+   - Writes `morning_watchlist/v0` or a named safe-block.
+   - The first Flash bucket for the active investment mode must reference the
+     latest valid morning watchlist or safe-block: `09:00 KST` for paper/mock
+     and `08:00 KST` for future live mode.
 4. `deepseek_flash_decision_10m`
    - Runs every 10 minutes during market hours.
    - Reads the latest Pro file, the recent 10-minute news/disclosure window,
@@ -154,6 +179,9 @@ The operational trading program is one coordinated system with these branches:
    - Flash may score/select only symbols present in the deterministic
      `compiled_watch/v0` candidate universe; off-universe tickers are rejected
      and cannot become order intents.
+   - Paper/mock Flash buckets that may produce new entry intents run only during
+     `09:00-15:00 KST`. Later paper/mock ticks may write `NO_TRADE`, watch,
+     close, or reconciliation context but cannot create new entry intents.
 5. `trade_document_executor`
    - Watches newly written `flash_trade_document/v0` files.
    - Cancels unfilled previous `WAIT_BUY` orders when a newer accepted document
@@ -175,10 +203,20 @@ The operational trading program is one coordinated system with these branches:
    - Maintains idempotency, order state, cancellation, fill lookup, and
      reconciliation.
    - Creates no fake fills, fake balances, or fake PnL.
+   - Enforces the dynamic 75% exposure cap from authoritative account truth:
+     current position value plus pending buy notional plus the new order notional
+     must be at or below `effective_total_deposit_krw * 0.75`, where the
+     effective base remains capped by the 2,000,000 KRW risk-overlay capital
+     unless a later approved profile/unit change raises it.
 7. `operator_console`
    - Shows service/timer health, latest evidence, current blocks, kill-switch
      state, operation observation-window metadata, and read-only KIS broker adapter status.
    - Provides no direct buy/sell controls.
+8. `daily_close_report`
+   - Paper/mock mode writes the post-KRX-close operation summary after
+     `15:30 KST`; future live mode targets `20:00 KST`.
+   - The report uses system-calculated PnL/exposure/order-state data and AI
+     interpretation only; AI does not calculate the numbers.
 
 ## 3. Runtime Gap Inventory Snapshot
 
@@ -238,8 +276,10 @@ P0 safety boundaries:
 - AI cannot hold credentials, call broker APIs, or directly place orders.
 - The deterministic strategy/risk layer always wins over AI.
 - Cash-only policy is mandatory.
-- Starting capital baseline is 2,000,000 KRW; adapter balance does not enlarge the
-  hwiStock risk overlay.
+- Starting capital baseline is 2,000,000 KRW. Authoritative adapter/account
+  truth is used for the dynamic 75% exposure gate, but the effective exposure
+  base must not exceed the hwiStock risk overlay unless a later approved
+  profile/unit change raises it.
 - Maximum simultaneous holdings is 5.
 - Minimum cash reserve ratio is 0.25.
 - Credit, margin, 미수, borrowed funds, leverage, all-in sizing, and profit

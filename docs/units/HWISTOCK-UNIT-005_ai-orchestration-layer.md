@@ -20,7 +20,7 @@ completeness:
   status: go_check_passed
   audit_ref: docs/evidence/RUN-20260605_unit-005-go-check-rebaseline.md
 owner: hwi
-updated_at: 2026-06-05
+updated_at: 2026-06-06
 last_verified_at: 2026-06-05
 source_snapshot:
   input_digest: "AI API orchestration for news/disclosure/chart candidate synthesis"
@@ -84,6 +84,8 @@ evidence_refs:
   - docs/evidence/RUN-20260602_unit-005-ai-orchestration-layer-set.md
   - docs/evidence/RUN-20260605_unit-005-go-preflight-rebaseline.md
   - docs/evidence/RUN-20260605_unit-005-go-check-rebaseline.md
+  - docs/set/READY-SET-CORRECTION-20260606_mode-schedule-ai-loop-followup.md
+  - docs/set/READY-SET-GPT-PRO-MORNING-PROMPT-20260606_hwistock.md
 links:
   - HWISTOCK-MOD-004
 operational_runtime_authority:
@@ -97,9 +99,9 @@ operational_runtime_authority:
 ## 1. Goal
 
 Define a safe AI orchestration layer that can summarize, rank, and explain
-news/disclosure/chart candidates, route the 07:00 GPT Pro morning review, and
-produce daily reports while leaving all order eligibility to deterministic
-policy and risk gates.
+news/disclosure/chart candidates, route the 07:15 GPT Pro morning watchlist when
+scoped, and produce mode-aware daily reports while leaving all order eligibility
+to deterministic policy and risk gates.
 
 ## 2. Baseline Module Contract
 
@@ -120,10 +122,14 @@ docs-only until a future Go unit creates code.
 - 24h hourly aggregate source/market analysis schedule.
 - Market-regime/session analysis as a market-hours section of the hourly Pro
   artifact for the operational runtime.
-- Flash minute trade-document generation as the operational intraday artifact.
-- 06:50 GPT prompt generation from overnight analysis artifacts.
-- 07:00 GPT Pro morning review with fallback cutoff.
-- 20:00 daily close report using system-calculated PnL.
+- Flash 10-minute trade-document generation as the operational intraday artifact.
+- 07:15 GPT morning-watchlist generation from prior-close/overnight analysis
+  artifacts, requested by Codex CLI on the local desktop/workstation through
+  local browser-use.
+- GPT Pro morning review with fallback before the first Flash bucket for the
+  active investment mode. SSH browser-use is forbidden for this route.
+- Mode-aware daily close report using system-calculated PnL: paper/mock after
+  15:30 KST, future live mode at 20:00 KST.
 - Audit and operation evidence requirements.
 
 ## 4. Excluded Scope
@@ -150,7 +156,7 @@ docs-only until a future Go unit creates code.
 | AC-07 | P1 | AI calls are auditable | Model, prompt/schema version, input bundle ids, latency, and output are logged | audit log | QA-007 |
 | AC-08 | P0 | AI draft order intents are non-executable | Draft `order_intent` cannot bypass schema or deterministic policy gates | schema/policy test | QA-009 |
 | AC-09 | P0 | Approved intents respect broker boundary | Before KIS adapter approval, policy-approved intent becomes no-order dry-run only; after approval it may target only the approved KIS KRX broker-adapter path | adapter test | QA-010 |
-| AC-10 | P0 | Scheduled AI jobs are role-bounded | Pro hourly aggregate analysis, Flash minute trade documents, GPT Pro morning, and daily close jobs have separate schemas/logs; market-regime/session analysis is inside the Pro hourly artifact for operational runtime | schedule/schema review | QA-011 |
+| AC-10 | P0 | Scheduled AI jobs are role-bounded | Pro hourly aggregate analysis, Flash 10-minute trade documents, 07:15 morning watchlist, and mode-aware daily close jobs have separate schemas/logs; market-regime/session analysis is inside the Pro hourly artifact for operational runtime | schedule/schema review | QA-011 |
 | AC-11 | P0 | AI tool use is disabled first-pass | AI receives normalized bundles only and cannot browse, retrieve, or call tools directly | boundary/config review | QA-015 |
 | AC-12 | P0 | AI network is disabled by default | Config defaults keep AI calls off and cost cap at 0 until explicit approval | config review | QA-016 |
 
@@ -178,10 +184,9 @@ docs-only until a future Go unit creates code.
 | job_id | schedule | model role | input schema | output schema | latency/cutoff |
 | --- | --- | --- | --- | --- | --- |
 | `deepseek_pro_hourly_market_analysis` | top of every hour, 24h | DeepSeek Pro | `pro_hourly_input_bundle/v0` | `pro_hourly_market_analysis/v0` | soft 10m, hard 20m |
-| `deepseek_flash_minute_trade_document` | every minute during market hours | DeepSeek Flash | `flash_minute_input_bundle/v0` | `flash_trade_document/v0` | soft 15s, hard 30s |
-| `gpt_prompt_0650` | 06:50 KST | local orchestrator / DeepSeek Pro summary artifacts | `overnight_analysis_bundle/v0` | `gpt_morning_prompt/v0` | hard 07:00 |
-| `chatgpt_pro_morning_review` | 07:00 KST | ChatGPT Pro external reviewer | `gpt_morning_prompt/v0` | `morning_review_report/v0` | hard 07:20 |
-| `daily_close_2000` | 20:00 KST | DeepSeek Pro | `daily_close_bundle/v0` | `daily_close_report/v0` | soft 20m, hard 21:00 |
+| `deepseek_flash_10m_trade_document` | every 10 minutes during active investment-mode decision window | DeepSeek Flash | `flash_10m_input_bundle/v0` | `flash_trade_document/v0` | soft 2m, hard before next bucket |
+| `gpt_morning_watchlist_0715` | 07:15 KST | local Codex CLI / local browser-use / ChatGPT Pro external reviewer when scoped; SSH browser-use forbidden | `overnight_analysis_bundle/v0` | `morning_watchlist/v0` / `morning_review_report/v0` | hard before first Flash bucket |
+| `daily_close_mode_aware` | paper after 15:30 KST; live 20:00 KST | DeepSeek Pro | `daily_close_bundle/v0` | `daily_close_report/v0` | soft 20m, hard before next operation day |
 
 Late outputs are invalid for the decision cycle and may only be stored as
 commentary/fallback evidence.
@@ -222,7 +227,7 @@ AI network use is disabled by default:
 - `DEEPSEEK_PRO_ENABLED=false`
 - `DEEPSEEK_FLASH_ENABLED=false`
 - `CHATGPT_PRO_BROWSER_REVIEW_ENABLED=false`
-- `GPT_PRO_MORNING_REVIEW_CUTOFF_KST=07:20`
+- `GPT_PRO_MORNING_REVIEW_START_KST=07:15`
 
 Nonzero token/cost caps require a future approved AI network/cost Set using
 current provider pricing.
@@ -230,8 +235,8 @@ current provider pricing.
 ### 7.5 Fallback
 
 - AI unavailable: no new AI-originated entry is unlocked.
-- GPT Pro late/unavailable after 07:20 KST: use DeepSeek-only morning report and
-  record fallback.
+- GPT Pro late/unavailable before the first Flash bucket for the active
+  investment mode: use DeepSeek-only morning report and record fallback.
 - Malformed, uncited, stale, low-confidence, or policy-violating output:
   rejected and logged.
 - AI output can never bypass deterministic risk gates or broker-boundary gates.
@@ -255,6 +260,6 @@ grounding, sensitive-payload review, draft order intent rejection, deterministic
 UNIT-004 risk-gate handoff, no-order dry-run records, audit records, fallback
 reports, daily-close system-PnL source checks, and tool-use-disabled behavior.
 
-This Go-Check does not authorize AI provider calls, browser automation, nonzero
-AI cost caps, broker/KIS calls, adapter/account-affecting orders, fake fills, fake balances,
-fake PnL, server start, DB work, or credential reads.
+This Go-Check does not authorize AI provider calls, local browser-use execution,
+nonzero AI cost caps, broker/KIS calls, adapter/account-affecting orders, fake
+fills, fake balances, fake PnL, server start, DB work, or credential reads.
