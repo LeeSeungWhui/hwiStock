@@ -10,7 +10,7 @@ post_pro_reinforcement_status: corrective_gap_recorded
 priority: P0
 source_of_truth: user_intent
 owner: hwi
-updated_at: 2026-06-05
+updated_at: 2026-06-06
 profile_refs:
   - PROFILE-HWISTOCK
 module_ids:
@@ -104,9 +104,10 @@ own all broker-order eligibility.
   explicit adapter-only/no-adapter-order metadata.
 - Flash must not invent ticker candidates. Its executable action universe is the
   deterministic `compiled_watch/v0` input created from NAVER/OpenDART events,
-  the six KIS signal inputs, symbol mapping, freshness/session filters, and
-  strategy/risk prefilters. Off-universe symbols become reject/watch records or
-  a `NO_TRADE` safe block; they cannot become order intents.
+  the mode-enabled KIS signal collector inputs, symbol mapping,
+  freshness/session filters, and strategy/risk prefilters. Off-universe symbols
+  become reject/watch records or a `NO_TRADE` safe block; they cannot become
+  order intents.
 - Flash input must include at least one portfolio-consistency source:
   - previous `flash_trade_document/v0` chain with active/expired trade-action
     status; or

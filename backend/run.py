@@ -15,7 +15,7 @@ if baseDir not in sys.path:
     sys.path.insert(0, baseDir)
 
 from lib.Config import getConfig
-from service.HwiStockRunnerService import resolve_bind_host
+from service.HwiStockRunnerService import resolveBindHost as resolveRunnerBindHost
 
 DEFAULT_BIND_HOST = "127.0.0.1"
 
@@ -27,7 +27,7 @@ def _isTruthy(value: object) -> bool:
 def resolveBindHost(config) -> str:
     server = config["SERVER"] if config.has_section("SERVER") else {}
     config_host = server.get("bind_host", "").strip() or None
-    return resolve_bind_host(config_host)
+    return resolveRunnerBindHost(config_host)
 
 
 def resolveReloadEnabled(config) -> bool:

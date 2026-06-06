@@ -76,8 +76,8 @@ approval and broker-network gates close.
 - Future adapter boundary for approved KIS KRX broker-adapter API.
 - Venue/session route parameter handling for KRX, NXT, and SOR on the same
   deterministic order-state semantics.
-- Explicit disabled/fallback behavior for KIS adapter-unsupported NXT/SOR broker
-  branches during KIS operation runs.
+- Explicit mode-gated behavior for KIS NXT/SOR broker branches during KIS
+  operation runs.
 - `condition_card/v0` JSON schema.
 - `no_order_dry_run` record schema.
 - KIS broker adapter capability flags.
@@ -106,9 +106,9 @@ approval and broker-network gates close.
 | AC-03 | P0 | Buy gate is deterministic | Capital, holdings, stale-data, venue, and stop policy must pass | policy test | QA-003 |
 | AC-04 | P0 | Order state is explicit | partial fill, reject, cancel, retry, and fail states are representable | state test | QA-004 |
 | AC-05 | P0 | Pre-approval path is dry-run only | Approved intents are recorded without broker calls, simulated fills, or fake balances before KIS adapter approval | adapter test | QA-005 |
-| AC-06 | P0 | NXT/SOR are parameterized, not separate strategies | KRX/NXT/SOR routes use the same state machine; KIS adapter-unsupported NXT/SOR branches are disabled or explicit-fallback-only | route/capability test | QA-006 |
+| AC-06 | P0 | NXT/SOR are parameterized, not separate strategies | KRX/NXT/SOR routes use the same state machine; paper/mock mode disables NXT broker branches, real investment mode enables NXT where capability flags allow it, and SOR stays disabled/fallback-only | route/capability test | QA-006 |
 | AC-07 | P0 | Condition schema is deterministic | `condition_card/v0` accepts only known condition types and required source/risk refs | schema test | QA-007 |
-| AC-08 | P0 | KIS broker-adapter capabilities are explicit | Adapter capability flags expose KRX-only adapter support and unsupported NXT/SOR/helper APIs | capability test | QA-008 |
+| AC-08 | P0 | KIS broker-adapter capabilities are explicit | Adapter capability flags expose mode-gated KRX/integrated/NXT support plus provider-query-required account-truth helper APIs | capability test | QA-008 |
 | AC-09 | P0 | KIS adapter evidence shape is auditable without broker state application | Order, fill, balance, cancel, disabled-branch, and fallback fixture events are represented without applying broker state changes | reconciliation test | QA-009 |
 
 ## 5. Set Decisions
@@ -209,12 +209,18 @@ The first KIS broker adapter must expose:
 - `supports_paper_sor_order=false`
 - `supports_paper_krx_realtime=true`
 - `supports_paper_nxt_realtime=false`
-- `supports_paper_integrated_realtime=false`
+- `supports_paper_integrated_realtime=true`
 - `supports_paper_cancel_order=true`
-- `supports_paper_cancelable_query=false`
-- `supports_paper_sellable_quantity_query=false`
+- `supports_paper_cancelable_query=true`
+- `supports_paper_sellable_quantity_query=true`
 - `supports_paper_realized_pnl_query=true`
-- `supports_paper_holiday_query=false`
+- `supports_paper_holiday_query=true`
+- `supports_real_krx_order=true`
+- `supports_real_nxt_order=true`
+- `supports_real_sor_order=false`
+- `supports_real_krx_realtime=true`
+- `supports_real_integrated_realtime=true`
+- `supports_real_nxt_realtime=true`
 
 Unsupported capabilities produce `disabled_branch` or `local_fallback` records;
 they must not call operation-only APIs.
@@ -232,15 +238,17 @@ Use supported KIS KRX adapter sources for broker-backed evidence:
 - KRX realtime order book
 - realtime fill notice
 
-Use local state or explicit fallback records for adapter-unsupported helper APIs:
+Use provider account-truth reads before any dependent operation where available:
 
 - modify/cancel eligible-order query
 - sellable quantity query
-- holiday/open-day query from local cached KRX/NXT calendar, with KIS
-  `국내휴장일조회` as later-approved broker cross-check only
-- NXT realtime
-- integrated realtime
-- KRX/NXT/integrated market operation status
+- holiday/open-day query with local cached KRX/NXT calendar still authoritative
+  for schedule gating and KIS `국내휴장일조회` recorded as provider cross-check
+
+Use local fallback or explicit disabled records for:
+
+- paper/mock NXT realtime/order branches
+- SOR
 
 ### 5.6 Go Boundary
 

@@ -15,9 +15,9 @@ module_refs:
   - HWISTOCK-MOD-007
 profile_refs:
   - PROFILE-HWISTOCK
-status: go_check_local_passed_kis_paper_read_blocked
+status: go_check_local_passed_kis_mode_aware_read_blocked
 owner: hwi
-updated_at: 2026-06-05
+updated_at: 2026-06-06
 evidence_refs:
   - docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
 ---
@@ -48,9 +48,9 @@ trades.
 | QA-011 | P0 | reservation | Provide pending-buy/pending-sell fixtures that would breach cash reserve or max holding slots under worst-case fill | Intent is rejected with reservation/cap reason | risk log |
 | QA-012 | P0 | freshness | Provide expired price, orderbook, ranking, Pro, Flash, portfolio, order-state, or calendar artifacts | Intent is rejected with the matching TTL/freshness reason | queue artifact |
 | QA-013 | P0 | wait-cancel | Accept a new trade document after an older unfilled WAIT_BUY is still pending | Prior unfilled wait is canceled unless renewed by the new document and all gates still pass | queue artifact |
-| QA-014 | P0 | adapter-read-boundary | Enable UNIT-013 KIS adapter-read collector with broker-adapter credentials | Only market-data endpoints are attempted; order/cancel/modify endpoints remain uncalled and unsupported NXT/SOR branches are disabled/fallback-only | endpoint audit |
+| QA-014 | P0 | adapter-read-boundary | Enable UNIT-013 KIS adapter-read collector with broker-adapter credentials | Only market-data endpoints are attempted; order/cancel/modify endpoints remain uncalled; NXT realtime inputs are rejected in paper/mock mode and enabled only in real investment mode | endpoint audit |
 | QA-015 | P0 | candidate-universe | Provide a Flash trade document containing one ticker outside `compiled_watch/v0` | Off-universe action is rejected/watch-only and no `paper_order_intent/v0` is queued for that ticker | queue artifact |
-| QA-016 | P0 | kis-six-input-scope | Attempt UNIT-013 collector startup with configured KIS endpoints outside the six-input signal allowlist | Collector safe-blocks the extra endpoint and still proves no order/cancel/modify endpoint call | endpoint audit |
+| QA-016 | P0 | kis-mode-gated-scope | Attempt UNIT-013 collector startup with configured KIS endpoints outside the mode-enabled signal allowlist | Collector safe-blocks the extra endpoint and still proves no order/cancel/modify endpoint call | endpoint audit |
 
 ## 3. PASS / FAIL / BLOCKED Rules
 
@@ -66,6 +66,6 @@ trades.
 - BLOCKED: approved KIS market-data source is not available for rows requiring
   fresh market confirmation.
 - BLOCKED: any UNIT-013 path attempts KIS order/cancel/modify transport or
-  treats NXT/SOR broker-facing data as adapter-proven.
-- BLOCKED: the selected NAVER news source or one of the six KIS signal inputs is
-  unavailable and no explicit safe-block artifact is produced.
+  treats disabled NXT/SOR broker-facing data as adapter-proven.
+- BLOCKED: the selected NAVER news source or one of the mode-enabled KIS signal
+  inputs is unavailable and no explicit safe-block artifact is produced.

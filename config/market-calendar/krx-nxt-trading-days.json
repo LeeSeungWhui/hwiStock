@@ -1,0 +1,73 @@
+{
+  "schema_version": "krx_nxt_trading_calendar_cache/v0",
+  "generatedAtKst": "2026-06-06T14:30:00+09:00",
+  "validUntil": "2026-06-10T23:59:59+09:00",
+  "sourceAuthority": "manual_local_cache_after_krx_notice_and_public_holiday_crosscheck",
+  "sourceHierarchy": "KRX notice for June 3 holiday; public-holiday cross-check for June 8 no substitute holiday; local cache row required before broker-order preflight",
+  "sourceRefs": [
+    {
+      "label": "KRX notice surfaced on open.krx.co.kr main page",
+      "url": "https://open.krx.co.kr/main/main.jsp",
+      "note": "2026-05-20 KRX notice lists 2026-06-03 and 2026-07-17 as market holidays in the referenced notice stream."
+    },
+    {
+      "label": "2026 Memorial Day substitute-holiday public cross-check",
+      "url": "https://www.wikitree.co.kr/articles/1134154",
+      "note": "Public holiday cross-check indicates 2026-06-08 is not a substitute holiday for Memorial Day."
+    }
+  ],
+  "days": {
+    "2026-06-03": {
+      "dateKst": "2026-06-03",
+      "isTradingDay": false,
+      "reason": "KRX notice holiday: 2026 local election day"
+    },
+    "2026-06-06": {
+      "dateKst": "2026-06-06",
+      "isTradingDay": false,
+      "reason": "Saturday and Memorial Day"
+    },
+    "2026-06-08": {
+      "dateKst": "2026-06-08",
+      "isTradingDay": true,
+      "krx": {
+        "regularOpen": "09:00",
+        "regularClose": "15:30",
+        "orderOpen": "09:00",
+        "orderClose": "15:00"
+      },
+      "nxt": {
+        "open": "08:00",
+        "close": "20:00"
+      }
+    },
+    "2026-06-09": {
+      "dateKst": "2026-06-09",
+      "isTradingDay": true,
+      "krx": {
+        "regularOpen": "09:00",
+        "regularClose": "15:30",
+        "orderOpen": "09:00",
+        "orderClose": "15:00"
+      },
+      "nxt": {
+        "open": "08:00",
+        "close": "20:00"
+      }
+    },
+    "2026-06-10": {
+      "dateKst": "2026-06-10",
+      "isTradingDay": true,
+      "krx": {
+        "regularOpen": "09:00",
+        "regularClose": "15:30",
+        "orderOpen": "09:00",
+        "orderClose": "15:00"
+      },
+      "nxt": {
+        "open": "08:00",
+        "close": "20:00"
+      }
+    }
+  }
+}

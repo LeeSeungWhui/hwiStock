@@ -50,7 +50,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_ROOT = Path(os.getenv("HWISTOCK_DATA_DIR", str(REPO_ROOT / "data")))
 _CONSUMED_INTENT_KEYS: set[str] = set()
 PAPER_ORDER_BROKER_ADAPTERS = frozenset({"kis_paper"})
-ORDER_GRADE_MARKET_DATA_SOURCES = frozenset({"kis_paper_read", "kis_market_six_input"})
+ORDER_GRADE_MARKET_DATA_SOURCES = frozenset(
+    {"kis_paper_read", "kis_market_six_input", "kis_market_mode_aware"}
+)
 
 
 def _now_kst() -> datetime:
@@ -175,34 +177,61 @@ def evaluatePaperRiskOverlay(
     intent: Optional[Mapping[str, Any]],
     *,
     status: Optional[Mapping[str, Any]] = None,
+    account_truth: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     payload = dict(intent or {})
     runner_status = dict(status or base_runner.get_runner_status())
+    account = dict(account_truth or {})
     errors = []
     route = str(payload.get("venue_route") or payload.get("venue") or runner_status.get("routing", {}).get("venue") or "").upper()
     session_venue = str(runner_status.get("routing", {}).get("venue") or "").upper()
-    available_cash = int(payload.get("available_cash_krw") or 0)
+    side = str(payload.get("side") or "buy").lower()
+    account_source = "intent_payload"
+    account_truth_present = bool(account)
+    if account_truth_present:
+        account_source = str(account.get("source") or "kis_read_account_truth")
+        available_cash = int(account.get("available_cash_krw") or account.get("buyable_cash_krw") or account.get("cash_balance_krw") or 0)
+        current_holdings = int(account.get("current_holdings_count") or account.get("positions_count") or 0)
+    else:
+        available_cash = int(payload.get("available_cash_krw") or 0)
+        current_holdings = int(payload.get("current_holdings_count") or 0)
     planned_cash = int(payload.get("planned_order_cash_krw") or 0)
-    current_holdings = int(payload.get("current_holdings_count") or 0)
     reserve_floor = int(base_runner.LIVE_CAPITAL_BASELINE_KRW * 0.25)
 
     if runner_status.get("killSwitch", {}).get("active"):
         errors.append("kill_switch_active")
     if runner_status.get("calendar", {}).get("tradingAllowed") is not True:
         errors.append("calendar_not_ready")
+    if runner_status.get("calendar", {}).get("krxOrderSessionOpen") is not True:
+        errors.append("krx_order_session_not_open")
     if runner_status.get("routing", {}).get("venue") == "idle":
         errors.append("off_session")
     if session_venue != "KRX":
         errors.append("kis_paper_order_requires_krx_regular_session")
     if route != "KRX":
         errors.append("kis_paper_order_route_must_be_krx")
+    if not account_truth_present:
+        errors.append("account_truth_required_for_order")
+    if account_truth_present and account.get("balance_status") != "pass":
+        errors.append("balance_truth_not_pass")
+    if side == "buy" and account_truth_present and account.get("buyable_status") != "pass":
+        errors.append("buyable_cash_truth_not_pass")
+    if side == "sell" and account_truth_present and account.get("sellable_status") != "pass":
+        errors.append("sellable_quantity_truth_not_pass")
+    if side == "sell" and account_truth_present:
+        sellable_quantity = int(account.get("sellable_quantity") or 0)
+        requested_quantity = int(payload.get("quantity") or 0)
+        if requested_quantity <= 0:
+            errors.append("sell_quantity_must_be_positive")
+        elif sellable_quantity < requested_quantity:
+            errors.append("sellable_quantity_insufficient")
     if current_holdings >= 5:
         errors.append("max_simultaneous_holdings_exceeded")
-    if planned_cash <= 0:
+    if side == "buy" and planned_cash <= 0:
         errors.append("planned_order_cash_must_be_positive")
-    if available_cash <= 0:
+    if side == "buy" and available_cash <= 0:
         errors.append("available_cash_required")
-    if available_cash and planned_cash and available_cash - planned_cash < reserve_floor:
+    if side == "buy" and available_cash and planned_cash and available_cash - planned_cash < reserve_floor:
         errors.append("minimum_cash_reserve_breach")
 
     return {
@@ -216,6 +245,13 @@ def evaluatePaperRiskOverlay(
             "max_simultaneous_holdings": 5,
             "route": route,
             "session_venue": session_venue,
+            "order_side": side,
+            "account_truth_source": account_source,
+            "account_truth_present": account_truth_present,
+            "available_cash_krw": available_cash,
+            "planned_order_cash_krw": planned_cash,
+            "current_holdings_count": current_holdings,
+            "sellable_quantity": int(account.get("sellable_quantity") or 0) if account_truth_present else 0,
         },
     }
 
@@ -230,6 +266,7 @@ def evaluateIntentExecutionPreflight(
     portfolio_snapshot: Optional[Mapping[str, Any]] = None,
     order_state_snapshot: Optional[Mapping[str, Any]] = None,
     status: Optional[Mapping[str, Any]] = None,
+    account_truth: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     payload = dict(intent or {})
     portfolio = dict(portfolio_snapshot or {})
@@ -281,7 +318,7 @@ def evaluateIntentExecutionPreflight(
     reference_now = _status_reference_datetime(status)
     if expiry and expiry <= reference_now:
         errors.append("intent_expired")
-    risk = evaluatePaperRiskOverlay(payload, status=status)
+    risk = evaluatePaperRiskOverlay(payload, status=status, account_truth=account_truth)
     errors.extend(risk.get("errors") or [])
     idempotency_key = str(payload.get("idempotency_key") or payload.get("intent_id") or "").strip()
     if not idempotency_key:
@@ -298,6 +335,7 @@ def evaluateIntentExecutionPreflight(
         "idempotency_key": idempotency_key,
         "symbol": symbol,
         "riskOverlay": risk,
+        "accountTruth": dict(account_truth or {}),
         "broker_endpoint_called": False,
     }
 
@@ -372,6 +410,80 @@ def evaluateContinuousPaperRunnerStatus(
     }
 
 
+def _int_or_none(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    raw = str(value).strip().replace(",", "")
+    if not raw:
+        return None
+    try:
+        return int(float(raw))
+    except ValueError:
+        return None
+
+
+def _account_truth_from_steps(steps: Sequence[Mapping[str, Any]], *, produced_at: datetime) -> Dict[str, Any]:
+    balance_summary: Dict[str, Any] = {}
+    buyable_summary: Dict[str, Any] = {}
+    sellable_summary: Dict[str, Any] = {}
+    cancelable_summary: Dict[str, Any] = {}
+    balance_status = None
+    buyable_status = None
+    sellable_status = None
+    cancelable_status = None
+    realized_status = None
+    holiday_status = None
+    for step in steps:
+        if not isinstance(step, Mapping):
+            continue
+        if step.get("step") == "balance_inquire":
+            balance_status = step.get("status")
+            if isinstance(step.get("dashboard_account_summary"), Mapping):
+                balance_summary = dict(step["dashboard_account_summary"])
+        elif step.get("step") == "buyable_inquire_psbl_order":
+            buyable_status = step.get("status")
+            if isinstance(step.get("dashboard_buyable_summary"), Mapping):
+                buyable_summary = dict(step["dashboard_buyable_summary"])
+        elif step.get("step") == "sellable_inquire_psbl_sell":
+            sellable_status = step.get("status")
+            if isinstance(step.get("dashboard_sellable_summary"), Mapping):
+                sellable_summary = dict(step["dashboard_sellable_summary"])
+        elif step.get("step") == "cancelable_order_inquire":
+            cancelable_status = step.get("status")
+            if isinstance(step.get("dashboard_cancelable_summary"), Mapping):
+                cancelable_summary = dict(step["dashboard_cancelable_summary"])
+        elif step.get("step") == "realized_pnl_inquire":
+            realized_status = step.get("status")
+        elif step.get("step") == "holiday_inquire":
+            holiday_status = step.get("status")
+    buyable_cash = _int_or_none(buyable_summary.get("buyable_cash_krw"))
+    cash_balance = _int_or_none(balance_summary.get("cash_balance_krw"))
+    sellable_quantity = _int_or_none(sellable_summary.get("sellable_quantity")) or 0
+    positions_count = _int_or_none(balance_summary.get("positions_count")) or 0
+    available_cash = buyable_cash if buyable_cash is not None else cash_balance
+    return {
+        "schema_version": "account_truth_snapshot/v0",
+        "source": "kis_paper_read_steps",
+        "produced_at_kst": produced_at.isoformat(),
+        "balance_status": balance_status,
+        "buyable_status": buyable_status,
+        "sellable_status": sellable_status,
+        "sellable_quantity": sellable_quantity,
+        "cancelable_order_status": cancelable_status,
+        "cancelable_order_count": _int_or_none(cancelable_summary.get("cancelable_order_count")) or 0,
+        "cancelable_order_numbers": list(cancelable_summary.get("cancelable_order_numbers") or [])[:20],
+        "holiday_status": holiday_status,
+        "realized_pnl_status": realized_status,
+        "cash_balance_krw": cash_balance,
+        "buyable_cash_krw": buyable_cash,
+        "available_cash_krw": available_cash,
+        "current_holdings_count": positions_count,
+        "positions_count": positions_count,
+        "credential_values_printed": False,
+        "raw_response_stored": False,
+    }
+
+
 def runContinuousPaperTick(
     *,
     intent: Optional[Mapping[str, Any]] = None,
@@ -413,6 +525,7 @@ def runContinuousPaperTick(
         "intent_source": intent_source,
         "intent_loaded": bool(intent),
         "base_runner_order_gate": status["orderGate"],
+        "intent_priority_policy": "exit_intents_before_entry_fifo",
         "steps": [],
         "observationWindow": ledger.buildObservationWindowManifest(
             started_at_kst=str(source.get("HWISTOCK_OBSERVATION_STARTED_AT_KST") or now.isoformat()),
@@ -439,21 +552,55 @@ def runContinuousPaperTick(
         result["status"] = "blocked_token_missing"
         return result
 
-    sample_symbol = str(source.get("HWISTOCK_KIS_HEALTH_SYMBOL", "005930")).strip() or "005930"
+    if _bool_env(source, "HWISTOCK_KIS_FILL_NOTICE_WS_ENABLED", True):
+        approval_result, approval_key = adapter.issueWebsocketApprovalWithValue()
+        result["steps"].append(approval_result)
+        if approval_key:
+            result["steps"].append(adapter.subscribeFillNotice(approval_key))
+        else:
+            result["steps"].append(
+                {
+                    "step": "ws_fill_notice",
+                    "status": "blocked_websocket_approval_key_missing",
+                    "tr_id": "H0STCNI9",
+                    "ack_received": False,
+                    "raw_response_stored": False,
+                    "credential_values_printed": False,
+                }
+            )
+
+    sample_symbol = str(
+        (intent or {}).get("symbol")
+        or (intent or {}).get("ticker")
+        or source.get("HWISTOCK_KIS_HEALTH_SYMBOL", "005930")
+    ).strip() or "005930"
     result["steps"].append(adapter.inquirePrice(token, sample_symbol))
     _sleepForKisCallGap(config)
     result["steps"].append(adapter.inquireBalance(token))
     _sleepForKisCallGap(config)
     result["steps"].append(adapter.inquireBuyable(token, sample_symbol))
     _sleepForKisCallGap(config)
+    result["steps"].append(adapter.inquireSellable(token, sample_symbol))
+    _sleepForKisCallGap(config)
     result["steps"].append(adapter.inquireRealizedPnl(token))
     _sleepForKisCallGap(config)
     result["steps"].append(adapter.dailyOrderFillLookup(token, date_yyyymmdd=now.strftime("%Y%m%d")))
     _sleepForKisCallGap(config)
+    result["steps"].append(adapter.inquireCancelableOrders(token))
+    _sleepForKisCallGap(config)
+    result["steps"].append(adapter.inquireHoliday(token, date_yyyymmdd=now.strftime("%Y%m%d")))
+    _sleepForKisCallGap(config)
+    account_truth = _account_truth_from_steps(result["steps"], produced_at=reference_now)
+    result["account_truth"] = account_truth
 
     if intent:
         local_order_state = _order_state_snapshot_from_runner_state(local_state, now=now)
-        preflight = evaluateIntentExecutionPreflight(intent, order_state_snapshot=local_order_state, status=status)
+        preflight = evaluateIntentExecutionPreflight(
+            intent,
+            order_state_snapshot=local_order_state,
+            status=status,
+            account_truth=account_truth,
+        )
         result["executionPreflight"] = preflight
         result["riskOverlay"] = preflight.get("riskOverlay")
         if not preflight["ok"]:
@@ -629,7 +776,8 @@ def _load_next_intent_from_queue(
             continue
         if isinstance(parsed, Mapping):
             rows.append(dict(parsed))
-    for row in rows:
+    prioritized_rows = sorted(enumerate(rows), key=lambda item: (_intent_priority_rank(item[1]), item[0]))
+    for _, row in prioritized_rows:
         key = str(row.get("idempotency_key") or row.get("intent_id") or "").strip()
         if key and key in consumed:
             continue
@@ -638,8 +786,17 @@ def _load_next_intent_from_queue(
         expiry = _parse_optional_kst_timestamp(row.get("valid_until_kst") or row.get("valid_until"))
         if expiry and expiry <= at:
             continue
-        return {"intent": row, "source": "next_intent_queue_fifo", "path": str(path)}
+        return {"intent": row, "source": "next_intent_queue_exit_priority_fifo", "path": str(path)}
     return {"intent": None, "source": "next_intent_queue_empty_or_expired", "path": str(path)}
+
+
+def _intent_priority_rank(row: Mapping[str, Any]) -> int:
+    side = str(row.get("side") or "").strip().lower()
+    action = str(row.get("action") or row.get("intent_action") or "").strip().upper()
+    intent_type = str(row.get("intent_type") or row.get("type") or "").strip().lower()
+    if side == "sell" or action == "SELL" or "exit" in intent_type:
+        return 0
+    return 1
 
 
 def _runner_state_path(config: Mapping[str, Any], *, data_root: Path) -> Path:
@@ -925,6 +1082,9 @@ def _mark_runner_state_submitted(
             "submitted_at_kst": now.isoformat(),
             "broker_status": cash_order.get("status"),
             "broker_endpoint_called": bool(cash_order.get("broker_endpoint_called")),
+            "broker_order_no": cash_order.get("broker_order_no") or "",
+            "broker_order_no_present": bool(cash_order.get("broker_order_no")),
+            "krx_forwarding_order_orgno": cash_order.get("krx_forwarding_order_orgno") or "",
         }
     )
     state["pending_orders"] = pending
@@ -969,7 +1129,7 @@ def _status_with_env_overrides(
         payload["marketData"] = {
             "state": "source_configured",
             "source": market_source,
-            "tradingLoopsActive": market_source in {"kis_paper_mock", "kis_paper_read", "kis_market_six_input"},
+            "tradingLoopsActive": market_source in {"kis_paper_mock", *ORDER_GRADE_MARKET_DATA_SOURCES},
             "reason": "runner env market-data source override",
         }
 

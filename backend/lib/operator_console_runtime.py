@@ -8,6 +8,7 @@ import json
 import hashlib
 import os
 import re
+import subprocess
 import time
 from html import unescape
 from datetime import datetime
@@ -100,6 +101,64 @@ def latestRuntimePaths(root: Path, day: str) -> Dict[str, Optional[str]]:
     return {
         artifactKey: str(artifactPath) if artifactPath.exists() else None
         for artifactKey, artifactPath in artifactPathByKey.items()
+    }
+
+
+def buildArtifactFreshness(
+    latestArtifactPaths: Dict[str, Optional[str]],
+    *,
+    snapshotAt: datetime,
+) -> Dict[str, Any]:
+    ttlByKey = {
+        "marketIntelligence": 15 * 60,
+        "compiledWatch": 5 * 60,
+        "ai": 75 * 60,
+        "flashTradeDocument": 15 * 60,
+        "kisMarket": 4 * 60,
+        "kisPaperRunner": 8 * 60,
+        "runner": 8 * 60,
+    }
+    rows: Dict[str, Any] = {}
+    staleKeys: list[str] = []
+    missingKeys: list[str] = []
+    for artifactKey, artifactPath in latestArtifactPaths.items():
+        ttl = ttlByKey.get(artifactKey, 15 * 60)
+        if not artifactPath:
+            rows[artifactKey] = {
+                "path": None,
+                "present": False,
+                "ageSec": None,
+                "ttlSec": ttl,
+                "stale": True,
+                "state": "missing",
+            }
+            missingKeys.append(artifactKey)
+            continue
+        try:
+            mtime = datetime.fromtimestamp(Path(artifactPath).stat().st_mtime, KST)
+            age = max(0, int((snapshotAt.astimezone(KST) - mtime).total_seconds()))
+        except OSError:
+            mtime = None
+            age = None
+        stale = age is None or age > ttl
+        if stale:
+            staleKeys.append(artifactKey)
+        rows[artifactKey] = {
+            "path": artifactPath,
+            "present": True,
+            "mtimeKst": mtime.isoformat() if mtime else None,
+            "ageSec": age,
+            "ttlSec": ttl,
+            "stale": stale,
+            "state": "stale" if stale else "fresh",
+        }
+    return {
+        "schema_version": "operator_artifact_freshness/v0",
+        "snapshotAtKst": snapshotAt.isoformat(),
+        "artifacts": rows,
+        "staleKeys": staleKeys,
+        "missingKeys": missingKeys,
+        "allRequiredFresh": not staleKeys and not missingKeys,
     }
 
 
@@ -596,6 +655,7 @@ def buildAuditRows(
     runnerStatus: Dict[str, Any],
     readinessTruth: Dict[str, Any],
     latestArtifactPaths: Dict[str, Optional[str]],
+    artifactFreshness: Optional[Dict[str, Any]] = None,
     artifacts: Dict[str, Dict[str, Any]],
     paperOrderEnabled: bool,
 ) -> list[Dict[str, Any]]:
@@ -611,12 +671,17 @@ def buildAuditRows(
     ]
 
     for artifactKey, artifactPath in latestArtifactPaths.items():
+        freshness = ((artifactFreshness or {}).get("artifacts") or {}).get(artifactKey, {})
         rows.append(
             {
                 "at": fileMtimeKst(artifactPath) if artifactPath else nowText,
-                "level": "info" if artifactPath else "warn",
+                "level": "warn" if freshness.get("stale") or not artifactPath else "info",
                 "code": f"ARTIFACT_{artifactKey}",
-                "message": Path(artifactPath).name if artifactPath else "missing_or_safe_blocked",
+                "message": (
+                    f"stale age={freshness.get('ageSec')}s ttl={freshness.get('ttlSec')}s"
+                    if freshness.get("stale") and artifactPath
+                    else Path(artifactPath).name if artifactPath else "missing_or_safe_blocked"
+                ),
                 "tags": ["artifact", artifactKey],
             }
         )
@@ -683,7 +748,9 @@ def buildAuditRows(
 
 def inspectKisPaperRunnerServicePolicy(
     serviceUnitPaths: Optional[list[Path]] = None,
+    livePolicyOverride: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    useLiveSystemd = serviceUnitPaths is None
     paths = serviceUnitPaths or list(DEFAULT_RUNNER_SERVICE_PATHS)
     inspected: list[Dict[str, Any]] = []
     paperNetworkEnabled = False
@@ -713,13 +780,98 @@ def inspectKisPaperRunnerServicePolicy(
             if record["allowPaperOrdersFlag"] or record["paperOrderEnvTrue"]:
                 paperOrderEnabled = True
         inspected.append(record)
+    livePolicy = livePolicyOverride if livePolicyOverride is not None else (
+        inspectLiveKisPaperRunnerPolicy()
+        if useLiveSystemd
+        else {
+            "schema_version": "kis_paper_runner_live_policy/v0",
+            "available": False,
+            "source": "test_or_static_service_unit_paths",
+            "paperNetworkEnabledByLiveUnit": False,
+            "paperOrderEnabledByLiveUnit": False,
+            "activeState": None,
+            "subState": None,
+            "timerActiveState": None,
+            "credentialValuesPrinted": False,
+        }
+    )
+    effectiveNetwork = paperNetworkEnabled or bool(livePolicy.get("paperNetworkEnabledByLiveUnit"))
+    effectiveOrder = paperOrderEnabled or bool(livePolicy.get("paperOrderEnabledByLiveUnit"))
     return {
         "schema_version": "kis_paper_runner_service_policy/v0",
         "serviceFiles": inspected,
+        "repoPolicy": {
+            "paperNetworkEnabledByService": paperNetworkEnabled,
+            "paperOrderEnabledByService": paperOrderEnabled,
+        },
+        "livePolicy": livePolicy,
         "paperNetworkEnabledByService": paperNetworkEnabled,
         "paperOrderEnabledByService": paperOrderEnabled,
+        "paperNetworkEnabledEffective": effectiveNetwork,
+        "paperOrderEnabledEffective": effectiveOrder,
         "orderFlagContradictsReadiness": False,
     }
+
+
+def inspectLiveKisPaperRunnerPolicy() -> Dict[str, Any]:
+    base = {
+        "schema_version": "kis_paper_runner_live_policy/v0",
+        "available": False,
+        "source": "systemctl_user_show",
+        "paperNetworkEnabledByLiveUnit": False,
+        "paperOrderEnabledByLiveUnit": False,
+        "activeState": None,
+        "subState": None,
+        "timerActiveState": None,
+        "credentialValuesPrinted": False,
+    }
+    try:
+        service = subprocess.run(
+            ["systemctl", "--user", "show", "hwistock-kis-paper-runner.service", "--property=ActiveState", "--property=SubState"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        timer = subprocess.run(
+            ["systemctl", "--user", "show", "hwistock-kis-paper-runner.timer", "--property=ActiveState", "--property=SubState"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        service_text = subprocess.run(
+            ["systemctl", "--user", "cat", "hwistock-kis-paper-runner.service"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {**base, "errorType": type(exc).__name__}
+    text = service_text.stdout.lower() if service_text.returncode == 0 else ""
+    active_state = _systemctlProperty(service.stdout, "ActiveState")
+    sub_state = _systemctlProperty(service.stdout, "SubState")
+    timer_active_state = _systemctlProperty(timer.stdout, "ActiveState")
+    return {
+        **base,
+        "available": service.returncode == 0,
+        "activeState": active_state,
+        "subState": sub_state,
+        "timerActiveState": timer_active_state,
+        "unitTextInspected": service_text.returncode == 0,
+        "paperNetworkEnabledByLiveUnit": "--allow-paper-network" in text or "hwistock_kis_paper_network_enabled=true" in text,
+        "paperOrderEnabledByLiveUnit": "--allow-paper-orders" in text or "hwistock_kis_paper_order_enabled=true" in text,
+        "paperOrderDisabledByLiveUnit": "hwistock_kis_paper_order_enabled=false" in text,
+    }
+
+
+def _systemctlProperty(text: str, key: str) -> Optional[str]:
+    prefix = f"{key}="
+    for line in str(text or "").splitlines():
+        if line.startswith(prefix):
+            return line[len(prefix):].strip() or None
+    return None
 
 
 def buildReadinessTruthPanel(
@@ -727,6 +879,7 @@ def buildReadinessTruthPanel(
     runnerStatus: Dict[str, Any],
     latestArtifactPaths: Dict[str, Optional[str]],
     servicePolicy: Optional[Dict[str, Any]] = None,
+    artifactFreshness: Optional[Dict[str, Any]] = None,
     paperNetworkEnabled: bool = False,
     paperOrderEnabled: bool = False,
     paperOrdersSubmitted: bool = False,
@@ -753,6 +906,8 @@ def buildReadinessTruthPanel(
         blockerList.append(str(orderGate))
     if fallbackArtifactKeys:
         blockerList.append("artifact_missing_or_safe_blocked")
+    for artifactKey in (artifactFreshness or {}).get("staleKeys") or []:
+        blockerList.append(f"artifact_stale:{artifactKey}")
     if paperOrderEnabled and not operationalTradingReadiness:
         blockerList.append("systemd_order_enabled_contradicts_readiness")
     return {
@@ -770,6 +925,7 @@ def buildReadinessTruthPanel(
         "operationalTradingReadiness": operationalTradingReadiness,
         "orderGate": orderGate,
         "servicePolicy": policy,
+        "artifactFreshness": artifactFreshness or {},
         "fallbackArtifactKeys": fallbackArtifactKeys,
         "serviceVisibilityIsNotReadiness": True,
     }
@@ -818,11 +974,12 @@ def buildAiConversationArtifactContext(
     dayKey = snapshotAt.astimezone(KST).date().isoformat()
     runnerStatus = baseRunner.get_runner_status(snapshotAt.strftime("%Y-%m-%dT%H:%M:%S"))
     latestArtifactPaths = latestRuntimePaths(runtimeRoot, dayKey)
+    artifactFreshness = buildArtifactFreshness(latestArtifactPaths, snapshotAt=snapshotAt)
     runtimeArtifacts = loadRuntimeArtifacts(latestArtifactPaths)
     servicePolicy = inspectKisPaperRunnerServicePolicy(serviceUnitPaths)
     readiness = runnerStatus.get("readiness") if isinstance(runnerStatus.get("readiness"), dict) else {}
-    paperNetworkEnabled = bool(servicePolicy["paperNetworkEnabledByService"])
-    paperOrderEnabled = bool(servicePolicy["paperOrderEnabledByService"])
+    paperNetworkEnabled = bool(servicePolicy.get("paperNetworkEnabledEffective", servicePolicy["paperNetworkEnabledByService"]))
+    paperOrderEnabled = bool(servicePolicy.get("paperOrderEnabledEffective", servicePolicy["paperOrderEnabledByService"]))
     operationalTradingReadiness = bool(readiness.get("liveRunnerReady"))
     servicePolicy = {
         **servicePolicy,
@@ -832,6 +989,7 @@ def buildAiConversationArtifactContext(
         runnerStatus=runnerStatus,
         latestArtifactPaths=latestArtifactPaths,
         servicePolicy=servicePolicy,
+        artifactFreshness=artifactFreshness,
         paperNetworkEnabled=paperNetworkEnabled,
         paperOrderEnabled=paperOrderEnabled,
         paperOrdersSubmitted=False,
@@ -1042,12 +1200,13 @@ def buildOperatorConsoleSnapshot(
     dayKey = snapshotAt.astimezone(KST).date().isoformat()
     runnerStatus = baseRunner.get_runner_status(snapshotAt.strftime("%Y-%m-%dT%H:%M:%S"))
     latestArtifactPaths = latestRuntimePaths(runtimeRoot, dayKey)
+    artifactFreshness = buildArtifactFreshness(latestArtifactPaths, snapshotAt=snapshotAt)
     runtimeArtifacts = loadRuntimeArtifacts(latestArtifactPaths)
     servicePolicy = inspectKisPaperRunnerServicePolicy(serviceUnitPaths)
     accountSummary = buildDashboardAccountSummary(snapshotAt, dataRoot=runtimeRoot, dayKey=dayKey)
     readiness = runnerStatus["readiness"]
-    paperNetworkEnabled = bool(servicePolicy["paperNetworkEnabledByService"])
-    paperOrderEnabled = bool(servicePolicy["paperOrderEnabledByService"])
+    paperNetworkEnabled = bool(servicePolicy.get("paperNetworkEnabledEffective", servicePolicy["paperNetworkEnabledByService"]))
+    paperOrderEnabled = bool(servicePolicy.get("paperOrderEnabledEffective", servicePolicy["paperOrderEnabledByService"]))
     paperOrdersSubmitted = False
     paperObservationAccepted = readiness["paperObservationAccepted"]
     operationalTradingReadiness = readiness["liveRunnerReady"]
@@ -1059,6 +1218,7 @@ def buildOperatorConsoleSnapshot(
         runnerStatus=runnerStatus,
         latestArtifactPaths=latestArtifactPaths,
         servicePolicy=servicePolicy,
+        artifactFreshness=artifactFreshness,
         paperNetworkEnabled=paperNetworkEnabled,
         paperOrderEnabled=paperOrderEnabled,
         paperOrdersSubmitted=paperOrdersSubmitted,
@@ -1093,6 +1253,7 @@ def buildOperatorConsoleSnapshot(
         runnerStatus=runnerStatus,
         readinessTruth=readinessTruth,
         latestArtifactPaths=latestArtifactPaths,
+        artifactFreshness=artifactFreshness,
         artifacts=runtimeArtifacts,
         paperOrderEnabled=paperOrderEnabled,
     )
@@ -1135,6 +1296,7 @@ def buildOperatorConsoleSnapshot(
                 {"name": "hwistock-kis-paper-runner.timer", "scope": "user", "status": "configured_or_external"},
             ],
             "latestEvidencePaths": latestArtifactPaths,
+            "artifactFreshness": artifactFreshness,
             "kisPaperRunnerServicePolicy": servicePolicy,
             "dashboardAccountSummary": {
                 "status": accountSummary["status"],

@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional
 
 DEFAULT_KIS_PAPER_BASE_URL = "https://openapivts.koreainvestment.com:29443"
+DEFAULT_KIS_WEBSOCKET_URL = "ws://ops.koreainvestment.com:31000"
 PAPER_HOST = "openapivts.koreainvestment.com"
 REQUIRED_ENV_KEYS = (
     "KIS_PAPER_APP_KEY",
@@ -52,19 +53,23 @@ def loadKisPaperCapabilityFlags() -> Dict[str, Any]:
         "supports_paper_sor_order": False,
         "supports_paper_krx_realtime": True,
         "supports_paper_nxt_realtime": False,
-        "supports_paper_integrated_realtime": False,
+        "supports_paper_integrated_realtime": True,
         "supports_paper_cancel_order": True,
-        "supports_paper_cancelable_query": False,
-        "supports_paper_sellable_quantity_query": False,
+        "supports_paper_cancelable_query": True,
+        "supports_paper_sellable_quantity_query": True,
         "supports_paper_realized_pnl_query": True,
-        "supports_paper_holiday_query": False,
+        "supports_paper_holiday_query": True,
+        "supports_real_krx_realtime": True,
+        "supports_real_integrated_realtime": True,
+        "supports_real_nxt_realtime": True,
         "unsupported_branch_policy": {
             "nxt_order": "disabled_branch",
             "sor_order": "disabled_branch",
-            "integrated_realtime": "disabled_branch",
-            "cancelable_query": "local_fallback",
-            "sellable_quantity_query": "local_fallback",
-            "holiday_query": "local_fallback",
+            "nxt_realtime": "real_mode_only",
+            "integrated_realtime": "enabled_in_paper_and_real_modes",
+            "cancelable_query": "provider_query_required",
+            "sellable_quantity_query": "provider_query_required",
+            "holiday_query": "provider_query_available",
         },
     }
 
@@ -110,7 +115,7 @@ def sanitizeKisResponse(
     return result
 
 
-def _to_int_or_none(value: Any) -> Optional[int]:
+def toIntOrNone(value: Any) -> Optional[int]:
     if value is None:
         return None
     raw = str(value).strip().replace(",", "")
@@ -122,7 +127,7 @@ def _to_int_or_none(value: Any) -> Optional[int]:
         return None
 
 
-def _first_mapping(value: Any) -> Dict[str, Any]:
+def firstMapping(value: Any) -> Dict[str, Any]:
     if isinstance(value, Mapping):
         return dict(value)
     if isinstance(value, list):
@@ -132,19 +137,19 @@ def _first_mapping(value: Any) -> Dict[str, Any]:
     return {}
 
 
-def _first_int_by_keys(container: Any, keys: tuple[str, ...]) -> Optional[int]:
+def firstIntByKeys(container: Any, keys: tuple[str, ...]) -> Optional[int]:
     if isinstance(container, Mapping):
         for key in keys:
-            parsed = _to_int_or_none(container.get(key))
+            parsed = toIntOrNone(container.get(key))
             if parsed is not None:
                 return parsed
         for value in container.values():
-            nested = _first_int_by_keys(value, keys)
+            nested = firstIntByKeys(value, keys)
             if nested is not None:
                 return nested
     elif isinstance(container, list):
         for item in container:
-            nested = _first_int_by_keys(item, keys)
+            nested = firstIntByKeys(item, keys)
             if nested is not None:
                 return nested
     return None
@@ -153,10 +158,10 @@ def _first_int_by_keys(container: Any, keys: tuple[str, ...]) -> Optional[int]:
 def summarizeKisBalancePayload(response: Mapping[str, Any]) -> Dict[str, Any]:
     payload = response.get("payload") if isinstance(response.get("payload"), Mapping) else {}
     output1 = payload.get("output1")
-    output2 = _first_mapping(payload.get("output2"))
+    output2 = firstMapping(payload.get("output2"))
     positions = output1 if isinstance(output1, list) else []
     return {
-        "cash_balance_krw": _first_int_by_keys(
+        "cash_balance_krw": firstIntByKeys(
             output2,
             (
                 "dnca_tot_amt",
@@ -166,7 +171,7 @@ def summarizeKisBalancePayload(response: Mapping[str, Any]) -> Dict[str, Any]:
                 "tot_evlu_amt",
             ),
         ),
-        "total_eval_krw": _first_int_by_keys(
+        "total_eval_krw": firstIntByKeys(
             output2,
             (
                 "tot_evlu_amt",
@@ -175,14 +180,14 @@ def summarizeKisBalancePayload(response: Mapping[str, Any]) -> Dict[str, Any]:
                 "evlu_amt_smtl_amt",
             ),
         ),
-        "stock_eval_krw": _first_int_by_keys(
+        "stock_eval_krw": firstIntByKeys(
             output2,
             (
                 "scts_evlu_amt",
                 "evlu_amt_smtl_amt",
             ),
         ),
-        "today_pnl_krw": _first_int_by_keys(
+        "today_pnl_krw": firstIntByKeys(
             output2,
             (
                 "evlu_pfls_smtl_amt",
@@ -197,7 +202,7 @@ def summarizeKisBuyablePayload(response: Mapping[str, Any]) -> Dict[str, Any]:
     payload = response.get("payload") if isinstance(response.get("payload"), Mapping) else {}
     output = payload.get("output")
     return {
-        "buyable_cash_krw": _first_int_by_keys(
+        "buyable_cash_krw": firstIntByKeys(
             output,
             (
                 "ord_psbl_cash",
@@ -210,19 +215,35 @@ def summarizeKisBuyablePayload(response: Mapping[str, Any]) -> Dict[str, Any]:
     }
 
 
+def summarizeKisSellablePayload(response: Mapping[str, Any]) -> Dict[str, Any]:
+    payload = response.get("payload") if isinstance(response.get("payload"), Mapping) else {}
+    output = payload.get("output")
+    return {
+        "sellable_quantity": firstIntByKeys(
+            output,
+            (
+                "ord_psbl_qty",
+                "sll_psbl_qty",
+                "sell_psbl_qty",
+                "ord_psbl_qty1",
+            ),
+        )
+    }
+
+
 def summarizeKisRealizedPnlPayload(response: Mapping[str, Any]) -> Dict[str, Any]:
     payload = response.get("payload") if isinstance(response.get("payload"), Mapping) else {}
     output2 = payload.get("output2")
     output1 = payload.get("output1")
-    realized_pnl = _first_int_by_keys(output2, ("rlzt_pfls",))
+    realized_pnl = firstIntByKeys(output2, ("rlzt_pfls",))
     if realized_pnl is None:
-        realized_pnl = _first_int_by_keys(output1, ("rlzt_pfls", "real_evlu_pfls"))
-    real_eval_pnl = _first_int_by_keys(output2, ("real_evlu_pfls",))
+        realized_pnl = firstIntByKeys(output1, ("rlzt_pfls", "real_evlu_pfls"))
+    real_eval_pnl = firstIntByKeys(output2, ("real_evlu_pfls",))
     if real_eval_pnl is None:
-        real_eval_pnl = _first_int_by_keys(output1, ("real_evlu_pfls",))
-    eval_pnl_sum = _first_int_by_keys(output2, ("evlu_pfls_smtl_amt",))
+        real_eval_pnl = firstIntByKeys(output1, ("real_evlu_pfls",))
+    eval_pnl_sum = firstIntByKeys(output2, ("evlu_pfls_smtl_amt",))
     if eval_pnl_sum is None:
-        eval_pnl_sum = _first_int_by_keys(output1, ("evlu_pfls_smtl_amt",))
+        eval_pnl_sum = firstIntByKeys(output1, ("evlu_pfls_smtl_amt",))
     return {
         "realized_pnl_krw": realized_pnl,
         "real_eval_pnl_krw": real_eval_pnl,
@@ -230,8 +251,33 @@ def summarizeKisRealizedPnlPayload(response: Mapping[str, Any]) -> Dict[str, Any
     }
 
 
+def summarizeKisCancelableOrdersPayload(response: Mapping[str, Any]) -> Dict[str, Any]:
+    payload = response.get("payload") if isinstance(response.get("payload"), Mapping) else {}
+    output = payload.get("output")
+    rows = output if isinstance(output, list) else []
+    return {
+        "cancelable_order_count": len(rows),
+        "cancelable_order_numbers": [
+            str(row.get("odno") or row.get("ODNO") or "").strip()
+            for row in rows
+            if isinstance(row, Mapping) and str(row.get("odno") or row.get("ODNO") or "").strip()
+        ][:20],
+    }
+
+
+def extractKisOrderIdentifiers(response: Mapping[str, Any]) -> Dict[str, str]:
+    payload = response.get("payload") if isinstance(response.get("payload"), Mapping) else {}
+    output = firstMapping(payload.get("output"))
+    order_no = str(output.get("ODNO") or output.get("odno") or "").strip()
+    orgno = str(output.get("KRX_FWDG_ORD_ORGNO") or output.get("krx_fwdg_ord_orgno") or "").strip()
+    return {
+        "broker_order_no": order_no,
+        "krx_forwarding_order_orgno": orgno,
+    }
+
+
 class NetworkDisabledTransport:
-    def request_json(
+    def requestJson(
         self,
         method: str,
         url: str,
@@ -244,7 +290,7 @@ class NetworkDisabledTransport:
 
 
 class UrllibJsonTransport:
-    def request_json(
+    def requestJson(
         self,
         method: str,
         url: str,
@@ -253,10 +299,15 @@ class UrllibJsonTransport:
         body: Optional[Mapping[str, Any]] = None,
         timeout: int = 20,
     ) -> Dict[str, Any]:
-        data = json.dumps(body, ensure_ascii=False).encode("utf-8") if body is not None else None
+        jsonTransportContent = body
+        requestBodyBytes = (
+            json.dumps(jsonTransportContent, ensure_ascii=False).encode("utf-8")
+            if jsonTransportContent is not None
+            else None
+        )
         req = urllib.request.Request(
             url,
-            data=data,
+            data=requestBodyBytes,
             headers={"Content-Type": "application/json; charset=utf-8", **dict(headers or {})},
             method=method,
         )
@@ -274,16 +325,55 @@ class UrllibJsonTransport:
         return {"http_status": status, "payload": payload}
 
 
+class WebSocketClientTransport:
+    def subscribeOnce(
+        self,
+        url: str,
+        frame: Mapping[str, Any],
+        *,
+        timeout: int = 10,
+    ) -> Dict[str, Any]:
+        try:
+            import websocket  # type: ignore[import-not-found]
+        except ImportError:
+            return {
+                "status": "blocked_websocket_dependency_missing",
+                "dependency": "websocket-client",
+                "ack_received": False,
+                "raw_response_stored": False,
+            }
+
+        ws = websocket.create_connection(url, timeout=timeout)
+        try:
+            ws.send(json.dumps(dict(frame), ensure_ascii=False))
+            raw = ws.recv()
+        finally:
+            ws.close()
+        parsed: Any
+        try:
+            parsed = json.loads(raw) if isinstance(raw, str) else {"binary_ack": True}
+        except json.JSONDecodeError:
+            parsed = {"text_ack": str(raw)[:200]}
+        return {
+            "status": "pass",
+            "ack_received": True,
+            "payload": parsed,
+            "raw_response_stored": False,
+        }
+
+
 @dataclass
 class KisPaperAdapter:
     env: Optional[Mapping[str, str]] = None
     base_url: Optional[str] = None
     transport: Optional[Any] = None
+    websocket_transport: Optional[Any] = None
 
     def __post_init__(self) -> None:
         self._env = self.env if self.env is not None else os.environ
         self.base_url = validatePaperBaseUrl(self.base_url or self._env.get("KIS_PAPER_BASE_URL"))
         self.transport = self.transport or NetworkDisabledTransport()
+        self.websocket_transport = self.websocket_transport or WebSocketClientTransport()
 
     def configSummary(self) -> Dict[str, Any]:
         return {
@@ -304,16 +394,16 @@ class KisPaperAdapter:
         return result
 
     def issueTokenWithValue(self) -> tuple[Dict[str, Any], str]:
-        blocked = self._blockedIfMissingEnv("oauth_token")
+        blocked = self.blockedIfMissingEnv("oauth_token")
         if blocked:
             return blocked, ""
-        response = self._request(
+        response = self.requestBrokerJson(
             "POST",
             "/oauth2/tokenP",
             body={
                 "grant_type": "client_credentials",
-                "appkey": self._env_value("KIS_PAPER_APP_KEY"),
-                "appsecret": self._env_value("KIS_PAPER_APP_SECRET"),
+                "appkey": self.envValue("KIS_PAPER_APP_KEY"),
+                "appsecret": self.envValue("KIS_PAPER_APP_SECRET"),
             },
         )
         payload = response.get("payload") if isinstance(response.get("payload"), Mapping) else {}
@@ -323,34 +413,67 @@ class KisPaperAdapter:
         return result, token
 
     def revokeToken(self, token: str) -> Dict[str, Any]:
-        blocked = self._blockedIfMissingEnv("oauth_revoke")
+        blocked = self.blockedIfMissingEnv("oauth_revoke")
         if blocked:
             return blocked
-        response = self._request(
+        response = self.requestBrokerJson(
             "POST",
             "/oauth2/revokeP",
             body={
-                "appkey": self._env_value("KIS_PAPER_APP_KEY"),
-                "appsecret": self._env_value("KIS_PAPER_APP_SECRET"),
+                "appkey": self.envValue("KIS_PAPER_APP_KEY"),
+                "appsecret": self.envValue("KIS_PAPER_APP_SECRET"),
                 "token": token,
             },
         )
         return sanitizeKisResponse(response, step="oauth_revoke")
 
+    def issueWebsocketApproval(self) -> Dict[str, Any]:
+        result, _approval_key = self.issueWebsocketApprovalWithValue()
+        return result
+
+    def issueWebsocketApprovalWithValue(self) -> tuple[Dict[str, Any], str]:
+        blocked = self.blockedIfMissingEnv("websocket_approval")
+        if blocked:
+            return blocked, ""
+        response = self.requestBrokerJson(
+            "POST",
+            "/oauth2/Approval",
+            body={
+                "grant_type": "client_credentials",
+                "appkey": self.envValue("KIS_PAPER_APP_KEY"),
+                "secretkey": self.envValue("KIS_PAPER_APP_SECRET"),
+            },
+        )
+        payload = response.get("payload") if isinstance(response.get("payload"), Mapping) else {}
+        approval_key = str(payload.get("approval_key") or "")
+        result = sanitizeKisResponse(response, step="websocket_approval")
+        result["approval_key_present"] = bool(approval_key)
+        result["credential_values_printed"] = False
+        return result, approval_key
+
     def inquirePrice(self, token: str, symbol: str) -> Dict[str, Any]:
         params = urllib.parse.urlencode({"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": symbol})
-        response = self._request(
+        response = self.requestBrokerJson(
             "GET",
             f"/uapi/domestic-stock/v1/quotations/inquire-price?{params}",
-            headers=self._authHeaders(token, "FHKST01010100"),
+            headers=self.authHeaders(token, "FHKST01010100"),
         )
         return sanitizeKisResponse(response, step="quote_inquire_price")
 
-    def inquireBalance(self, token: str) -> Dict[str, Any]:
-        response = self._request(
+    def inquireOrderbook(self, token: str, symbol: str) -> Dict[str, Any]:
+        params = urllib.parse.urlencode({"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": symbol})
+        response = self.requestBrokerJson(
             "GET",
-            f"/uapi/domestic-stock/v1/trading/inquire-balance?{urllib.parse.urlencode(self._accountQuery())}",
-            headers=self._authHeaders(token, "VTTC8434R"),
+            f"/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn?{params}",
+            headers=self.authHeaders(token, "FHKST01010200"),
+        )
+        return sanitizeKisResponse(response, step="quote_inquire_orderbook")
+
+    def inquireBalance(self, token: str) -> Dict[str, Any]:
+        response = self.requestBrokerJson(
+            "GET",
+            f"/uapi/domestic-stock/v1/trading/inquire-balance?{urllib.parse.urlencode(self.accountQuery())}",
+            headers=self.authHeaders(token, "VTTC8434R"),
         )
         result = sanitizeKisResponse(response, step="balance_inquire", row_count_key="output1")
         result["dashboard_account_summary"] = summarizeKisBalancePayload(response)
@@ -358,35 +481,50 @@ class KisPaperAdapter:
 
     def inquireBuyable(self, token: str, symbol: str, *, order_price: str = "") -> Dict[str, Any]:
         params = {
-            "CANO": self._env_value("KIS_PAPER_ACCOUNT_NO"),
-            "ACNT_PRDT_CD": self._env_value("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
+            "CANO": self.envValue("KIS_PAPER_ACCOUNT_NO"),
+            "ACNT_PRDT_CD": self.envValue("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
             "PDNO": symbol,
             "ORD_UNPR": order_price,
             "ORD_DVSN": "01",
             "CMA_EVLU_AMT_ICLD_YN": "Y",
             "OVRS_ICLD_YN": "Y",
         }
-        response = self._request(
+        response = self.requestBrokerJson(
             "GET",
             f"/uapi/domestic-stock/v1/trading/inquire-psbl-order?{urllib.parse.urlencode(params)}",
-            headers=self._authHeaders(token, "VTTC8908R"),
+            headers=self.authHeaders(token, "VTTC8908R"),
         )
         result = sanitizeKisResponse(response, step="buyable_inquire_psbl_order")
         result["dashboard_buyable_summary"] = summarizeKisBuyablePayload(response)
         return result
 
+    def inquireSellable(self, token: str, symbol: str) -> Dict[str, Any]:
+        params = {
+            "CANO": self.envValue("KIS_PAPER_ACCOUNT_NO"),
+            "ACNT_PRDT_CD": self.envValue("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
+            "PDNO": symbol,
+        }
+        response = self.requestBrokerJson(
+            "GET",
+            f"/uapi/domestic-stock/v1/trading/inquire-psbl-sell?{urllib.parse.urlencode(params)}",
+            headers=self.authHeaders(token, "TTTC8408R"),
+        )
+        result = sanitizeKisResponse(response, step="sellable_inquire_psbl_sell")
+        result["dashboard_sellable_summary"] = summarizeKisSellablePayload(response)
+        return result
+
     def inquireRealizedPnl(self, token: str) -> Dict[str, Any]:
         params = {
-            "CANO": self._env_value("KIS_PAPER_ACCOUNT_NO"),
-            "ACNT_PRDT_CD": self._env_value("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
+            "CANO": self.envValue("KIS_PAPER_ACCOUNT_NO"),
+            "ACNT_PRDT_CD": self.envValue("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
             "INQR_DVSN": "00",
             "CTX_AREA_FK100": "",
             "CTX_AREA_NK100": "",
         }
-        response = self._request(
+        response = self.requestBrokerJson(
             "GET",
             f"/uapi/domestic-stock/v1/trading/inquire-balance-rlz-pl?{urllib.parse.urlencode(params)}",
-            headers=self._authHeaders(token, "TTTC8494R"),
+            headers=self.authHeaders(token, "TTTC8494R"),
         )
         result = sanitizeKisResponse(response, step="realized_pnl_inquire", row_count_key="output1")
         result["dashboard_realized_pnl_summary"] = summarizeKisRealizedPnlPayload(response)
@@ -394,8 +532,8 @@ class KisPaperAdapter:
 
     def dailyOrderFillLookup(self, token: str, *, date_yyyymmdd: str, symbol: str = "") -> Dict[str, Any]:
         params = {
-            "CANO": self._env_value("KIS_PAPER_ACCOUNT_NO"),
-            "ACNT_PRDT_CD": self._env_value("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
+            "CANO": self.envValue("KIS_PAPER_ACCOUNT_NO"),
+            "ACNT_PRDT_CD": self.envValue("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
             "INQR_STRT_DT": date_yyyymmdd,
             "INQR_END_DT": date_yyyymmdd,
             "SLL_BUY_DVSN_CD": "00",
@@ -409,12 +547,125 @@ class KisPaperAdapter:
             "CTX_AREA_FK100": "",
             "CTX_AREA_NK100": "",
         }
-        response = self._request(
+        response = self.requestBrokerJson(
             "GET",
             f"/uapi/domestic-stock/v1/trading/inquire-daily-ccld?{urllib.parse.urlencode(params)}",
-            headers=self._authHeaders(token, "VTTC0081R"),
+            headers=self.authHeaders(token, "VTTC0081R"),
         )
         return sanitizeKisResponse(response, step="daily_order_fill_inquire", row_count_key="output1")
+
+    def inquireCancelableOrders(self, token: str, *, side: str = "all") -> Dict[str, Any]:
+        side_code = {"all": "0", "sell": "1", "buy": "2"}.get(str(side or "all").lower(), "0")
+        params = {
+            "CANO": self.envValue("KIS_PAPER_ACCOUNT_NO"),
+            "ACNT_PRDT_CD": self.envValue("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
+            "CTX_AREA_FK100": "",
+            "CTX_AREA_NK100": "",
+            "INQR_DVSN_1": "0",
+            "INQR_DVSN_2": side_code,
+        }
+        response = self.requestBrokerJson(
+            "GET",
+            f"/uapi/domestic-stock/v1/trading/inquire-psbl-rvsecncl?{urllib.parse.urlencode(params)}",
+            headers=self.authHeaders(token, "TTTC0084R"),
+        )
+        result = sanitizeKisResponse(response, step="cancelable_order_inquire", row_count_key="output")
+        result["dashboard_cancelable_summary"] = summarizeKisCancelableOrdersPayload(response)
+        return result
+
+    def inquireHoliday(self, token: str, *, date_yyyymmdd: str) -> Dict[str, Any]:
+        params = {
+            "BASS_DT": date_yyyymmdd,
+            "CTX_AREA_NK": "",
+            "CTX_AREA_FK": "",
+        }
+        response = self.requestBrokerJson(
+            "GET",
+            f"/uapi/domestic-stock/v1/quotations/chk-holiday?{urllib.parse.urlencode(params)}",
+            headers=self.authHeaders(token, "CTCA0903R"),
+        )
+        return sanitizeKisResponse(response, step="holiday_inquire", row_count_key="output")
+
+    def subscribeRealtime(
+        self,
+        approval_key: str,
+        *,
+        tr_id: str,
+        tr_key: str,
+        step: str,
+        tr_type: str = "1",
+        timeout: int = 10,
+    ) -> Dict[str, Any]:
+        if not str(approval_key or "").strip():
+            return {
+                "step": step,
+                "status": "blocked_websocket_approval_key_missing",
+                "subscription_frame_ready": False,
+                "ack_received": False,
+                "raw_response_stored": False,
+            }
+        frame = {
+            "header": {
+                "approval_key": approval_key,
+                "custtype": "P",
+                "tr_type": tr_type,
+                "content-type": "utf-8",
+            },
+            "body": {
+                "input": {
+                    "tr_id": tr_id,
+                    "tr_key": tr_key,
+                }
+            },
+        }
+        transport = self.websocket_transport
+        if not transport or not hasattr(transport, "subscribeOnce"):
+            return {
+                "step": step,
+                "status": "blocked_websocket_transport_missing",
+                "subscription_frame_ready": True,
+                "tr_id": tr_id,
+                "tr_key": tr_key,
+                "ack_received": False,
+                "raw_response_stored": False,
+                "credential_values_printed": False,
+            }
+        response = transport.subscribeOnce(
+            str(self.envValue("KIS_WEBSOCKET_URL") or DEFAULT_KIS_WEBSOCKET_URL),
+            frame,
+            timeout=timeout,
+        )
+        payload = response.get("payload") if isinstance(response, Mapping) else {}
+        return {
+            "step": step,
+            "status": response.get("status", "warn") if isinstance(response, Mapping) else "warn",
+            "tr_id": tr_id,
+            "tr_key": tr_key,
+            "subscription_frame_ready": True,
+            "ack_received": bool(response.get("ack_received")) if isinstance(response, Mapping) else False,
+            "rt_cd": payload.get("rt_cd") if isinstance(payload, Mapping) else None,
+            "msg_cd": payload.get("msg_cd") if isinstance(payload, Mapping) else None,
+            "raw_response_stored": False,
+            "credential_values_printed": False,
+        }
+
+    def subscribeFillNotice(self, approval_key: str) -> Dict[str, Any]:
+        hts_id = self.envValue("KIS_PAPER_HTS_ID")
+        if not hts_id:
+            return {
+                "step": "ws_fill_notice",
+                "status": "blocked_hts_id_missing",
+                "tr_id": "H0STCNI9",
+                "ack_received": False,
+                "raw_response_stored": False,
+                "credential_values_printed": False,
+            }
+        return self.subscribeRealtime(
+            approval_key,
+            tr_id="H0STCNI9",
+            tr_key=hts_id,
+            step="ws_fill_notice",
+        )
 
     def placeCashOrder(self, token: str, intent: Mapping[str, Any]) -> Dict[str, Any]:
         route = str(intent.get("venue_route") or intent.get("venue") or "KRX").upper()
@@ -442,28 +693,32 @@ class KisPaperAdapter:
                 "broker_endpoint_called": False,
             }
         body = {
-            "CANO": self._env_value("KIS_PAPER_ACCOUNT_NO"),
-            "ACNT_PRDT_CD": self._env_value("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
+            "CANO": self.envValue("KIS_PAPER_ACCOUNT_NO"),
+            "ACNT_PRDT_CD": self.envValue("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
             "PDNO": str(intent.get("symbol") or "").strip(),
             "ORD_DVSN": str(intent.get("order_division") or "01"),
             "ORD_QTY": str(quantity),
             "ORD_UNPR": str(intent.get("order_price") or intent.get("price") or "0"),
         }
         tr_id = "VTTC0802U" if side == "buy" else "VTTC0801U"
-        response = self._request(
+        response = self.requestBrokerJson(
             "POST",
             "/uapi/domestic-stock/v1/trading/order-cash",
-            headers=self._authHeaders(token, tr_id),
+            headers=self.authHeaders(token, tr_id),
             body=body,
         )
         result = sanitizeKisResponse(response, step="cash_order")
+        order_ids = extractKisOrderIdentifiers(response)
+        result["broker_order_no"] = order_ids["broker_order_no"]
+        result["broker_order_no_present"] = bool(order_ids["broker_order_no"])
+        result["krx_forwarding_order_orgno"] = order_ids["krx_forwarding_order_orgno"]
         result["broker_endpoint_called"] = True
         result["route"] = "KRX"
         result["side"] = side
         return result
 
     def inquireAccountSummaryForDashboard(self, token: str, symbol: str) -> Dict[str, Any]:
-        blocked = self._blockedIfMissingEnv("dashboard_account_summary")
+        blocked = self.blockedIfMissingEnv("dashboard_account_summary")
         if blocked:
             return {
                 **blocked,
@@ -474,24 +729,24 @@ class KisPaperAdapter:
                 "raw_response_stored": False,
             }
 
-        balance_response = self._request(
+        balance_response = self.requestBrokerJson(
             "GET",
-            f"/uapi/domestic-stock/v1/trading/inquire-balance?{urllib.parse.urlencode(self._accountQuery())}",
-            headers=self._authHeaders(token, "VTTC8434R"),
+            f"/uapi/domestic-stock/v1/trading/inquire-balance?{urllib.parse.urlencode(self.accountQuery())}",
+            headers=self.authHeaders(token, "VTTC8434R"),
         )
         buyable_params = {
-            "CANO": self._env_value("KIS_PAPER_ACCOUNT_NO"),
-            "ACNT_PRDT_CD": self._env_value("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
+            "CANO": self.envValue("KIS_PAPER_ACCOUNT_NO"),
+            "ACNT_PRDT_CD": self.envValue("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
             "PDNO": symbol,
             "ORD_UNPR": "",
             "ORD_DVSN": "01",
             "CMA_EVLU_AMT_ICLD_YN": "Y",
             "OVRS_ICLD_YN": "Y",
         }
-        buyable_response = self._request(
+        buyable_response = self.requestBrokerJson(
             "GET",
             f"/uapi/domestic-stock/v1/trading/inquire-psbl-order?{urllib.parse.urlencode(buyable_params)}",
-            headers=self._authHeaders(token, "VTTC8908R"),
+            headers=self.authHeaders(token, "VTTC8908R"),
         )
         balance = sanitizeKisResponse(balance_response, step="dashboard_balance_inquire", row_count_key="output1")
         buyable = sanitizeKisResponse(buyable_response, step="dashboard_buyable_inquire")
@@ -508,9 +763,9 @@ class KisPaperAdapter:
         return {
             "step": "dashboard_account_summary",
             "status": "pass" if balance.get("status") == "pass" and buyable.get("status") == "pass" else "warn",
-            "account_no": self._env_value("KIS_PAPER_ACCOUNT_NO"),
-            "account_product_code": self._env_value("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
-            "account_label": f"{self._env_value('KIS_PAPER_ACCOUNT_NO')}-{self._env_value('KIS_PAPER_ACCOUNT_PRODUCT_CODE')}",
+            "account_no": self.envValue("KIS_PAPER_ACCOUNT_NO"),
+            "account_product_code": self.envValue("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
+            "account_label": f"{self.envValue('KIS_PAPER_ACCOUNT_NO')}-{self.envValue('KIS_PAPER_ACCOUNT_PRODUCT_CODE')}",
             "cash_balance_krw": cash_balance,
             "total_eval_krw": balance_summary.get("total_eval_krw"),
             "stock_eval_krw": balance_summary.get("stock_eval_krw"),
@@ -524,11 +779,18 @@ class KisPaperAdapter:
             "raw_response_stored": False,
         }
 
-    def cancelOrder(self, token: str, *, original_order_no: str, quantity: int = 0) -> Dict[str, Any]:
+    def cancelOrder(
+        self,
+        token: str,
+        *,
+        original_order_no: str,
+        quantity: int = 0,
+        original_order_orgno: str = "",
+    ) -> Dict[str, Any]:
         body = {
-            "CANO": self._env_value("KIS_PAPER_ACCOUNT_NO"),
-            "ACNT_PRDT_CD": self._env_value("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
-            "KRX_FWDG_ORD_ORGNO": "",
+            "CANO": self.envValue("KIS_PAPER_ACCOUNT_NO"),
+            "ACNT_PRDT_CD": self.envValue("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
+            "KRX_FWDG_ORD_ORGNO": original_order_orgno,
             "ORGN_ODNO": original_order_no,
             "ORD_DVSN": "00",
             "RVSE_CNCL_DVSN_CD": "02",
@@ -536,15 +798,15 @@ class KisPaperAdapter:
             "ORD_UNPR": "0",
             "QTY_ALL_ORD_YN": "Y" if int(quantity or 0) <= 0 else "N",
         }
-        response = self._request(
+        response = self.requestBrokerJson(
             "POST",
             "/uapi/domestic-stock/v1/trading/order-rvsecncl",
-            headers=self._authHeaders(token, "VTTC0803U"),
+            headers=self.authHeaders(token, "VTTC0803U"),
             body=body,
         )
         return sanitizeKisResponse(response, step="cancel_order")
 
-    def _blockedIfMissingEnv(self, step: str) -> Optional[Dict[str, Any]]:
+    def blockedIfMissingEnv(self, step: str) -> Optional[Dict[str, Any]]:
         missing = self.missingEnvKeys()
         if not missing:
             return None
@@ -556,7 +818,7 @@ class KisPaperAdapter:
             "broker_endpoint_called": False,
         }
 
-    def _request(
+    def requestBrokerJson(
         self,
         method: str,
         path_or_url: str,
@@ -564,14 +826,14 @@ class KisPaperAdapter:
         headers: Optional[Mapping[str, str]] = None,
         body: Optional[Mapping[str, Any]] = None,
     ) -> Dict[str, Any]:
-        url = self._url(path_or_url)
+        url = self.buildUrl(path_or_url)
         validatePaperBaseUrl(url.rsplit("/", 1)[0] if path_or_url.startswith("http") else self.base_url)
         parsed = urllib.parse.urlparse(url)
         if parsed.hostname != PAPER_HOST:
             raise KisPaperAdapterError("kis_paper_request_not_paper_domain")
-        return self.transport.request_json(method, url, headers=headers, body=body)
+        return self.transport.requestJson(method, url, headers=headers, body=body)
 
-    def _url(self, path_or_url: str) -> str:
+    def buildUrl(self, path_or_url: str) -> str:
         if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
             parsed = urllib.parse.urlparse(path_or_url)
             if parsed.hostname != PAPER_HOST:
@@ -580,22 +842,22 @@ class KisPaperAdapter:
         path = path_or_url if path_or_url.startswith("/") else f"/{path_or_url}"
         return f"{self.base_url}{path}"
 
-    def _env_value(self, key: str) -> str:
+    def envValue(self, key: str) -> str:
         return str(self._env.get(key, "")).strip()
 
-    def _authHeaders(self, token: str, tr_id: str) -> Dict[str, str]:
+    def authHeaders(self, token: str, tr_id: str) -> Dict[str, str]:
         return {
             "authorization": f"Bearer {token}",
-            "appkey": self._env_value("KIS_PAPER_APP_KEY"),
-            "appsecret": self._env_value("KIS_PAPER_APP_SECRET"),
+            "appkey": self.envValue("KIS_PAPER_APP_KEY"),
+            "appsecret": self.envValue("KIS_PAPER_APP_SECRET"),
             "tr_id": tr_id,
             "custtype": "P",
         }
 
-    def _accountQuery(self) -> Dict[str, str]:
+    def accountQuery(self) -> Dict[str, str]:
         return {
-            "CANO": self._env_value("KIS_PAPER_ACCOUNT_NO"),
-            "ACNT_PRDT_CD": self._env_value("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
+            "CANO": self.envValue("KIS_PAPER_ACCOUNT_NO"),
+            "ACNT_PRDT_CD": self.envValue("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
             "AFHR_FLPR_YN": "N",
             "OFL_YN": "",
             "INQR_DVSN": "02",

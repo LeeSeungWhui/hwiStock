@@ -290,8 +290,11 @@ class TradingEngineOrderStateTests(unittest.TestCase):
         self.assertTrue(capabilities["supports_paper_krx_realtime"])
         self.assertFalse(capabilities["supports_paper_nxt_order"])
         self.assertFalse(capabilities["supports_paper_sor_order"])
-        self.assertFalse(capabilities["supports_paper_integrated_realtime"])
-        self.assertFalse(capabilities["supports_paper_cancelable_query"])
+        self.assertTrue(capabilities["supports_paper_integrated_realtime"])
+        self.assertTrue(capabilities["supports_paper_cancelable_query"])
+        self.assertTrue(capabilities["supports_paper_sellable_quantity_query"])
+        self.assertTrue(capabilities["supports_real_nxt_order"])
+        self.assertTrue(capabilities["supports_real_nxt_realtime"])
 
         dry_run_routes = [
             te.resolveVenueRoute(route, mode="no_order_dry_run")
@@ -313,6 +316,10 @@ class TradingEngineOrderStateTests(unittest.TestCase):
         self.assertEqual(auto["branch_status"], "local_fallback")
         self.assertFalse(nxt["broker_capability_enabled"])
         self.assertFalse(sor["broker_capability_enabled"])
+
+        real_nxt = te.resolveVenueRoute("NXT", mode="kis_real")
+        self.assertEqual(real_nxt["branch_status"], "capability_available")
+        self.assertTrue(real_nxt["broker_capability_enabled"])
 
     def testQa009KisPaperEvidenceEventsStayRepresentationOnly(self):
         for mapped_state in ("submitted", "accepted", "rejected", "retrying", "failed"):

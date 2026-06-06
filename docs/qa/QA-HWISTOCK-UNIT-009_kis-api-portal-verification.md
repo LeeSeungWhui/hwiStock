@@ -30,8 +30,8 @@ evidence_refs:
 | row_id | priority | mode | steps | expected_result | evidence |
 | --- | --- | --- | --- | --- | --- |
 | QA-001 | P0 | docs | Review official KIS API service summary | Domestic stock order, account, realtime, and quote endpoints are listed | `RUN-20260602_unit-009-kis-api-portal-verification-set.md`; `docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md` |
-| QA-002 | P0 | docs | Review official broker-adapter docs, samples, and local `apiRefer` files | Broker adapter availability, endpoint separation, KRX-supported paths, adapter-unsupported APIs, fallback needs, exact balance, and numeric-limit follow-ups are documented | `RUN-20260602_unit-009-kis-api-portal-verification-set.md`; `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md`; `docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md` |
-| QA-003 | P0 | docs | Review KRX/NXT/SOR-related API behavior | KRX/NXT/SOR fields are documented; KIS adapter proof is marked KRX-limited where references say adapter-unsupported, and NXT/SOR operation behavior is marked later verification | `RUN-20260602_unit-009-kis-api-portal-verification-set.md`; `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md`; `docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md` |
+| QA-002 | P0 | docs | Review official broker-adapter docs, samples, and local `apiRefer` files | Broker adapter availability, endpoint separation, mode-gated KRX/NXT/SOR handling, provider-query-required helper APIs, exact balance, and numeric-limit follow-ups are documented | `RUN-20260602_unit-009-kis-api-portal-verification-set.md`; `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md`; `docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md` |
+| QA-003 | P0 | docs | Review KRX/NXT/SOR-related API behavior | KRX/NXT/SOR fields are documented; paper/mock mode rejects NXT broker branches, real investment mode enables NXT where capability flags allow it, and SOR operation behavior remains disabled/fallback | `RUN-20260602_unit-009-kis-api-portal-verification-set.md`; `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md`; `docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md` |
 | QA-004 | P0 | safety | Inspect commands/evidence | No credential use, login, token request, broker API call, or order placement occurred | `RUN-20260602_unit-009-kis-api-portal-verification-set.md`; `docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md` |
 
 ## PASS / FAIL / BLOCKED Rules
@@ -41,8 +41,8 @@ evidence_refs:
   network calls.
 - FAIL: verification uses credentials or operation/adapter API calls.
 - PARTIAL: public docs confirm the endpoint family but leave actual account-mode
-  behavior, adapter balance, exact current rate-limit numbers, or
-  adapter-unsupported helper/realtime APIs to local fallback or a future approved
+  behavior, adapter balance, exact current rate-limit numbers, disabled SOR
+  behavior, or provider helper edge cases to local fallback or a future approved
   smoke.
 - BLOCKED: official docs are inaccessible or do not expose the endpoint family
   needed to design the next unit.

@@ -56,6 +56,24 @@ describe("hwiStock operator console view", () => {
       candidates: [],
       intelligence: [],
       aiThread: [],
+      runtime: {
+        artifactFreshness: {
+          snapshotAtKst: "2026-06-06T09:30:00+09:00",
+          staleKeys: ["kisMarket"],
+          missingKeys: ["flashTradeDocument"],
+          allRequiredFresh: false,
+          artifacts: {},
+        },
+        kisPaperRunnerServicePolicy: {
+          paperOrderEnabledEffective: false,
+          paperNetworkEnabledEffective: true,
+          livePolicy: {
+            available: true,
+            timerActiveState: "active",
+            activeState: "inactive",
+          },
+        },
+      },
       auditLog: [
         { at: "18:00", level: "info", code: "ORDER_GATE", message: "blocked_calendar_unconfigured" },
       ],
@@ -90,6 +108,7 @@ describe("hwiStock operator console view", () => {
 
     expect(screen.getByTestId("hwistock-operator-console")).toBeInTheDocument();
     expect(screen.getByTestId("operator-status-strip")).toBeInTheDocument();
+    expect(screen.getByTestId("operator-freshness-strip")).toBeInTheDocument();
     expect(screen.getByTestId("operator-pane-summary")).toBeInTheDocument();
     expect(screen.getByTestId("operator-pane-data")).toBeInTheDocument();
     expect(screen.getByTestId("operator-pane-review")).toBeInTheDocument();
@@ -114,6 +133,9 @@ describe("hwiStock operator console view", () => {
     expect(screen.getByText("준비 전")).toBeInTheDocument();
     expect(screen.getByText(/주문 실행 허용/)).toBeInTheDocument();
     expect(screen.getAllByText("시장 시간표 설정 필요").length).toBeGreaterThan(0);
+    expect(screen.getByText("stale 1 · missing 1")).toBeInTheDocument();
+    expect(screen.getByText("effective order disabled")).toBeInTheDocument();
+    expect(screen.getByText("active · inactive")).toBeInTheDocument();
     expect(screen.getByTestId("operator-readiness-truth")).toHaveClass("border-l-4");
     expect(screen.getByTestId("operator-status-strip")).toHaveClass("bg-slate-950/80");
   });

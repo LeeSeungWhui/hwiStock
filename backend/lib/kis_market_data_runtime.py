@@ -1,10 +1,10 @@
 """
-UNIT-013 KIS paper-read market-data runtime implementation.
+UNIT-013 KIS market-data runtime implementation.
 
-The first operational scope is intentionally bounded to six signal inputs:
-KRX realtime trade price, KRX realtime orderbook, volume rank, execution
-strength/volume-power rank, fluctuation rank, and program-trading aggregate
-status. This module never calls KIS order/cancel/modify endpoints.
+The operational market-data scope is mode-aware. Paper/mock mode enables KRX
+and integrated realtime feeds plus REST ranking/context endpoints. Real
+investment mode may additionally enable NXT realtime feeds. This module never
+calls KIS order/cancel/modify endpoints.
 """
 
 from __future__ import annotations
@@ -34,9 +34,93 @@ except ImportError:  # pragma: no cover
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_ROOT = Path(os.getenv("HWISTOCK_DATA_DIR", str(REPO_ROOT / "data")))
 
-ALLOWED_SIGNAL_INPUTS: tuple[str, ...] = (
+PAPER_MODE = "paper"
+REAL_MODE = "real"
+
+REALTIME_SIGNAL_SPECS: Dict[str, Dict[str, str]] = {
+    "krx_realtime_trade_price_ws": {
+        "venue": "KRX",
+        "kind": "trade_price",
+        "tr_id": "H0STCNT0",
+        "endpoint_alias": "kis_ws_krx_realtime_trade_price",
+    },
+    "krx_realtime_orderbook_ws": {
+        "venue": "KRX",
+        "kind": "orderbook",
+        "tr_id": "H0STASP0",
+        "endpoint_alias": "kis_ws_krx_realtime_orderbook",
+    },
+    "krx_market_operation_ws": {
+        "venue": "KRX",
+        "kind": "market_operation",
+        "tr_id": "H0STMKO0",
+        "endpoint_alias": "kis_ws_krx_market_operation",
+    },
+    "integrated_realtime_trade_price_ws": {
+        "venue": "INTEGRATED",
+        "kind": "trade_price",
+        "tr_id": "H0UNCNT0",
+        "endpoint_alias": "kis_ws_integrated_realtime_trade_price",
+    },
+    "integrated_realtime_orderbook_ws": {
+        "venue": "INTEGRATED",
+        "kind": "orderbook",
+        "tr_id": "H0UNASP0",
+        "endpoint_alias": "kis_ws_integrated_realtime_orderbook",
+    },
+    "integrated_market_operation_ws": {
+        "venue": "INTEGRATED",
+        "kind": "market_operation",
+        "tr_id": "H0UNMKO0",
+        "endpoint_alias": "kis_ws_integrated_market_operation",
+    },
+    "nxt_realtime_trade_price_ws": {
+        "venue": "NXT",
+        "kind": "trade_price",
+        "tr_id": "H0NXCNT0",
+        "endpoint_alias": "kis_ws_nxt_realtime_trade_price",
+    },
+    "nxt_realtime_orderbook_ws": {
+        "venue": "NXT",
+        "kind": "orderbook",
+        "tr_id": "H0NXASP0",
+        "endpoint_alias": "kis_ws_nxt_realtime_orderbook",
+    },
+    "nxt_market_operation_ws": {
+        "venue": "NXT",
+        "kind": "market_operation",
+        "tr_id": "H0NXMKO0",
+        "endpoint_alias": "kis_ws_nxt_market_operation",
+    },
+}
+
+REST_SIGNAL_INPUTS: tuple[str, ...] = (
+    "rest_volume_rank",
+    "rest_volume_power_rank",
+    "rest_fluctuation_rank",
+    "rest_program_trading_aggregate",
+)
+
+PAPER_SIGNAL_INPUTS: tuple[str, ...] = (
     "krx_realtime_trade_price_ws",
     "krx_realtime_orderbook_ws",
+    "krx_market_operation_ws",
+    "integrated_realtime_trade_price_ws",
+    "integrated_realtime_orderbook_ws",
+    "integrated_market_operation_ws",
+    *REST_SIGNAL_INPUTS,
+)
+
+REAL_SIGNAL_INPUTS: tuple[str, ...] = (
+    *PAPER_SIGNAL_INPUTS,
+    "nxt_realtime_trade_price_ws",
+    "nxt_realtime_orderbook_ws",
+    "nxt_market_operation_ws",
+)
+
+ALLOWED_SIGNAL_INPUTS: tuple[str, ...] = PAPER_SIGNAL_INPUTS
+ALL_SIGNAL_INPUTS: tuple[str, ...] = (
+    *REALTIME_SIGNAL_SPECS.keys(),
     "rest_volume_rank",
     "rest_volume_power_rank",
     "rest_fluctuation_rank",
@@ -88,16 +172,16 @@ SAFE_MARKET_ROW_KEYS = (
 )
 
 INPUT_ENDPOINT_AUDIT: Dict[str, Dict[str, Any]] = {
-    "krx_realtime_trade_price_ws": {
+    input_id: {
         "transport": "websocket",
-        "endpoint_alias": "kis_ws_krx_realtime_trade_price_paper",
+        "endpoint_alias": spec["endpoint_alias"],
+        "venue": spec["venue"],
+        "tr_id": spec["tr_id"],
         "paper_read_only": True,
-    },
-    "krx_realtime_orderbook_ws": {
-        "transport": "websocket",
-        "endpoint_alias": "kis_ws_krx_realtime_orderbook_paper",
-        "paper_read_only": True,
-    },
+    }
+    for input_id, spec in REALTIME_SIGNAL_SPECS.items()
+}
+INPUT_ENDPOINT_AUDIT.update({
     "rest_volume_rank": {
         "transport": "rest",
         "endpoint_alias": "kis_rest_volume_rank_paper",
@@ -118,7 +202,7 @@ INPUT_ENDPOINT_AUDIT: Dict[str, Dict[str, Any]] = {
         "endpoint_alias": "kis_rest_program_trading_aggregate_paper",
         "paper_read_only": True,
     },
-}
+})
 
 
 def _now_kst() -> datetime:
@@ -152,20 +236,42 @@ def _int_env(env: Mapping[str, str], key: str, default: int) -> int:
         return default
 
 
+def normalizeKisInvestmentMode(value: Any) -> str:
+    raw = str(value or "").strip().lower().replace("-", "_")
+    if raw in {"real", "real_investment", "prod", "production", "cash"}:
+        return REAL_MODE
+    return PAPER_MODE
+
+
+def allowedSignalInputsForMode(mode: str) -> tuple[str, ...]:
+    normalized = normalizeKisInvestmentMode(mode)
+    return REAL_SIGNAL_INPUTS if normalized == REAL_MODE else PAPER_SIGNAL_INPUTS
+
+
 def loadKisSignalCollectorConfig(env: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
     source = env if env is not None else os.environ
+    investment_mode = normalizeKisInvestmentMode(
+        source.get("HWISTOCK_KIS_INVESTMENT_MODE")
+        or source.get("HWISTOCK_INVESTMENT_MODE")
+        or source.get("HWISTOCK_TRADING_MODE")
+        or PAPER_MODE
+    )
+    allowed_inputs = list(allowedSignalInputsForMode(investment_mode))
     raw_inputs = str(source.get("HWISTOCK_KIS_SIGNAL_INPUTS") or "").strip()
     inputs = [
         item.strip()
         for item in raw_inputs.split(",")
         if item.strip()
-    ] or list(ALLOWED_SIGNAL_INPUTS)
+    ] or allowed_inputs
     return {
         "schema_version": "kis_signal_collector_config/v0",
         "collector_id": "kis_intraday_market_collector",
+        "investment_mode": investment_mode,
+        "enabled_venues": ["KRX", "INTEGRATED", "NXT"] if investment_mode == REAL_MODE else ["KRX", "INTEGRATED"],
         "paper_read_network_enabled": _bool_env(source, "HWISTOCK_KIS_MARKET_READ_NETWORK_ENABLED", False),
         "requested_inputs": inputs,
-        "allowed_inputs": list(ALLOWED_SIGNAL_INPUTS),
+        "allowed_inputs": allowed_inputs,
+        "all_known_inputs": list(ALL_SIGNAL_INPUTS),
         "forbidden_transport": "order/cancel/modify/balance/buyable",
         "sample_symbol": str(source.get("HWISTOCK_KIS_HEALTH_SYMBOL", "005930")).strip() or "005930",
         "min_call_gap_sec": _float_env(source, "HWISTOCK_KIS_MIN_CALL_GAP_SEC", 1.35),
@@ -176,18 +282,24 @@ def loadKisSignalCollectorConfig(env: Optional[Mapping[str, str]] = None) -> Dic
 
 def validateKisSignalInputScope(config: Mapping[str, Any]) -> Dict[str, Any]:
     requested = [str(item).strip() for item in (config.get("requested_inputs") or []) if str(item).strip()]
+    allowed = {str(item).strip() for item in (config.get("allowed_inputs") or ALLOWED_SIGNAL_INPUTS) if str(item).strip()}
+    all_known = set(ALL_SIGNAL_INPUTS)
     errors: list[str] = []
     for item in requested:
         lowered = item.lower()
-        if item not in ALLOWED_SIGNAL_INPUTS:
-            errors.append(f"kis_signal_input_not_in_six_input_allowlist:{item}")
+        if item not in all_known:
+            errors.append(f"kis_signal_input_unknown:{item}")
+        elif item not in allowed:
+            errors.append(f"kis_signal_input_not_enabled_for_mode:{item}")
         if any(token in lowered for token in ORDER_ENDPOINT_TOKENS):
             errors.append(f"kis_signal_input_forbidden_order_surface:{item}")
     return {
         "ok": not errors,
         "errors": errors,
         "requested_inputs": requested,
-        "allowed_inputs": list(ALLOWED_SIGNAL_INPUTS),
+        "allowed_inputs": sorted(allowed),
+        "investment_mode": normalizeKisInvestmentMode(config.get("investment_mode")),
+        "enabled_venues": list(config.get("enabled_venues") or []),
         "order_cancel_modify_called": False,
     }
 
@@ -237,9 +349,11 @@ def collectKisMarketDataOnce(
         "artifact_type": "kis_market_snapshot",
         "producer": "kis_intraday_market_collector",
         "produced_at_kst": now.isoformat(),
-        "collector_scope": "unit_013_kis_six_input_only",
+        "collector_scope": f"kis_market_mode_{config['investment_mode']}",
+        "investment_mode": config["investment_mode"],
+        "enabled_venues": config["enabled_venues"],
         "status": "pending",
-        "six_input_allowlist": list(ALLOWED_SIGNAL_INPUTS),
+        "signal_input_allowlist": list(config["allowed_inputs"]),
         "endpoint_audit": audit,
         "input_results": rows,
         "steps": steps,
@@ -247,7 +361,7 @@ def collectKisMarketDataOnce(
         "live_domain_calls_made": live_domain_calls_made,
         "raw_response_stored": False,
         "credential_values_printed": False,
-        "unsupported_nxt_sor_policy": "disabled_or_fallback_only",
+        "unsupported_nxt_sor_policy": "nxt_enabled_only_in_real_mode",
     }
 
     if not validation["ok"]:
@@ -282,7 +396,7 @@ def collectKisMarketDataOnce(
             payload["status"] = "blocked_token_missing"
             return payload
 
-        approval_result = _issue_websocket_approval(adapter)
+        approval_result, approval_key = _issue_websocket_approval(adapter)
         steps.append(approval_result)
         _sleep_for_kis_gap(config)
 
@@ -293,6 +407,7 @@ def collectKisMarketDataOnce(
                 input_id=input_id,
                 config=config,
                 approval_result=approval_result,
+                approval_key=approval_key,
             )
             rows.append(row)
             _sleep_for_kis_gap(config)
@@ -341,16 +456,20 @@ def _sleep_for_kis_gap(config: Mapping[str, Any]) -> None:
         time.sleep(gap)
 
 
-def _issue_websocket_approval(adapter: KisPaperAdapter) -> Dict[str, Any]:
+def _issue_websocket_approval(adapter: KisPaperAdapter) -> tuple[Dict[str, Any], str]:
+    with_value = getattr(adapter, "issueWebsocketApprovalWithValue", None)
+    if callable(with_value):
+        result, approval_key = with_value()
+        return dict(result), str(approval_key or "")
     fallback = getattr(adapter, "issueWebsocketApproval", None)
     if callable(fallback) and not hasattr(adapter, "_request"):
-        return dict(fallback())
+        return dict(fallback()), ""
     request = getattr(adapter, "_request", None)
     env_value = getattr(adapter, "_env_value", None)
     if not callable(request) or not callable(env_value):
         if callable(fallback):
-            return dict(fallback())
-        return {"step": "websocket_approval", "status": "blocked_adapter_missing_request_boundary"}
+            return dict(fallback()), ""
+        return {"step": "websocket_approval", "status": "blocked_adapter_missing_request_boundary"}, ""
     response = request(
         "POST",
         "/oauth2/Approval",
@@ -364,7 +483,7 @@ def _issue_websocket_approval(adapter: KisPaperAdapter) -> Dict[str, Any]:
     result = _sanitize_kis_market_response(response, step="websocket_approval")
     result["approval_key_present"] = bool(payload.get("approval_key"))
     result["credential_values_printed"] = False
-    return result
+    return result, str(payload.get("approval_key") or "")
 
 
 def _kis_market_read(
@@ -481,19 +600,33 @@ def _safe_rows_from_payload(payload: Mapping[str, Any], *, row_limit: int = 10) 
     return safe_rows
 
 
-def _collect_one_signal_input(
+def _collect_realtime_signal(
     *,
     adapter: KisPaperAdapter,
     token: str,
     input_id: str,
     config: Mapping[str, Any],
     approval_result: Mapping[str, Any],
+    approval_key: str,
 ) -> Dict[str, Any]:
+    del token
+    spec = REALTIME_SIGNAL_SPECS[input_id]
     sample_symbol = str(config.get("sample_symbol") or "005930").strip() or "005930"
-    if input_id == "krx_realtime_trade_price_ws":
+    subscribe = getattr(adapter, "subscribeRealtime", None)
+    result: Dict[str, Any]
+    if callable(subscribe) and str(approval_key or "").strip():
+        result = dict(
+            subscribe(
+                approval_key,
+                tr_id=spec["tr_id"],
+                tr_key=sample_symbol,
+                step=f"ws_{spec['venue'].lower()}_{spec['kind']}",
+            )
+        )
+    elif input_id == "krx_realtime_trade_price_ws":
         result = _kis_market_read(
             adapter,
-            token,
+            "",
             step="quote_inquire_price",
             path="/uapi/domestic-stock/v1/quotations/inquire-price",
             tr_id="FHKST01010100",
@@ -501,21 +634,11 @@ def _collect_one_signal_input(
             fallback_method="inquirePrice",
             fallback_args=(sample_symbol,),
         )
-        result.update(
-            {
-                "input_id": input_id,
-                "transport": "websocket_readiness_with_rest_price_snapshot",
-                "websocket_approval_status": approval_result.get("status"),
-                "websocket_approval_key_present": bool(approval_result.get("approval_key_present")),
-                "paper_read_only": True,
-                "order_cancel_modify_called": False,
-            }
-        )
-        return result
-    if input_id == "krx_realtime_orderbook_ws":
+        result["transport"] = "websocket_readiness_with_rest_price_snapshot"
+    elif input_id == "krx_realtime_orderbook_ws":
         result = _kis_market_read(
             adapter,
-            token,
+            "",
             step="quote_inquire_orderbook",
             path="/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn",
             tr_id="FHKST01010200",
@@ -523,17 +646,52 @@ def _collect_one_signal_input(
             fallback_method="inquireOrderbook",
             fallback_args=(sample_symbol,),
         )
-        result.update(
-            {
-                "input_id": input_id,
-                "transport": "websocket_readiness_with_rest_orderbook_snapshot",
-                "websocket_approval_status": approval_result.get("status"),
-                "websocket_approval_key_present": bool(approval_result.get("approval_key_present")),
-                "paper_read_only": True,
-                "order_cancel_modify_called": False,
-            }
+        result["transport"] = "websocket_readiness_with_rest_orderbook_snapshot"
+    else:
+        result = {
+            "step": f"ws_{spec['venue'].lower()}_{spec['kind']}",
+            "status": "blocked_websocket_subscription_unavailable",
+            "endpoint_called": False,
+            "broker_order_surface": False,
+            "raw_response_stored": False,
+        }
+    result.update(
+        {
+            "input_id": input_id,
+            "transport": result.get("transport") or "websocket",
+            "venue": spec["venue"],
+            "realtime_kind": spec["kind"],
+            "tr_id": spec["tr_id"],
+            "websocket_approval_status": approval_result.get("status"),
+            "websocket_approval_key_present": bool(approval_result.get("approval_key_present")),
+            "endpoint_called": bool(result.get("endpoint_called", result.get("subscription_frame_ready", False))),
+            "paper_read_only": True,
+            "order_cancel_modify_called": False,
+            "raw_response_stored": False,
+            "credential_values_printed": False,
+        }
+    )
+    return result
+
+
+def _collect_one_signal_input(
+    *,
+    adapter: KisPaperAdapter,
+    token: str,
+    input_id: str,
+    config: Mapping[str, Any],
+    approval_result: Mapping[str, Any],
+    approval_key: str = "",
+) -> Dict[str, Any]:
+    if input_id in REALTIME_SIGNAL_SPECS:
+        return _collect_realtime_signal(
+            adapter=adapter,
+            token=token,
+            input_id=input_id,
+            config=config,
+            approval_result=approval_result,
+            approval_key=approval_key,
         )
-        return result
     if input_id == "rest_volume_rank":
         result = _kis_market_read(
             adapter,
@@ -868,7 +1026,7 @@ def writeCompiledWatchEvidence(
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="hwiStock UNIT-013 KIS six-input market-data collector")
+    parser = argparse.ArgumentParser(description="hwiStock UNIT-013 KIS mode-aware market-data collector")
     parser.add_argument("--once", action="store_true", help="Run one collector tick")
     parser.add_argument("--write-evidence", action="store_true", help="Write sanitized collector evidence")
     parser.add_argument("--output-root", default=str(DEFAULT_DATA_ROOT))

@@ -13,7 +13,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 from zoneinfo import ZoneInfo
 
 KST = ZoneInfo("Asia/Seoul")
@@ -48,11 +48,11 @@ class RunnerRuntimeState:
 _runtime = RunnerRuntimeState()
 
 
-def backend_dir() -> Path:
+def backendDir() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def normalize_loopback_bind_host(host: Optional[str]) -> str:
+def normalizeLoopbackBindHost(host: Optional[str]) -> str:
     """
     Coerce bind values to loopback-only. Allows 127.0.0.1, localhost, and ::1.
     LAN, public, wildcard, and non-loopback hostnames resolve to 127.0.0.1.
@@ -79,34 +79,39 @@ def normalize_loopback_bind_host(host: Optional[str]) -> str:
     return DEFAULT_BIND_HOST
 
 
-def resolve_bind_host(config_host: Optional[str] = None) -> str:
+def resolveBindHost(config_host: Optional[str] = None) -> str:
     """
     Local-only bind default. Env HWISTOCK_BIND_HOST overrides config when set.
     Rejects unsafe public/LAN bind values by coercing to loopback.
     """
     env_host = os.getenv("HWISTOCK_BIND_HOST", "").strip()
     if env_host:
-        return normalize_loopback_bind_host(env_host)
+        return normalizeLoopbackBindHost(env_host)
     if config_host and str(config_host).strip():
-        return normalize_loopback_bind_host(str(config_host).strip())
+        return normalizeLoopbackBindHost(str(config_host).strip())
     return DEFAULT_BIND_HOST
 
 
-def emit_runner_once_stdout() -> Dict[str, Any]:
+def jsonText(value: Any, *, sortKeys: bool = False) -> str:
+    encoder = json.JSONEncoder(ensure_ascii=False, indent=2, sort_keys=sortKeys)
+    return encoder.encode(value)
+
+
+def emitRunnerOnceStdout() -> Dict[str, Any]:
     """Local-only runner tick payload for --once (no broker/network/orders)."""
     return {
         "event": "runner_once",
         "timestamp": datetime.now(KST).isoformat(),
-        "status": get_runner_status(),
-        "auditLog": audit_log_categories_metadata(),
+        "status": getRunnerStatus(),
+        "auditLog": auditLogCategoriesMetadata(),
     }
 
 
-def _runtime_date_dir(output_root: Path, at: datetime) -> Path:
+def runtimeDateDir(output_root: Path, at: datetime) -> Path:
     return output_root / "evidence" / at.astimezone(KST).date().isoformat()
 
 
-def write_runner_evidence(
+def writeRunnerEvidence(
     payload: Dict[str, Any],
     *,
     output_root: Optional[Path] = None,
@@ -115,12 +120,12 @@ def write_runner_evidence(
     """Write latest and timestamped runner evidence without broker/order calls."""
     now = at or datetime.now(KST)
     root = output_root or Path(os.getenv("HWISTOCK_DATA_DIR", str(_REPO_ROOT / "data")))
-    evidence_dir = _runtime_date_dir(root, now)
+    evidence_dir = runtimeDateDir(root, now)
     evidence_dir.mkdir(parents=True, exist_ok=True)
     stamp = now.strftime("%H%M%S")
     latest_path = evidence_dir / "runner-latest.json"
     stamped_path = evidence_dir / f"runner-{stamp}.json"
-    text = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    text = jsonText(payload, sortKeys=True) + "\n"
     latest_path.write_text(text, encoding="utf-8")
     stamped_path.write_text(text, encoding="utf-8")
     return {
@@ -129,9 +134,9 @@ def write_runner_evidence(
     }
 
 
-def run_once_entrypoint() -> int:
-    payload = emit_runner_once_stdout()
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+def runOnceEntrypoint() -> int:
+    payload = emitRunnerOnceStdout()
+    sys.stdout.write(jsonText(payload) + "\n")
     return 0
 
 
@@ -154,19 +159,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
     if args.once:
-        payload = emit_runner_once_stdout()
+        payload = emitRunnerOnceStdout()
         if args.write_evidence:
-            payload["evidencePaths"] = write_runner_evidence(
+            payload["evidencePaths"] = writeRunnerEvidence(
                 payload,
                 output_root=Path(args.output_root),
             )
-        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+        sys.stdout.write(jsonText(payload, sortKeys=True) + "\n")
         return 0
     parser.print_help(sys.stderr)
     return 2
 
 
-def _parse_kst_time(value: Optional[str]) -> datetime:
+def parseKstTime(value: Optional[str]) -> datetime:
     if not value:
         return datetime.now(KST)
     raw = str(value).strip()
@@ -182,7 +187,7 @@ def _parse_kst_time(value: Optional[str]) -> datetime:
     raise ValueError(f"unsupported KST time format: {value}")
 
 
-def route_venue_at_kst(at: datetime) -> Dict[str, Any]:
+def routeVenueAtKst(at: datetime) -> Dict[str, Any]:
     """Simple KRX/NXT/idle routing for 08:00-20:00 KST envelope."""
     local = at.astimezone(KST)
     t = local.time()
@@ -206,6 +211,7 @@ def route_venue_at_kst(at: datetime) -> Dict[str, Any]:
 
     return {
         "atKst": local.isoformat(),
+        "dateKst": local.date().isoformat(),
         "venue": venue,
         "session": session,
         "inTradingEnvelope": in_envelope,
@@ -213,7 +219,7 @@ def route_venue_at_kst(at: datetime) -> Dict[str, Any]:
     }
 
 
-def _calendar_path() -> Path:
+def calendarPath() -> Path:
     override = os.getenv("HWISTOCK_CALENDAR_PATH", "").strip()
     if override:
         p = Path(override)
@@ -221,13 +227,95 @@ def _calendar_path() -> Path:
     return _DEFAULT_CALENDAR_PATH
 
 
-def evaluate_calendar_state(now: Optional[datetime] = None) -> Dict[str, Any]:
-    path = _calendar_path()
+def parseCalendarTime(value: Any, defaultValue: time) -> time:
+    raw = str(value or "").strip()
+    if not raw:
+        return defaultValue
+    for fmt in ("%H:%M", "%H:%M:%S"):
+        try:
+            return datetime.strptime(raw, fmt).time()
+        except ValueError:
+            continue
+    return defaultValue
+
+
+def calendarDayRows(payload: Mapping[str, Any]) -> Dict[str, Dict[str, Any]]:
+    rows: Dict[str, Dict[str, Any]] = {}
+    for key in ("days", "tradingDays", "calendar"):
+        value = payload.get(key)
+        if isinstance(value, Mapping):
+            for day, row in value.items():
+                if isinstance(row, Mapping):
+                    rows[str(day)] = dict(row)
+                elif isinstance(row, bool):
+                    rows[str(day)] = {"isTradingDay": row}
+        elif isinstance(value, list):
+            for row in value:
+                if isinstance(row, str):
+                    rows[row] = {"isTradingDay": True}
+                elif isinstance(row, Mapping):
+                    day = str(row.get("dateKst") or row.get("date") or row.get("day") or "").strip()
+                    if day:
+                        rows[day] = dict(row)
+    return rows
+
+
+def calendarSessionState(dayPayload: Mapping[str, Any], at: datetime) -> Dict[str, Any]:
+    local = at.astimezone(KST)
+    t = local.time()
+    krxPayload = dayPayload.get("krx") if isinstance(dayPayload.get("krx"), Mapping) else {}
+    nxtPayload = dayPayload.get("nxt") if isinstance(dayPayload.get("nxt"), Mapping) else {}
+    krxOpen = parseCalendarTime(
+        dayPayload.get("krxOpen") or dayPayload.get("krx_open") or krxPayload.get("regularOpen"),
+        time(9, 0),
+    )
+    krxClose = parseCalendarTime(
+        dayPayload.get("krxClose") or dayPayload.get("krx_close") or krxPayload.get("regularClose"),
+        time(15, 30),
+    )
+    krxOrderOpen = parseCalendarTime(
+        dayPayload.get("krxOrderOpen") or dayPayload.get("krx_order_open") or krxPayload.get("orderOpen"),
+        time(9, 0),
+    )
+    krxOrderClose = parseCalendarTime(
+        dayPayload.get("krxOrderClose") or dayPayload.get("krx_order_close") or krxPayload.get("orderClose"),
+        time(15, 0),
+    )
+    nxtOpen = parseCalendarTime(
+        dayPayload.get("nxtOpen") or dayPayload.get("nxt_open") or nxtPayload.get("open"),
+        time(8, 0),
+    )
+    nxtClose = parseCalendarTime(
+        dayPayload.get("nxtClose") or dayPayload.get("nxt_close") or nxtPayload.get("close"),
+        time(20, 0),
+    )
+    krxSessionOpen = krxOpen <= t < krxClose
+    krxOrderSessionOpen = krxOrderOpen <= t < krxOrderClose
+    nxtSessionOpen = bool(dayPayload.get("nxtEnabled", dayPayload.get("nxt_enabled", True))) and nxtOpen <= t < nxtClose
+    return {
+        "sessionOpen": krxSessionOpen or nxtSessionOpen,
+        "krxSessionOpen": krxSessionOpen,
+        "krxOrderSessionOpen": krxOrderSessionOpen,
+        "nxtSessionOpen": nxtSessionOpen,
+        "krxSession": {"open": krxOpen.strftime("%H:%M"), "close": krxClose.strftime("%H:%M")},
+        "krxOrderSession": {"open": krxOrderOpen.strftime("%H:%M"), "close": krxOrderClose.strftime("%H:%M")},
+        "nxtSession": {"open": nxtOpen.strftime("%H:%M"), "close": nxtClose.strftime("%H:%M")},
+    }
+
+
+def evaluateCalendarState(now: Optional[datetime] = None) -> Dict[str, Any]:
+    path = calendarPath()
+    ref = (now or datetime.now(KST)).astimezone(KST)
+    date_key = ref.date().isoformat()
     if not path.is_file():
         return {
             "state": "calendar_unconfigured",
             "path": str(path),
             "tradingAllowed": False,
+            "dateKst": date_key,
+            "isTradingDay": False,
+            "sessionOpen": False,
+            "krxOrderSessionOpen": False,
             "reason": "local calendar cache missing",
         }
 
@@ -238,6 +326,10 @@ def evaluate_calendar_state(now: Optional[datetime] = None) -> Dict[str, Any]:
             "state": "calendar_unconfigured",
             "path": str(path),
             "tradingAllowed": False,
+            "dateKst": date_key,
+            "isTradingDay": False,
+            "sessionOpen": False,
+            "krxOrderSessionOpen": False,
             "reason": "calendar cache unreadable",
         }
 
@@ -247,12 +339,15 @@ def evaluate_calendar_state(now: Optional[datetime] = None) -> Dict[str, Any]:
             expiry = datetime.fromisoformat(valid_until.replace("Z", "+00:00"))
             if expiry.tzinfo is None:
                 expiry = expiry.replace(tzinfo=KST)
-            ref = (now or datetime.now(KST)).astimezone(KST)
             if ref > expiry.astimezone(KST):
                 return {
                     "state": "calendar_stale",
                     "path": str(path),
                     "tradingAllowed": False,
+                    "dateKst": date_key,
+                    "isTradingDay": False,
+                    "sessionOpen": False,
+                    "krxOrderSessionOpen": False,
                     "validUntil": valid_until,
                     "reason": "calendar cache expired",
                 }
@@ -261,18 +356,77 @@ def evaluate_calendar_state(now: Optional[datetime] = None) -> Dict[str, Any]:
                 "state": "calendar_stale",
                 "path": str(path),
                 "tradingAllowed": False,
+                "dateKst": date_key,
+                "isTradingDay": False,
+                "sessionOpen": False,
+                "krxOrderSessionOpen": False,
                 "reason": "calendar validUntil unparsable",
             }
+
+    rows = calendarDayRows(payload if isinstance(payload, Mapping) else {})
+    day_payload = rows.get(date_key)
+    if not isinstance(day_payload, Mapping):
+        return {
+            "state": "calendar_day_missing",
+            "path": str(path),
+            "tradingAllowed": False,
+            "dateKst": date_key,
+            "isTradingDay": False,
+            "sessionOpen": False,
+            "krxOrderSessionOpen": False,
+            "validUntil": valid_until or None,
+            "reason": "calendar has no row for requested KST date",
+            "sourceHierarchy": "local KRX/NXT cached calendar; date-specific row required",
+        }
+
+    is_trading_day = bool(
+        day_payload.get("isTradingDay", day_payload.get("is_trading_day", day_payload.get("tradingAllowed", False)))
+    )
+    session_state = calendarSessionState(day_payload, ref)
+    if not is_trading_day:
+        return {
+            "state": "calendar_non_trading_day",
+            "path": str(path),
+            "tradingAllowed": False,
+            "dateKst": date_key,
+            "isTradingDay": False,
+            "sessionOpen": False,
+            "krxOrderSessionOpen": False,
+            "validUntil": valid_until or None,
+            "reason": day_payload.get("reason") or "requested KST date is not a trading day",
+            "sourceHierarchy": payload.get("sourceHierarchy") or "local KRX/NXT cached calendar",
+        }
 
     return {
         "state": "calendar_ready",
         "path": str(path),
         "tradingAllowed": True,
-        "sourceHierarchy": "local KRX/NXT cached calendar; KIS holiday lookup deferred",
+        "dateKst": date_key,
+        "isTradingDay": True,
+        "validUntil": valid_until or None,
+        "sourceAuthority": payload.get("sourceAuthority") or payload.get("source") or "local_cache",
+        "sourceHierarchy": payload.get("sourceHierarchy") or "local KRX/NXT cached calendar; KIS holiday lookup deferred",
+        **session_state,
     }
 
 
-def evaluate_market_data_source() -> Dict[str, Any]:
+def routeBlockedByCalendar(route: Dict[str, Any], calendar: Mapping[str, Any]) -> Dict[str, Any]:
+    if calendar.get("state") == "calendar_ready" and calendar.get("isTradingDay") is True:
+        return route
+    blocked = dict(route)
+    blocked.update(
+        {
+            "venue": "idle",
+            "session": "market_closed",
+            "inTradingEnvelope": False,
+            "calendarBlocked": True,
+            "calendarState": calendar.get("state"),
+        }
+    )
+    return blocked
+
+
+def evaluateMarketDataSource() -> Dict[str, Any]:
     source = os.getenv("HWISTOCK_MARKET_DATA_SOURCE", "").strip()
     if not source:
         return {
@@ -280,26 +434,30 @@ def evaluate_market_data_source() -> Dict[str, Any]:
             "tradingLoopsActive": False,
             "reason": "market data source not configured",
         }
+    order_grade_sources = {"kis_paper_mock", "kis_paper_read", "kis_market_six_input", "kis_market_mode_aware"}
+    active = source in order_grade_sources
     return {
         "state": "source_configured",
         "source": source,
-        "tradingLoopsActive": False,
-        "reason": "skeleton: configured source does not enable order routing",
+        "tradingLoopsActive": active,
+        "reason": "order-grade market data source configured"
+        if active
+        else "configured source does not enable order routing",
     }
 
 
-def set_kill_switch(active: bool) -> None:
+def setKillSwitch(active: bool) -> None:
     _runtime.kill_switch_active = bool(active)
 
 
-def is_kill_switch_active() -> bool:
+def isKillSwitchActive() -> bool:
     env = os.getenv("HWISTOCK_KILL_SWITCH", "").strip().lower()
     if env in ("1", "true", "yes", "on"):
         return True
     return _runtime.kill_switch_active
 
 
-def audit_log_categories_metadata() -> Dict[str, Any]:
+def auditLogCategoriesMetadata() -> Dict[str, Any]:
     """Expose distinguishable local audit categories for AC-05 / QA-005 inspection."""
     categories = [
         {
@@ -318,7 +476,7 @@ def audit_log_categories_metadata() -> Dict[str, Any]:
     }
 
 
-def alert_channels_metadata() -> Dict[str, Any]:
+def alertChannelsMetadata() -> Dict[str, Any]:
     today = date.today().isoformat()
     return {
         "delivery": "local_only",
@@ -332,7 +490,7 @@ def alert_channels_metadata() -> Dict[str, Any]:
     }
 
 
-def paper_observation_template() -> Dict[str, Any]:
+def paperObservationTemplate() -> Dict[str, Any]:
     return {
         "evidenceRunner": "systemd",
         "durationPolicy": "operator_selected",
@@ -353,16 +511,17 @@ def paper_observation_template() -> Dict[str, Any]:
     }
 
 
-def get_runner_status(at_kst: Optional[str] = None) -> Dict[str, Any]:
-    at = _parse_kst_time(at_kst)
-    route = route_venue_at_kst(at)
-    calendar = evaluate_calendar_state(at)
-    market_source = evaluate_market_data_source()
-    kill_switch = is_kill_switch_active()
+def getRunnerStatus(atKst: Optional[str] = None) -> Dict[str, Any]:
+    at = parseKstTime(atKst)
+    route = routeVenueAtKst(at)
+    calendar = evaluateCalendarState(at)
+    route = routeBlockedByCalendar(route, calendar)
+    market_source = evaluateMarketDataSource()
+    kill_switch = isKillSwitchActive()
 
     if kill_switch:
         order_gate = "blocked_kill_switch"
-    elif calendar["state"] in ("calendar_unconfigured", "calendar_stale"):
+    elif calendar["state"] != "calendar_ready":
         order_gate = f"blocked_{calendar['state']}"
     elif market_source["state"] == "source_unconfigured":
         order_gate = "blocked_source_unconfigured"
@@ -391,9 +550,9 @@ def get_runner_status(at_kst: Optional[str] = None) -> Dict[str, Any]:
             "paperMockCandidateKrw": PAPER_BUDGET_KRW,
             "liveCapitalBaselineKrw": LIVE_CAPITAL_BASELINE_KRW,
         },
-        "alerts": alert_channels_metadata(),
-        "auditLog": audit_log_categories_metadata(),
-        "paperObservation": paper_observation_template(),
+        "alerts": alertChannelsMetadata(),
+        "auditLog": auditLogCategoriesMetadata(),
+        "paperObservation": paperObservationTemplate(),
         "readiness": {
             "liveRunnerReady": False,
             "paperObservationAccepted": False,
@@ -402,10 +561,10 @@ def get_runner_status(at_kst: Optional[str] = None) -> Dict[str, Any]:
     }
 
 
-def preview_route(at_kst: str) -> Dict[str, Any]:
-    at = _parse_kst_time(at_kst)
-    route = route_venue_at_kst(at)
-    status = get_runner_status(at_kst)
+def previewRoute(atKst: str) -> Dict[str, Any]:
+    at = parseKstTime(atKst)
+    route = routeVenueAtKst(at)
+    status = getRunnerStatus(atKst)
     return {
         "preview": route,
         "orderGate": status["orderGate"],
@@ -413,7 +572,7 @@ def preview_route(at_kst: str) -> Dict[str, Any]:
     }
 
 
-def daily_close_template() -> Dict[str, Any]:
+def dailyCloseTemplate() -> Dict[str, Any]:
     today = date.today().isoformat()
     return {
         "reportName": "daily-close-2000.md",
@@ -433,8 +592,8 @@ def daily_close_template() -> Dict[str, Any]:
     }
 
 
-def record_no_order_intent(intent: Dict[str, Any], at_kst: Optional[str] = None) -> Dict[str, Any]:
-    status = get_runner_status(at_kst)
+def recordNoOrderIntent(intent: Dict[str, Any], atKst: Optional[str] = None) -> Dict[str, Any]:
+    status = getRunnerStatus(atKst)
     blocked = status["orderGate"] != "no_order_dry_run_only"
     record = {
         "dryRun": True,
@@ -459,13 +618,33 @@ def record_no_order_intent(intent: Dict[str, Any], at_kst: Optional[str] = None)
     return record
 
 
-def list_no_order_intents() -> List[Dict[str, Any]]:
+def listNoOrderIntents() -> List[Dict[str, Any]]:
     return list(_runtime.no_order_intents)
 
 
-def reset_runtime_for_tests() -> None:
+def resetRuntimeForTests() -> None:
     _runtime.kill_switch_active = False
     _runtime.no_order_intents.clear()
+
+
+backend_dir = backendDir
+emit_runner_once_stdout = emitRunnerOnceStdout
+write_runner_evidence = writeRunnerEvidence
+run_once_entrypoint = runOnceEntrypoint
+route_venue_at_kst = routeVenueAtKst
+evaluate_calendar_state = evaluateCalendarState
+evaluate_market_data_source = evaluateMarketDataSource
+set_kill_switch = setKillSwitch
+is_kill_switch_active = isKillSwitchActive
+audit_log_categories_metadata = auditLogCategoriesMetadata
+alert_channels_metadata = alertChannelsMetadata
+paper_observation_template = paperObservationTemplate
+get_runner_status = getRunnerStatus
+preview_route = previewRoute
+daily_close_template = dailyCloseTemplate
+record_no_order_intent = recordNoOrderIntent
+list_no_order_intents = listNoOrderIntents
+reset_runtime_for_tests = resetRuntimeForTests
 
 
 if __name__ == "__main__":

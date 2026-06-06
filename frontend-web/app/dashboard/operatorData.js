@@ -60,11 +60,21 @@ export const OPERATOR_FALLBACK_FIXTURE = {
   aiThread: [],
   auditLog: [],
   runtime: {
+    artifactFreshness: {
+      snapshotAtKst: null,
+      staleKeys: [],
+      missingKeys: [],
+      allRequiredFresh: false,
+      artifacts: {},
+    },
     kisPaperRunnerServicePolicy: {
       paperNetworkEnabledByService: false,
       paperOrderEnabledByService: false,
+      paperNetworkEnabledEffective: false,
+      paperOrderEnabledEffective: false,
       orderFlagContradictsReadiness: false,
       serviceFiles: [],
+      livePolicy: {},
     },
   },
 };

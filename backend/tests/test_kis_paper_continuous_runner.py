@@ -30,17 +30,27 @@ from service.kis_paper_adapter import (  # noqa: E402
 
 
 class FakeTransport:
-    def __init__(self, *, order_status="pass"):
+    def __init__(self, *, order_status="pass", sellable_quantity="10"):
         self.calls = []
         self.order_status = order_status
+        self.sellable_quantity = sellable_quantity
 
-    def request_json(self, method, url, *, headers=None, body=None, timeout=20):
+    def requestJson(self, method, url, *, headers=None, body=None, timeout=20):
         self.calls.append({"method": method, "url": url, "headers": dict(headers or {}), "body": dict(body or {}) if body else None})
         if url.endswith("/oauth2/tokenP"):
             return {"http_status": 200, "payload": {"rt_cd": "0", "access_token": "fake-token"}}
+        if url.endswith("/oauth2/Approval"):
+            return {"http_status": 200, "payload": {"rt_cd": "0", "approval_key": "fake-approval-key"}}
         if "/uapi/domestic-stock/v1/trading/order-cash" in url:
             rt_cd = "0" if self.order_status == "pass" else "1"
-            return {"http_status": 200, "payload": {"rt_cd": rt_cd, "msg_cd": "ok" if rt_cd == "0" else "reject"}}
+            return {
+                "http_status": 200,
+                "payload": {
+                    "rt_cd": rt_cd,
+                    "msg_cd": "ok" if rt_cd == "0" else "reject",
+                    "output": {"ODNO": "1234567890", "KRX_FWDG_ORD_ORGNO": "00123"},
+                },
+            }
         if "/uapi/domestic-stock/v1/trading/inquire-balance-rlz-pl" in url:
             return {
                 "http_status": 200,
@@ -72,6 +82,21 @@ class FakeTransport:
             return {
                 "http_status": 200,
                 "payload": {"rt_cd": "0", "msg_cd": "ok", "output": {"ord_psbl_cash": "1720000"}},
+            }
+        if "/uapi/domestic-stock/v1/trading/inquire-psbl-sell" in url:
+            return {
+                "http_status": 200,
+                "payload": {"rt_cd": "0", "msg_cd": "ok", "output": {"ord_psbl_qty": self.sellable_quantity}},
+            }
+        if "/uapi/domestic-stock/v1/trading/inquire-psbl-rvsecncl" in url:
+            return {
+                "http_status": 200,
+                "payload": {"rt_cd": "0", "msg_cd": "ok", "output": [{"odno": "1234567890"}]},
+            }
+        if "/uapi/domestic-stock/v1/quotations/chk-holiday" in url:
+            return {
+                "http_status": 200,
+                "payload": {"rt_cd": "0", "msg_cd": "ok", "output": [{"bass_dt": "20260605", "opnd_yn": "Y"}]},
             }
         return {"http_status": 200, "payload": {"rt_cd": "0", "msg_cd": "ok", "output1": [{"row": 1}]}}
 
@@ -112,7 +137,29 @@ def _env():
 
 def _calendar(tmp_path: Path, monkeypatch):
     path = tmp_path / "calendar.json"
-    path.write_text(json.dumps({"validUntil": "2099-12-31T23:59:59+09:00"}), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "validUntil": "2099-12-31T23:59:59+09:00",
+                "sourceAuthority": "unit_test_calendar",
+                "days": {
+                    "2026-06-05": {
+                        "dateKst": "2026-06-05",
+                        "isTradingDay": True,
+                        "krx": {
+                            "regularOpen": "09:00",
+                            "regularClose": "15:30",
+                            "orderOpen": "09:00",
+                            "orderClose": "15:00",
+                        },
+                        "nxt": {"open": "08:00", "close": "20:00"},
+                    }
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     monkeypatch.setenv("HWISTOCK_CALENDAR_PATH", str(path))
     return path
 
@@ -136,7 +183,7 @@ def _order_approval(tmp_path: Path, env: dict, *, run_id: str = "approved-order-
 
 
 def _mark_order_grade_source(env: dict) -> None:
-    env["HWISTOCK_MARKET_DATA_SOURCE"] = "kis_market_six_input"
+    env["HWISTOCK_MARKET_DATA_SOURCE"] = "kis_market_mode_aware"
 
 
 def test_default_systemd_runner_does_not_enable_orders():
@@ -431,8 +478,135 @@ def test_tick_with_fake_transport_processes_safe_krx_paper_intent_when_order_ena
     rendered = json.dumps(payload, ensure_ascii=False)
     assert payload["status"] == "ok"
     assert "paper-app-secret" not in rendered
+    assert payload["account_truth"]["source"] == "kis_paper_read_steps"
+    assert payload["account_truth"]["buyable_cash_krw"] == 1_720_000
+    assert payload["account_truth"]["sellable_status"] == "pass"
+    assert payload["account_truth"]["sellable_quantity"] == 10
+    assert payload["account_truth"]["cancelable_order_status"] == "pass"
+    assert payload["account_truth"]["cancelable_order_count"] == 1
+    assert payload["executionPreflight"]["riskOverlay"]["risk_overlay"]["account_truth_source"] == "kis_paper_read_steps"
+    assert any(step.get("step") == "ws_fill_notice" and step.get("tr_id") == "H0STCNI9" for step in payload["steps"])
+    assert any(step.get("step") == "sellable_inquire_psbl_sell" and step.get("status") == "pass" for step in payload["steps"])
+    assert any(step.get("step") == "cancelable_order_inquire" and step.get("status") == "pass" for step in payload["steps"])
     assert any(step.get("step") == "cash_order" and step.get("broker_endpoint_called") is True for step in payload["steps"])
     assert any("/order-cash" in call["url"] for call in transport.calls)
+
+
+def test_tick_preflight_uses_kis_account_truth_not_intent_cash(tmp_path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    env = _env()
+    env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _mark_order_grade_source(env)
+    _order_approval(tmp_path, env)
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(tmp_path / "data")
+    transport = FakeTransport()
+    adapter = KisPaperAdapter(env=env, transport=transport)
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=adapter,
+        at_kst="2026-06-05T09:30:00",
+        intent={
+            "intent_id": "test-account-truth-1",
+            "idempotency_key": "test-account-truth-1",
+            "symbol": "005930",
+            "side": "buy",
+            "quantity": 1,
+            "venue_route": "KRX",
+            "broker_adapter": "kis_paper",
+            "available_cash_krw": 99_000_000,
+            "planned_order_cash_krw": 1_300_000,
+            "current_holdings_count": 0,
+            "paper_only": True,
+        },
+    )
+    cash_order = [step for step in payload["steps"] if step.get("step") == "cash_order"][-1]
+    assert cash_order["status"] == "blocked_risk_overlay"
+    assert "minimum_cash_reserve_breach" in cash_order["errors"]
+    assert payload["executionPreflight"]["riskOverlay"]["risk_overlay"]["available_cash_krw"] == 1_720_000
+    assert not any("/order-cash" in call["url"] for call in transport.calls)
+
+
+def test_tick_blocks_sell_when_provider_sellable_quantity_is_insufficient(tmp_path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    env = _env()
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(tmp_path / "data")
+    transport = FakeTransport(sellable_quantity="0")
+    adapter = KisPaperAdapter(env=env, transport=transport)
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=adapter,
+        at_kst="2026-06-05T09:30:00",
+        intent={
+            "intent_id": "test-sellable-block-1",
+            "idempotency_key": "test-sellable-block-1",
+            "symbol": "005930",
+            "side": "sell",
+            "quantity": 1,
+            "venue_route": "KRX",
+            "broker_adapter": "kis_paper",
+            "available_cash_krw": 2_000_000,
+            "planned_order_cash_krw": 0,
+            "current_holdings_count": 1,
+            "paper_only": True,
+        },
+    )
+
+    cash_order = [step for step in payload["steps"] if step.get("step") == "cash_order"][-1]
+    assert cash_order["status"] == "blocked_risk_overlay"
+    assert "sellable_quantity_insufficient" in cash_order["errors"]
+    assert payload["account_truth"]["sellable_quantity"] == 0
+    assert payload["executionPreflight"]["riskOverlay"]["risk_overlay"]["sellable_quantity"] == 0
+    assert not any("/order-cash" in call["url"] for call in transport.calls)
+
+
+def test_tick_blocks_saturday_even_with_future_calendar_valid_until(tmp_path, monkeypatch):
+    path = tmp_path / "calendar.json"
+    path.write_text(
+        json.dumps(
+            {
+                "validUntil": "2099-12-31T23:59:59+09:00",
+                "days": {
+                    "2026-06-06": {"dateKst": "2026-06-06", "isTradingDay": False}
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HWISTOCK_CALENDAR_PATH", str(path))
+    env = _env()
+    env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _mark_order_grade_source(env)
+    _order_approval(tmp_path, env)
+    env["HWISTOCK_CALENDAR_PATH"] = str(path)
+    env["HWISTOCK_DATA_DIR"] = str(tmp_path / "data")
+    transport = FakeTransport()
+    adapter = KisPaperAdapter(env=env, transport=transport)
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=adapter,
+        at_kst="2026-06-06T09:30:00",
+        intent={
+            "intent_id": "test-saturday-block-1",
+            "idempotency_key": "test-saturday-block-1",
+            "symbol": "005930",
+            "side": "buy",
+            "quantity": 1,
+            "venue_route": "KRX",
+            "broker_adapter": "kis_paper",
+            "available_cash_krw": 99_000_000,
+            "planned_order_cash_krw": 100_000,
+            "current_holdings_count": 0,
+            "paper_only": True,
+        },
+    )
+    cash_order = [step for step in payload["steps"] if step.get("step") == "cash_order"][-1]
+    assert cash_order["status"] == "blocked_risk_overlay"
+    assert "calendar_not_ready" in cash_order["errors"]
+    assert "off_session" in cash_order["errors"]
+    assert not any("/order-cash" in call["url"] for call in transport.calls)
 
 
 def test_tick_blocks_non_krx_or_reserve_breach_before_order(tmp_path, monkeypatch):
@@ -505,7 +679,7 @@ def test_tick_blocks_paper_order_outside_krx_regular_session(tmp_path, monkeypat
 
 def test_preflight_requires_paper_only_and_kis_paper_adapter(tmp_path, monkeypatch):
     _calendar(tmp_path, monkeypatch)
-    monkeypatch.setenv("HWISTOCK_MARKET_DATA_SOURCE", "kis_market_six_input")
+    monkeypatch.setenv("HWISTOCK_MARKET_DATA_SOURCE", "kis_market_mode_aware")
     status = base_runner.get_runner_status("2026-06-05T09:30:00")
 
     preflight = continuous.evaluateIntentExecutionPreflight(
@@ -578,13 +752,70 @@ def test_tick_auto_loads_next_fifo_intent_queue_and_persists_only_passed_order(t
         adapter=adapter,
         at_kst="2026-06-05T09:30:00",
     )
-    assert payload["intent_source"] == "next_intent_queue_fifo"
+    assert payload["intent_source"] == "next_intent_queue_exit_priority_fifo"
     assert any(step.get("step") == "cash_order" and step.get("status") == "pass" for step in payload["steps"])
     state_path = data_root / "state" / "kis-paper-runner-state.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
     assert "intent-queue-1" in state["consumed_intent_keys"]
     assert "intent-queue-2" not in state["consumed_intent_keys"]
     assert state["pending_orders"][0]["symbol"] == "005930"
+
+
+def test_tick_prioritizes_exit_sell_intent_before_entry_fifo(tmp_path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    data_root = tmp_path / "data"
+    intent_dir = data_root / "intents" / "2026-06-05"
+    intent_dir.mkdir(parents=True)
+    buy_intent = {
+        "schema_version": "paper_order_intent/v0",
+        "intent_id": "intent-buy-first",
+        "idempotency_key": "intent-buy-first",
+        "symbol": "005930",
+        "side": "buy",
+        "quantity": 1,
+        "order_price": 70000,
+        "venue_route": "KRX",
+        "broker_adapter": "kis_paper",
+        "available_cash_krw": 2_000_000,
+        "planned_order_cash_krw": 100_000,
+        "current_holdings_count": 0,
+        "valid_until_kst": "2026-06-05T09:50:00+09:00",
+        "paper_only": True,
+    }
+    sell_intent = {
+        **buy_intent,
+        "intent_id": "intent-sell-exit",
+        "idempotency_key": "intent-sell-exit",
+        "side": "sell",
+        "intent_type": "realtime_exit",
+        "symbol": "000660",
+        "planned_order_cash_krw": 0,
+    }
+    (intent_dir / "paper-order-intents-latest.jsonl").write_text(
+        json.dumps(buy_intent, ensure_ascii=False)
+        + "\n"
+        + json.dumps(sell_intent, ensure_ascii=False)
+        + "\n",
+        encoding="utf-8",
+    )
+    env = _env()
+    env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _mark_order_grade_source(env)
+    _order_approval(tmp_path, env)
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(data_root)
+    transport = FakeTransport()
+    adapter = KisPaperAdapter(env=env, transport=transport)
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=adapter,
+        at_kst="2026-06-05T09:30:00",
+    )
+    assert payload["intent_source"] == "next_intent_queue_exit_priority_fifo"
+    assert payload["executionPreflight"]["idempotency_key"] == "intent-sell-exit"
+    state = json.loads((data_root / "state" / "kis-paper-runner-state.json").read_text(encoding="utf-8"))
+    assert "intent-sell-exit" in state["consumed_intent_keys"]
+    assert "intent-buy-first" not in state["consumed_intent_keys"]
 
 
 def test_tick_does_not_mark_intent_consumed_when_broker_warns(tmp_path, monkeypatch):

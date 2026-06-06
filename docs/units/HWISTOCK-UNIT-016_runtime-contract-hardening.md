@@ -163,7 +163,8 @@ source ./env.sh && python3 scripts/validate_runtime_contracts.py
   - broker-adapter account alias allowlist;
   - KIS broker-adapter base URL allowlist;
   - adapter-supported TR ID allowlist;
-  - KRX-only broker order route until future approval;
+  - investment-mode broker order route allowlist: paper/mock KRX, real
+    investment KRX/NXT where capability flags allow it, SOR disabled;
   - startup self-test;
   - resolved REST/WebSocket host-class assertions;
   - TR-ID allowlist version;

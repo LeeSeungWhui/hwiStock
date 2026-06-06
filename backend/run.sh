@@ -88,19 +88,19 @@ SERVER_PORT_PROD="$(parse_port)"
 SERVER_PORT_PROD="${SERVER_PORT_PROD:-5001}"
 SERVER_PORT_DEV="${BACKEND_DEV_PORT:-5001}"
 DEFAULT_BIND_HOST="127.0.0.1"
-resolve_bind_host() {
+resolveBindHost() {
   python3 - "$@" <<'PY'
 import os
 import sys
 
 sys.path.insert(0, os.environ.get("HWISTOCK_BACKEND_DIR", "."))
-from service.HwiStockRunnerService import resolve_bind_host
+from service.HwiStockRunnerService import resolveBindHost
 
 config_host = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else None
-print(resolve_bind_host(config_host or None))
+print(resolveBindHost(config_host or None))
 PY
 }
-BIND_HOST="$(HWISTOCK_BACKEND_DIR="$SCRIPT_DIR" resolve_bind_host "")"
+BIND_HOST="$(HWISTOCK_BACKEND_DIR="$SCRIPT_DIR" resolveBindHost "")"
 
 start_mode() {
   local mode="${1:-prod}"

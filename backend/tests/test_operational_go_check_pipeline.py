@@ -59,20 +59,43 @@ def _flash_doc(symbol: str = "005930"):
     )
 
 
-def test_unit013_kis_collector_is_six_input_bounded_and_blocks_extra_endpoint():
+def test_unit013_kis_collector_is_mode_aware_and_blocks_extra_endpoint():
     config = kis_collector.loadKisSignalCollectorConfig(
         {"HWISTOCK_KIS_SIGNAL_INPUTS": "rest_volume_rank,order-cash"}
     )
     validation = kis_collector.validateKisSignalInputScope(config)
     assert validation["ok"] is False
-    assert "kis_signal_input_not_in_six_input_allowlist:order-cash" in validation["errors"]
+    assert "kis_signal_input_unknown:order-cash" in validation["errors"]
     assert "kis_signal_input_forbidden_order_surface:order-cash" in validation["errors"]
 
     payload = kis_collector.collectKisMarketDataOnce(env={})
     assert payload["schema_version"] == "kis_market_snapshot/v0"
     assert payload["status"] == "safe_block_paper_read_network_disabled"
-    assert payload["six_input_allowlist"] == list(kis_collector.ALLOWED_SIGNAL_INPUTS)
+    assert payload["signal_input_allowlist"] == list(kis_collector.ALLOWED_SIGNAL_INPUTS)
+    assert payload["enabled_venues"] == ["KRX", "INTEGRATED"]
     assert payload["order_cancel_modify_called"] is False
+
+
+def test_unit013_kis_collector_gates_nxt_by_investment_mode():
+    paper_config = kis_collector.loadKisSignalCollectorConfig(
+        {"HWISTOCK_KIS_SIGNAL_INPUTS": "nxt_realtime_trade_price_ws"}
+    )
+    paper_validation = kis_collector.validateKisSignalInputScope(paper_config)
+    assert paper_config["investment_mode"] == "paper"
+    assert paper_config["enabled_venues"] == ["KRX", "INTEGRATED"]
+    assert paper_validation["ok"] is False
+    assert "kis_signal_input_not_enabled_for_mode:nxt_realtime_trade_price_ws" in paper_validation["errors"]
+
+    real_config = kis_collector.loadKisSignalCollectorConfig(
+        {
+            "HWISTOCK_KIS_INVESTMENT_MODE": "real",
+            "HWISTOCK_KIS_SIGNAL_INPUTS": "nxt_realtime_trade_price_ws",
+        }
+    )
+    real_validation = kis_collector.validateKisSignalInputScope(real_config)
+    assert real_config["investment_mode"] == "real"
+    assert real_config["enabled_venues"] == ["KRX", "INTEGRATED", "NXT"]
+    assert real_validation["ok"] is True
 
 
 class FakeKisMarketAdapter:
@@ -92,6 +115,24 @@ class FakeKisMarketAdapter:
     def issueWebsocketApproval(self):
         self.calls.append("approval")
         return {"step": "websocket_approval", "status": "pass", "approval_key_present": True}
+
+    def issueWebsocketApprovalWithValue(self):
+        self.calls.append("approval")
+        return {"step": "websocket_approval", "status": "pass", "approval_key_present": True}, "fake-approval-key"
+
+    def subscribeRealtime(self, approval_key, *, tr_id, tr_key, step, tr_type="1"):
+        self.calls.append(("ws", tr_id, tr_key, step, tr_type, bool(approval_key)))
+        return {
+            "step": step,
+            "status": "pass",
+            "tr_id": tr_id,
+            "tr_key": tr_key,
+            "subscription_frame_ready": True,
+            "ack_received": True,
+            "endpoint_called": True,
+            "broker_order_surface": False,
+            "raw_response_stored": False,
+        }
 
     def inquirePrice(self, token, symbol):
         self.calls.append(("price", symbol))
@@ -153,6 +194,7 @@ def test_unit013_kis_collector_calls_paper_read_and_builds_compiled_watch():
     assert payload["status"] == "ok"
     assert payload["order_cancel_modify_called"] is False
     assert all(row["endpoint_called"] for row in payload["input_results"])
+    assert any(row["tr_id"] == "H0UNCNT0" for row in payload["input_results"])
     assert payload["compiled_watch"]["candidate_count"] >= 1
     first = payload["compiled_watch"]["items"][0]
     assert first["schema_version"] == "compiled_watch/v0"
@@ -244,12 +286,34 @@ def test_unit014_execution_preflight_idempotency_and_realtime_exit():
     status = runner.get_runner_status("2026-06-05T09:40:00")
     status["calendar"]["tradingAllowed"] = True
     status["calendar"]["state"] = "calendar_ready"
+    status["calendar"]["isTradingDay"] = True
+    status["calendar"]["krxOrderSessionOpen"] = True
     status["marketData"]["state"] = "source_configured"
     status["routing"]["venue"] = "KRX"
-    first = executor.evaluateIntentExecutionPreflight(intent, status=status)
+    first = executor.evaluateIntentExecutionPreflight(
+        intent,
+        status=status,
+        account_truth={
+            "source": "unit_test_kis_truth",
+            "balance_status": "pass",
+            "buyable_status": "pass",
+            "available_cash_krw": 2_000_000,
+            "current_holdings_count": 0,
+        },
+    )
     assert first["ok"] is True, first["errors"]
     executor.markIntentConsumed(intent["idempotency_key"])
-    second = executor.evaluateIntentExecutionPreflight(intent, status=status)
+    second = executor.evaluateIntentExecutionPreflight(
+        intent,
+        status=status,
+        account_truth={
+            "source": "unit_test_kis_truth",
+            "balance_status": "pass",
+            "buyable_status": "pass",
+            "available_cash_krw": 2_000_000,
+            "current_holdings_count": 0,
+        },
+    )
     assert second["ok"] is False
     assert "duplicate_intent_idempotency_key" in second["errors"]
 
@@ -302,7 +366,7 @@ def test_unit015_operator_snapshot_is_read_only_and_exposes_local_account_summar
     assert snapshot["readinessTruth"]["paperOrdersSubmitted"] is False
     assert snapshot["readinessTruth"]["paperObservationAccepted"] is False
     assert snapshot["readinessTruth"]["operationalTradingReadiness"] is False
-    assert "blocked_calendar_unconfigured" in snapshot["readinessTruth"]["blockers"]
+    assert "blocked_calendar_day_missing" in snapshot["readinessTruth"]["blockers"]
 
     report = operator_console.writeObservationReport(
         startedAtKst="2026-06-05T09:00:00+09:00",
@@ -479,6 +543,50 @@ def test_unit015_operator_snapshot_detects_order_enabled_service_contradiction(t
     assert any(entry["code"] == "SYSTEMD_ORDER_FLAG" and entry["message"] == "enabled" for entry in snapshot["auditLog"])
 
 
+def test_unit015_operator_snapshot_uses_live_systemd_effective_policy(tmp_path: Path, monkeypatch):
+    _disable_dashboard_account_network(monkeypatch)
+    safe_unit = tmp_path / "hwistock-kis-paper-runner.service"
+    safe_unit.write_text(
+        "\n".join(
+            [
+                "[Service]",
+                "Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=false",
+                "ExecStart=python backend/service/kis_paper_continuous_runner.py --once --allow-paper-network",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(operator_console, "DEFAULT_RUNNER_SERVICE_PATHS", (safe_unit,))
+    monkeypatch.setattr(
+        operator_console,
+        "inspectLiveKisPaperRunnerPolicy",
+        lambda: {
+            "schema_version": "kis_paper_runner_live_policy/v0",
+            "available": True,
+            "source": "unit_test_live_systemd",
+            "paperNetworkEnabledByLiveUnit": True,
+            "paperOrderEnabledByLiveUnit": True,
+            "activeState": "inactive",
+            "subState": "dead",
+            "timerActiveState": "active",
+            "credentialValuesPrinted": False,
+        },
+    )
+
+    snapshot = operator_console.buildOperatorConsoleSnapshot(
+        "2026-06-05T09:40:00",
+        dataRoot=tmp_path,
+    )
+
+    policy = snapshot["runtime"]["kisPaperRunnerServicePolicy"]
+    assert policy["repoPolicy"]["paperOrderEnabledByService"] is False
+    assert policy["livePolicy"]["available"] is True
+    assert policy["paperOrderEnabledEffective"] is True
+    assert snapshot["readinessTruth"]["paperOrderEnabled"] is True
+    assert "systemd_order_enabled_contradicts_readiness" in snapshot["readinessTruth"]["blockers"]
+    assert any(entry["code"] == "SYSTEMD_ORDER_FLAG" and entry["message"] == "enabled" for entry in snapshot["auditLog"])
+
+
 def test_unit015_operator_snapshot_maps_runtime_artifacts_to_dashboard_rows(tmp_path: Path, monkeypatch):
     _disable_dashboard_account_network(monkeypatch)
     (tmp_path / "normalized" / "2026-06-05").mkdir(parents=True)
@@ -611,7 +719,45 @@ def test_unit015_operator_snapshot_maps_runtime_artifacts_to_dashboard_rows(tmp_
     assert snapshot["candidates"][0]["symbol"] == "005930"
     assert snapshot["candidates"][0]["signal"] == "NO_TRADE"
     assert snapshot["summary"]["riskRejects"] == 1
+    assert snapshot["runtime"]["artifactFreshness"]["allRequiredFresh"] is True
     assert snapshot["intelligence"][0]["source"] == "open_dart"
     assert snapshot["intelligence"][0]["title"] == "주요사항보고서"
     assert any("DeepSeek Pro" in row["subject"] for row in snapshot["aiThread"])
     assert any(entry["code"] == "KIS_rest_volume_rank" for entry in snapshot["auditLog"])
+
+
+def test_unit015_operator_snapshot_marks_stale_runtime_artifact_as_blocker(tmp_path: Path, monkeypatch):
+    _disable_dashboard_account_network(monkeypatch)
+    (tmp_path / "kis-market" / "2026-06-05").mkdir(parents=True)
+    kis_market = tmp_path / "kis-market" / "2026-06-05" / "kis-market-snapshot-latest.json"
+    kis_market.write_text(
+        json.dumps({"produced_at_kst": "2026-06-05T09:00:00+09:00", "input_results": []}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    os.utime(kis_market, (1, 1))
+
+    safe_unit = tmp_path / "hwistock-kis-paper-runner.service"
+    safe_unit.write_text(
+        "\n".join(
+            [
+                "[Service]",
+                "Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=false",
+                "ExecStart=python backend/service/kis_paper_continuous_runner.py --once --allow-paper-network",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    snapshot = operator_console.buildOperatorConsoleSnapshot(
+        "2026-06-05T09:40:00+09:00",
+        dataRoot=tmp_path,
+        serviceUnitPaths=[safe_unit],
+    )
+
+    freshness = snapshot["runtime"]["artifactFreshness"]
+    assert freshness["artifacts"]["kisMarket"]["stale"] is True
+    assert "artifact_stale:kisMarket" in snapshot["readinessTruth"]["blockers"]
+    assert any(
+        entry["code"] == "ARTIFACT_kisMarket" and entry["level"] == "warn" and "stale" in entry["message"]
+        for entry in snapshot["auditLog"]
+    )

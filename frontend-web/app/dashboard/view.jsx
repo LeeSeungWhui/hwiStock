@@ -286,6 +286,45 @@ const SectionNavPill = ({ label, active = false, href }) => {
   return <span className={`${baseClass} ${activeClass}`}>{label}</span>;
 };
 
+const FreshnessStrip = ({ snapshot }) => {
+  const freshness = snapshot?.runtime?.artifactFreshness || {};
+  const staleKeys = Array.isArray(freshness.staleKeys) ? freshness.staleKeys : [];
+  const missingKeys = Array.isArray(freshness.missingKeys) ? freshness.missingKeys : [];
+  const policy = snapshot?.runtime?.kisPaperRunnerServicePolicy || {};
+  const livePolicy = policy.livePolicy || {};
+  const fresh = Boolean(freshness.allRequiredFresh) && staleKeys.length === 0 && missingKeys.length === 0;
+  return (
+    <section
+      aria-label="런타임 신선도"
+      data-testid="operator-freshness-strip"
+      className="grid gap-2 rounded-lg border border-slate-800/80 bg-slate-950/80 p-2.5 text-xs text-slate-300 lg:grid-cols-4"
+    >
+      <div className="rounded-md border border-slate-700/70 bg-slate-900/80 px-2.5 py-2">
+        <div className="font-semibold uppercase tracking-[0.14em] text-slate-500">snapshot</div>
+        <div className="mt-1 font-mono text-slate-100">{freshness.snapshotAtKst || "미수신"}</div>
+      </div>
+      <div className="rounded-md border border-slate-700/70 bg-slate-900/80 px-2.5 py-2">
+        <div className="font-semibold uppercase tracking-[0.14em] text-slate-500">freshness</div>
+        <div className={fresh ? "mt-1 text-emerald-200" : "mt-1 text-amber-200"}>
+          {fresh ? "모든 필수 산출물 fresh" : `stale ${staleKeys.length} · missing ${missingKeys.length}`}
+        </div>
+      </div>
+      <div className="rounded-md border border-slate-700/70 bg-slate-900/80 px-2.5 py-2">
+        <div className="font-semibold uppercase tracking-[0.14em] text-slate-500">order policy</div>
+        <div className={policy.paperOrderEnabledEffective ? "mt-1 text-rose-200" : "mt-1 text-slate-100"}>
+          effective order {policy.paperOrderEnabledEffective ? "enabled" : "disabled"}
+        </div>
+      </div>
+      <div className="rounded-md border border-slate-700/70 bg-slate-900/80 px-2.5 py-2">
+        <div className="font-semibold uppercase tracking-[0.14em] text-slate-500">live unit</div>
+        <div className="mt-1 text-slate-100">
+          {livePolicy.available ? `${livePolicy.timerActiveState || "timer?"} · ${livePolicy.activeState || "service?"}` : "live policy unavailable"}
+        </div>
+      </div>
+    </section>
+  );
+};
+
 const ReadinessTruthBanner = ({ readinessTruth, usesFallback }) => {
   const truth = readinessTruth || {};
   const ready = truth.operationalTradingReadiness
@@ -672,6 +711,10 @@ const OperatorConsoleView = ({
           readinessTruth={snapshot.readinessTruth}
           usesFallback={usesFallback}
         />
+      ) : null}
+
+      {!loading ? (
+        <FreshnessStrip snapshot={snapshot} />
       ) : null}
 
       <section

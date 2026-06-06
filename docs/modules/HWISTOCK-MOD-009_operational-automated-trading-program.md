@@ -82,23 +82,29 @@ The operational trading program is one coordinated system with these branches:
    - Never places orders.
 2. `kis_intraday_market_collector`
    - Runs continuously during the approved intraday window.
-   - Collects KIS broker adapter-supported KRX realtime price/orderbook data and
-     1-3-minute REST ranking/analysis snapshots.
-   - UNIT-013 first signal input set is exactly six KIS broker adapter-read inputs.
-   - WebSocket signal inputs where adapter-supported:
-     - KRX realtime trade price (`H0STCNT0`);
-     - KRX realtime orderbook (`H0STASP0`).
+   - Collects mode-aware KIS broker adapter-supported realtime
+     price/orderbook/market-operation data and 1-3-minute REST ranking/analysis
+     snapshots.
+   - Paper/mock mode enables KRX + integrated realtime inputs:
+     - KRX realtime trade price/orderbook/market operation
+       (`H0STCNT0`, `H0STASP0`, `H0STMKO0`);
+     - integrated realtime trade price/orderbook/market operation
+       (`H0UNCNT0`, `H0UNASP0`, `H0UNMKO0`).
+   - Real investment mode additionally enables NXT realtime trade
+     price/orderbook/market operation (`H0NXCNT0`, `H0NXASP0`, `H0NXMKO0`).
    - REST signal inputs, refreshed every 1-3 minutes during market hours:
      - volume rank (`volume-rank`);
      - fluctuation rank (`ranking/fluctuation`);
      - volume power (`ranking/volume-power`);
      - program-trading aggregate status where the KIS broker adapter capability matrix
        proves the endpoint/support contract.
-   - Adapter fill notice (`H0STCNI9`), balances, buyable cash, and order/fill
-     reconciliation belong to `broker_execution` / UNIT-014, not UNIT-013 signal
-     generation.
-   - NXT/SOR broker-facing collection remains disabled or fallback-only until a
-     later approved support-confirmation gate.
+   - Adapter fill notice (`H0STCNI9`), balances, buyable cash, sellable
+     quantity, cancelable-order truth, holiday/provider-calendar cross-checks,
+     and order/fill reconciliation belong to `broker_execution` / UNIT-014, not
+     UNIT-013 signal generation.
+   - NXT broker-facing market-data collection is disabled in paper/mock mode and
+     enabled only in real investment mode; SOR remains disabled unless a later
+     support-confirmation gate adds it.
 3. `deepseek_pro_hourly`
    - Runs on the top of every hour.
    - Reads accumulated news/disclosure files and KIS market-data snapshots.

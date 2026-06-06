@@ -11,7 +11,7 @@ ready_set_rebaseline_status: go_check_passed
 priority: P0
 source_of_truth: user_intent
 owner: hwi
-updated_at: 2026-06-04
+updated_at: 2026-06-06
 required_rules:
   - docs/profiles/PROFILE-HWISTOCK.md
 links:
@@ -22,6 +22,7 @@ links:
 evidence_refs:
   - docs/evidence/RUN-20260604_unit-006-go-preflight-rebaseline.md
   - docs/evidence/RUN-20260604_unit-006-go-check-rebaseline.md
+  - docs/evidence/RUN-20260606_kis-mode-gated-account-truth-go-check.md
   - path: docs/evidence/RUN-20260604_unit-006-go-preflight.md
     status: historical_before_rebaseline
   - path: docs/evidence/RUN-20260604_unit-006-go-check.md
@@ -52,10 +53,10 @@ execution adapter.
 - For current foundation risk gating, `SOR` is normalized to underlying `KRX`
   metadata and `AUTO_SESSION` requires an explicit resolved underlying
   `session_venue_hint` of `KRX` or `NXT` before UNIT-004 validation runs.
-- During KIS operation runs, KIS-specific NXT/SOR broker branches stay disabled or
-  explicit-fallback-only because the current KIS adapter references prove only the
-  KRX adapter path. Before KIS adapter approval, dry-run validation records intended
-  venue/session routing but does not simulate broker fills.
+- During KIS operation runs, venue routing is mode-gated: paper/mock mode enables
+  KRX plus integrated market-data only and keeps NXT order/realtime branches
+  disabled; real investment mode enables KRX and NXT order/realtime branches
+  while SOR remains disabled until a future approved contract proves it.
 - Sell decisions are driven by stop-loss trigger, configured exit condition,
   signal invalidation, time/flat rule, or operator kill switch.
 - The order state machine must represent at least: `draft_intent`, `eligible`,
@@ -64,8 +65,8 @@ execution adapter.
   `failed`.
 - Internal fake broker execution is not used.
 - Before KIS adapter approval, the engine may use a no-order dry-run recorder only.
-- The first broker-backed execution adapter is KIS KRX broker-adapter
-  after official portal verification and explicit approval.
+- The first broker-backed execution adapter is KIS with mode-gated KRX/NXT
+  routing and provider account-truth preflights.
 - Account-affecting orders remain forbidden until an operator-selected adapter-backed
   observation window has approved evidence and explicit user go/no-go.
 
@@ -135,26 +136,33 @@ Required dry-run fields:
 
 ## 2-3. KIS Adapter Adapter Contract
 
-After explicit broker-network approval, the first broker-backed adapter is KIS
-KRX broker-adapter only. The adapter capability must expose at least:
+The first broker-backed adapter is KIS with explicit mode-gated capabilities.
+The adapter capability must expose at least:
 
 - `supports_paper_krx_order=true`
 - `supports_paper_nxt_order=false`
 - `supports_paper_sor_order=false`
 - `supports_paper_krx_realtime=true`
 - `supports_paper_nxt_realtime=false`
-- `supports_paper_integrated_realtime=false`
+- `supports_paper_integrated_realtime=true`
 - `supports_paper_cancel_order=true`
-- `supports_paper_cancelable_query=false`
-- `supports_paper_sellable_quantity_query=false`
+- `supports_paper_cancelable_query=true`
+- `supports_paper_sellable_quantity_query=true`
 - `supports_paper_realized_pnl_query=true`
-- `supports_paper_holiday_query=false`
+- `supports_paper_holiday_query=true`
+- `supports_real_krx_order=true`
+- `supports_real_nxt_order=true`
+- `supports_real_sor_order=false`
+- `supports_real_krx_realtime=true`
+- `supports_real_integrated_realtime=true`
+- `supports_real_nxt_realtime=true`
 
 KIS broker order/fill reconciliation uses the supported KRX adapter APIs listed in
-`docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md`: cash order, modify/cancel
-order, daily order/fill lookup, balance, buyable amount, KRX realtime quote, KRX
-order book, and realtime fill notice. Unsupported helper APIs must use local
-state, disabled branch records, or explicit fallback records.
+`docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md`: cash order,
+modify/cancel order, daily order/fill lookup, balance, buyable amount, sellable
+quantity, cancelable-order lookup, holiday lookup, KRX/integrated/NXT
+mode-gated realtime market data, order book, and realtime fill notice. SOR
+remains a disabled branch until a future contract enables it.
 
 ## 3. Interfaces
 
@@ -178,15 +186,18 @@ Future interfaces:
 - Decision: condition compiler is required between AI candidate text and trading
   watcher rules.
 - Decision: NXT/SOR are venue/session parameters over the same state machine.
-- Decision: KIS adapter testing proves the KRX path only; NXT/SOR broker adapter
-  calls require later real-account/support-confirmation evidence before account-affecting use.
+- Decision: KIS adapter routing is mode-gated. Paper/mock mode proves KRX order
+  plus KRX/integrated market-data and account-truth helpers; real investment
+  mode may route KRX/NXT where KIS capability flags allow it; SOR remains
+  disabled until separately approved.
 - Decision: first condition contract is `condition_card/v0` JSON with explicit
   source ids, venue route, watch conditions, risk refs, entry intent, and exit
   plan.
 - Decision: pre-approval execution is `no_order_dry_run` records only; no broker
   call, fake fill, fake balance, or simulated PnL is allowed.
-- Decision: KIS broker adapter is KRX-only for broker-backed evidence until later
-  real-account/support-confirmation expands NXT/SOR behavior.
+- Decision: KIS broker adapter account-truth preflight must consult provider
+  sellable quantity before SELL and provider cancelable-order truth before
+  automated cancel/replace flows wherever the provider query is available.
 - Decision: baseline numeric risk values are closed by `HWISTOCK-MOD-003` /
   `HWISTOCK-UNIT-004`; calendar source is closed by
   `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md`.

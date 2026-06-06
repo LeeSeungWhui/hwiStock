@@ -13,11 +13,15 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from lib.kis_market_data_runtime import (
     ALLOWED_SIGNAL_INPUTS,
+    PAPER_SIGNAL_INPUTS,
+    REAL_SIGNAL_INPUTS,
+    allowedSignalInputsForMode,
     buildKisSignalEndpointAudit,
     buildCompiledWatchFromKisSnapshot,
     collectKisMarketDataOnce,
     loadKisSignalCollectorConfig,
     main,
+    normalizeKisInvestmentMode,
     validateKisSignalInputScope,
     writeCompiledWatchEvidence,
     writeKisMarketDataEvidence,
@@ -25,11 +29,15 @@ from lib.kis_market_data_runtime import (
 
 __all__ = (
     "ALLOWED_SIGNAL_INPUTS",
+    "PAPER_SIGNAL_INPUTS",
+    "REAL_SIGNAL_INPUTS",
+    "allowedSignalInputsForMode",
     "buildKisSignalEndpointAudit",
     "buildCompiledWatchFromKisSnapshot",
     "collectKisMarketDataOnce",
     "loadKisSignalCollectorConfig",
     "main",
+    "normalizeKisInvestmentMode",
     "validateKisSignalInputScope",
     "writeCompiledWatchEvidence",
     "writeKisMarketDataEvidence",

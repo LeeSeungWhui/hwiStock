@@ -33,6 +33,8 @@ def reset_runner_state():
     prev_kill = os.environ.pop("HWISTOCK_KILL_SWITCH", None)
     prev_source = os.environ.pop("HWISTOCK_MARKET_DATA_SOURCE", None)
     prev_bind = os.environ.pop("HWISTOCK_BIND_HOST", None)
+    prev_calendar = os.environ.pop("HWISTOCK_CALENDAR_PATH", None)
+    prev_weekday_fallback = os.environ.pop("HWISTOCK_ALLOW_WEEKDAY_CALENDAR_FALLBACK", None)
     yield
     runner.reset_runtime_for_tests()
     if prev_kill is not None:
@@ -41,17 +43,41 @@ def reset_runner_state():
         os.environ["HWISTOCK_MARKET_DATA_SOURCE"] = prev_source
     if prev_bind is not None:
         os.environ["HWISTOCK_BIND_HOST"] = prev_bind
+    if prev_calendar is not None:
+        os.environ["HWISTOCK_CALENDAR_PATH"] = prev_calendar
+    if prev_weekday_fallback is not None:
+        os.environ["HWISTOCK_ALLOW_WEEKDAY_CALENDAR_FALLBACK"] = prev_weekday_fallback
 
 
 def _kst(hour: int, minute: int) -> str:
     return f"2026-06-04T{hour:02d}:{minute:02d}:00"
 
 
+def _calendar_payload(*, day: str = "2026-06-04", trading: bool = True):
+    return {
+        "validUntil": "2099-12-31T23:59:59+09:00",
+        "sourceAuthority": "unit_test_calendar",
+        "days": {
+            day: {
+                "dateKst": day,
+                "isTradingDay": trading,
+                "krx": {
+                    "regularOpen": "09:00",
+                    "regularClose": "15:30",
+                    "orderOpen": "09:00",
+                    "orderClose": "15:00",
+                },
+                "nxt": {"open": "08:00", "close": "20:00"},
+            }
+        },
+    }
+
+
 def test_run_py_defaults_to_local_bind():
     text = (Path(baseDir) / "run.py").read_text(encoding="utf-8")
     assert "127.0.0.1" in text
     assert 'host="0.0.0.0"' not in text
-    assert "resolve_bind_host" in text
+    assert "resolveBindHost" in text
     assert "reload=True" not in text
     assert "resolveReloadEnabled" in text
 
@@ -74,12 +100,12 @@ def test_run_sh_defaults_to_local_bind():
     text = (Path(baseDir) / "run.sh").read_text(encoding="utf-8")
     assert "127.0.0.1" in text
     assert "--host 0.0.0.0" not in text
-    assert "resolve_bind_host" in text
+    assert "resolveBindHost" in text
 
 
 def test_resolve_bind_host_rejects_public_default():
-    assert runner.resolve_bind_host("0.0.0.0") == "127.0.0.1"
-    assert runner.resolve_bind_host() == "127.0.0.1"
+    assert runner.resolveBindHost("0.0.0.0") == "127.0.0.1"
+    assert runner.resolveBindHost() == "127.0.0.1"
 
 
 @pytest.mark.parametrize(
@@ -94,7 +120,7 @@ def test_resolve_bind_host_rejects_public_default():
     ],
 )
 def test_resolve_bind_host_coerces_unsafe_config_values(unsafe_host):
-    assert runner.resolve_bind_host(unsafe_host) == "127.0.0.1"
+    assert runner.resolveBindHost(unsafe_host) == "127.0.0.1"
 
 
 @pytest.mark.parametrize(
@@ -103,13 +129,13 @@ def test_resolve_bind_host_coerces_unsafe_config_values(unsafe_host):
 )
 def test_resolve_bind_host_coerces_unsafe_env_values(unsafe_host, monkeypatch):
     monkeypatch.setenv("HWISTOCK_BIND_HOST", unsafe_host)
-    assert runner.resolve_bind_host() == "127.0.0.1"
+    assert runner.resolveBindHost() == "127.0.0.1"
 
 
 def test_resolve_bind_host_allows_localhost_literals():
-    assert runner.resolve_bind_host("127.0.0.1") == "127.0.0.1"
-    assert runner.resolve_bind_host("localhost") == "localhost"
-    assert runner.normalize_loopback_bind_host("::1") == "::1"
+    assert runner.resolveBindHost("127.0.0.1") == "127.0.0.1"
+    assert runner.resolveBindHost("localhost") == "localhost"
+    assert runner.normalizeLoopbackBindHost("::1") == "::1"
 
 
 @pytest.mark.parametrize(
@@ -130,7 +156,7 @@ def test_kst_routing_windows(at_kst, expected_venue):
 def test_kill_switch_blocks_no_order_intent(tmp_path, monkeypatch):
     cal = tmp_path / "calendar.json"
     cal.write_text(
-        json.dumps({"validUntil": "2099-12-31T23:59:59+09:00"}),
+        json.dumps(_calendar_payload()),
         encoding="utf-8",
     )
     monkeypatch.setenv("HWISTOCK_CALENDAR_PATH", str(cal))
@@ -183,7 +209,7 @@ def test_runner_status_exposes_audit_log_categories():
 def test_no_order_intent_uses_explicit_audit_category(tmp_path, monkeypatch):
     cal = tmp_path / "calendar.json"
     cal.write_text(
-        json.dumps({"validUntil": "2099-12-31T23:59:59+09:00"}),
+        json.dumps(_calendar_payload()),
         encoding="utf-8",
     )
     monkeypatch.setenv("HWISTOCK_CALENDAR_PATH", str(cal))
@@ -196,7 +222,7 @@ def test_no_order_intent_uses_explicit_audit_category(tmp_path, monkeypatch):
 def test_no_order_intent_dry_run_metadata(tmp_path, monkeypatch):
     cal = tmp_path / "calendar.json"
     cal.write_text(
-        json.dumps({"validUntil": "2099-12-31T23:59:59+09:00"}),
+        json.dumps(_calendar_payload()),
         encoding="utf-8",
     )
     monkeypatch.setenv("HWISTOCK_CALENDAR_PATH", str(cal))
@@ -235,10 +261,56 @@ def test_stale_calendar_idle(tmp_path, monkeypatch):
     assert status["orderGate"] == "blocked_calendar_stale"
 
 
+def test_calendar_requires_date_specific_trading_day_even_when_valid_until_future(tmp_path, monkeypatch):
+    calendar = tmp_path / "calendar.json"
+    calendar.write_text(
+        json.dumps(_calendar_payload(day="2026-06-05", trading=True), ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HWISTOCK_CALENDAR_PATH", str(calendar))
+
+    cal = runner.evaluate_calendar_state(datetime.fromisoformat("2026-06-06T09:30:00").replace(tzinfo=KST))
+    assert cal["state"] == "calendar_day_missing"
+    assert cal["tradingAllowed"] is False
+    status = runner.get_runner_status("2026-06-06T09:30:00")
+    assert status["routing"]["venue"] == "idle"
+    assert status["orderGate"] == "blocked_calendar_day_missing"
+
+
+def test_calendar_non_trading_day_blocks_saturday_order_gate(tmp_path, monkeypatch):
+    calendar = tmp_path / "calendar.json"
+    calendar.write_text(
+        json.dumps(_calendar_payload(day="2026-06-06", trading=False), ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HWISTOCK_CALENDAR_PATH", str(calendar))
+    monkeypatch.setenv("HWISTOCK_MARKET_DATA_SOURCE", "kis_market_mode_aware")
+
+    status = runner.get_runner_status("2026-06-06T09:30:00")
+    assert status["calendar"]["state"] == "calendar_non_trading_day"
+    assert status["calendar"]["isTradingDay"] is False
+    assert status["routing"]["session"] == "market_closed"
+    assert status["orderGate"] == "blocked_calendar_non_trading_day"
+
+
+def test_default_calendar_has_monday_operation_row(monkeypatch):
+    monkeypatch.setenv("HWISTOCK_MARKET_DATA_SOURCE", "kis_market_mode_aware")
+
+    status = runner.getRunnerStatus("2026-06-08T09:30:00")
+
+    assert status["calendar"]["state"] == "calendar_ready"
+    assert status["calendar"]["dateKst"] == "2026-06-08"
+    assert status["calendar"]["isTradingDay"] is True
+    assert status["calendar"]["krxOrderSessionOpen"] is True
+    assert status["routing"]["venue"] == "KRX"
+    assert status["orderGate"] == "no_order_dry_run_only"
+    assert status["marketData"]["tradingLoopsActive"] is True
+
+
 def test_source_unconfigured_idle(tmp_path, monkeypatch):
     cal = tmp_path / "calendar.json"
     cal.write_text(
-        json.dumps({"validUntil": "2099-12-31T23:59:59+09:00"}),
+        json.dumps(_calendar_payload()),
         encoding="utf-8",
     )
     monkeypatch.setenv("HWISTOCK_CALENDAR_PATH", str(cal))

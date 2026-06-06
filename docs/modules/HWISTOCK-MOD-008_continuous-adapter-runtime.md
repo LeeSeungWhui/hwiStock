@@ -51,11 +51,11 @@ pass condition, or automatic operation-readiness verdict.
 - The trading/order branch is market-calendar and session aware. It stays idle
   outside approved Korea-market envelopes or when data/calendar/risk/kill-switch
   gates block.
-- KIS use is limited to the broker-adapter KRX-supported path recorded in
-  `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md`.
-- KIS adapter NXT/SOR/integrated realtime/helper branches remain disabled or
-  explicit-fallback-only until later support-confirmation evidence changes the
-  profile.
+- KIS use is mode-gated according to
+  `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md`: paper/mock mode enables
+  KRX plus integrated market-data/account-truth helpers, real investment mode
+  enables KRX and NXT where capability flags allow it, and SOR remains disabled
+  until a future contract proves it.
 - The runner must load KIS adapter credentials only from the external local secret
   store and must never print, persist, or commit secrets.
 - The adapter account's broker-visible budget may be larger than the intended
@@ -114,7 +114,7 @@ The runtime must persist or emit redaction-safe records for:
 - daily order/fill lookup reconciliation
 - balance/buyable snapshots with account identifiers masked
 - system-calculated cash, position, exposure, and PnL fields
-- disabled/fallback branch records for adapter-unsupported KIS capabilities
+- disabled/fallback branch records for mode-disabled KIS capabilities
 - operator observation-window start/end metadata
 - critical alerts and operator acknowledgements
 

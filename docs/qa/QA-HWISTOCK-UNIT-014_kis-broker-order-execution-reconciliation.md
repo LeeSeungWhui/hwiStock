@@ -36,9 +36,9 @@ reconciliation without unapproved endpoints, duplicate orders, or fake broker st
 | QA-002 | P0 | no-network | Run runner without adapter network enable | Status is `idle_paper_network_disabled`; no broker call occurs | CLI output |
 | QA-003 | P0 | final-risk | Feed unsafe approved-intent fixtures | Kill/calendar/stale/reserve/holdings/venue blocks before KIS call | risk log |
 | QA-004 | P0 | adapter-order | Run bounded KRX broker order when market/env allow | Order succeeds or returns classified adapter error; no raw secret/response stored | sanitized smoke |
-| QA-005 | P0 | reconcile | Run daily order/fill/balance/buyable reconciliation | Ledger fields derive from KIS adapter evidence and masked account aliases | reconciliation report |
+| QA-005 | P0 | reconcile | Run daily order/fill/balance/buyable/sellable/cancelable reconciliation | Ledger fields derive from KIS adapter evidence and masked account aliases | reconciliation report |
 | QA-006 | P0 | restart | Restart timer around pending intent | Duplicate broker submission is prevented | idempotency smoke |
-| QA-007 | P0 | unsupported | Request NXT/SOR/integrated/helper branches | Local fallback/disabled record is written; no unsupported broker endpoint | capability log |
+| QA-007 | P0 | mode-gate | Request NXT/SOR/integrated/helper branches under paper/mock and real investment modes | Paper/mock NXT and all SOR branches write fallback/disabled records; integrated market-data and provider helper truth use only approved query/read endpoints | capability log |
 | QA-008 | P0 | conflict | Change portfolio/order state after intent creation but before execution | Executor rechecks holdings/pending/exits/consumed trade-doc ids and blocks conflicting KIS submission | execution log |
 | QA-009 | P0 | ambiguous-submit | Simulate timeout/crash after broker submit may have succeeded | Executor records `SUBMIT_UNKNOWN`, reconciles KIS order/fill inquiry, and does not retry until no matching broker order is proven | reconciliation log |
 | QA-010 | P0 | reservation | Feed intent where pending orders would breach cash reserve or holding-slot cap | Reservation gate blocks before KIS transport | risk log |
@@ -52,7 +52,7 @@ reconciliation without unapproved endpoints, duplicate orders, or fake broker st
 - PASS: adapter KRX order/reconciliation is proven or safely classified, all hard
   safety gates hold, superseded waits are canceled, realtime exits are monitored,
   and restart does not duplicate orders.
-- FAIL: unapproved domain reachable, fake broker state created, unsupported branch
+- FAIL: unapproved domain reachable, fake broker state created, disabled branch
   calls KIS, raw secrets leak, duplicate orders are submitted, or execution
   submits an order that conflicts with current holdings, pending orders, active
   exits, cooldowns, or already-consumed trade documents, or ambiguous submit

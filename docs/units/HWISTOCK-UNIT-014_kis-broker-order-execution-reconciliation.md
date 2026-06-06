@@ -10,7 +10,7 @@ post_pro_reinforcement_status: corrective_gap_recorded
 priority: P0
 source_of_truth: user_intent
 owner: hwi
-updated_at: 2026-06-05
+updated_at: 2026-06-06
 profile_refs:
   - PROFILE-HWISTOCK
 module_ids:
@@ -40,6 +40,7 @@ evidence_refs:
   - docs/evidence/RUN-20260605_ready-set-operational-automated-trading-program.md
   - docs/evidence/RUN-20260605_gpt-pro-operational-ready-set-review.md
   - docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
+  - docs/evidence/RUN-20260606_kis-mode-gated-account-truth-go-check.md
 ---
 
 # KIS Broker Order Execution And Reconciliation
@@ -83,10 +84,12 @@ and account conditions are present. Unapproved adapter operation remains forbidd
   next Flash document to protect exits.
 - Use write-ahead intent logging before broker submission and reconcile KIS
   order/fill inquiry before retry after timeout, crash, or ambiguous result.
-- Place KRX broker cash orders only through `openapivts.koreainvestment.com`.
-- Support cancel/modify where adapter-supported and explicit local fallback where
-  current KIS broker adapter matrix says unsupported.
-- Run daily order/fill lookup, balance, and buyable reconciliation.
+- Place broker cash orders only through the configured KIS adapter domain for the
+  active investment mode.
+- Support cancel/modify only after provider cancelable-order truth and local
+  pending-order state agree; fail closed on ambiguity.
+- Run daily order/fill lookup, balance, buyable, sellable, cancelable-order, and
+  holiday/provider-calendar cross-check reconciliation.
 - Store masked broker order ids/account aliases only when safe.
 - Calculate system cash/position/exposure/PnL from actual broker events, not fake
   broker data.
@@ -96,8 +99,8 @@ and account conditions are present. Unapproved adapter operation remains forbidd
 ## 3. Excluded Scope
 
 - Unapproved domain calls.
-- NXT/SOR broker-adapter routing.
-- Sellable quantity APIs when the current adapter matrix says local fallback.
+- SOR broker-adapter routing.
+- NXT broker routing while the runtime is in paper/mock mode.
 - Broker account values.
 - Fake broker fills, balances, positions, or PnL.
 - AI/provider calls.
@@ -111,8 +114,8 @@ and account conditions are present. Unapproved adapter operation remains forbidd
 | AC-02 | P0 | Intent consumption is idempotent | The same active intent cannot submit duplicate broker orders. |
 | AC-03 | P0 | Final risk preflight blocks unsafe orders | Kill switch, calendar, stale data, holdings cap, reserve floor, and invalid venue block before KIS call. |
 | AC-04 | P0 | KRX broker order path works or fails classified | Broker order attempts produce sanitized success/error evidence with no raw secrets. |
-| AC-05 | P0 | Reconciliation is broker-evidence-backed | Ledger state derives from KIS broker order/fill/balance/buyable evidence. |
-| AC-06 | P0 | Unsupported branches do not call broker | NXT/SOR/integrated/helper adapter-unsupported branches are disabled/fallback-only. |
+| AC-05 | P0 | Reconciliation is broker-evidence-backed | Ledger state derives from KIS broker order/fill/balance/buyable/sellable/cancelable evidence. |
+| AC-06 | P0 | Disabled branches do not call broker | Paper/mock NXT and all SOR branches are disabled/fallback-only; provider helper truth is used only through approved query endpoints. |
 | AC-07 | P0 | Restart does not duplicate orders | Timer/service restart around pending intents preserves idempotency. |
 | AC-08 | P0 | Portfolio conflicts are rechecked at execution | Duplicate held-symbol buys, pending duplicate orders, conflicting exits, and already-consumed trade-doc ids block before KIS submission. |
 | AC-09 | P0 | Ambiguous submit is reconciled before retry | Timeout/crash/unknown submit state cannot resubmit until KIS order/fill inquiry proves no matching order exists. |

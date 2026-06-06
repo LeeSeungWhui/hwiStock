@@ -537,38 +537,57 @@ def loadKisPaperCapabilityFlags() -> Dict[str, Any]:
         "supports_paper_sor_order": False,
         "supports_paper_krx_realtime": True,
         "supports_paper_nxt_realtime": False,
-        "supports_paper_integrated_realtime": False,
+        "supports_paper_integrated_realtime": True,
         "supports_paper_cancel_order": True,
-        "supports_paper_cancelable_query": False,
-        "supports_paper_sellable_quantity_query": False,
+        "supports_paper_cancelable_query": True,
+        "supports_paper_sellable_quantity_query": True,
         "supports_paper_realized_pnl_query": True,
-        "supports_paper_holiday_query": False,
+        "supports_paper_holiday_query": True,
+        "supports_real_krx_order": True,
+        "supports_real_nxt_order": True,
+        "supports_real_sor_order": False,
+        "supports_real_krx_realtime": True,
+        "supports_real_nxt_realtime": True,
+        "supports_real_integrated_realtime": True,
+        "supports_real_cancelable_query": True,
+        "supports_real_sellable_quantity_query": True,
+        "supports_real_holiday_query": True,
         "unsupported_branch_policy": {
             "nxt_order": "disabled_branch",
             "sor_order": "disabled_branch",
-            "nxt_realtime": "disabled_branch",
-            "integrated_realtime": "disabled_branch",
-            "cancelable_query": "local_fallback",
-            "sellable_quantity_query": "local_fallback",
-            "holiday_query": "local_fallback",
+            "nxt_realtime": "real_mode_only",
+            "integrated_realtime": "enabled_in_paper_and_real_modes",
+            "cancelable_query": "provider_query_required",
+            "sellable_quantity_query": "provider_query_required",
+            "holiday_query": "provider_query_available",
         },
     }
 
 
+def normalizeKisRouteMode(mode: str) -> str:
+    raw = str(mode or "").strip().lower().replace("-", "_")
+    if raw in {"kis_real", "real", "real_investment", "production"}:
+        return "kis_real"
+    if raw in {"kis_paper", "paper", "mock", "paper_sandbox", "kis_paper_mock"}:
+        return "kis_paper"
+    return NO_ORDER_DRY_RUN
+
+
 def resolveVenueRoute(route: str, mode: str = NO_ORDER_DRY_RUN) -> Dict[str, Any]:
     normalized_route = str(route or "").strip().upper()
+    normalized_mode = normalizeKisRouteMode(mode)
     if normalized_route not in ALLOWED_VENUE_ROUTES:
         return {
             "ok": False,
             "errors": ["venue_route_invalid"],
             "route": normalized_route,
-            "mode": mode,
+            "mode": normalized_mode,
         }
 
     capabilities = loadKisPaperCapabilityFlags()
     branch_status = "local_fallback"
     capability_key = None
-    if mode == "kis_paper":
+    if normalized_mode == "kis_paper":
         if normalized_route == "KRX":
             branch_status = "capability_available"
             capability_key = "supports_paper_krx_order"
@@ -581,13 +600,25 @@ def resolveVenueRoute(route: str, mode: str = NO_ORDER_DRY_RUN) -> Dict[str, Any
             )
         else:
             branch_status = "local_fallback"
-    elif mode == NO_ORDER_DRY_RUN:
+    elif normalized_mode == "kis_real":
+        if normalized_route == "KRX":
+            branch_status = "capability_available"
+            capability_key = "supports_real_krx_order"
+        elif normalized_route == "NXT":
+            branch_status = "capability_available"
+            capability_key = "supports_real_nxt_order"
+        elif normalized_route == "SOR":
+            branch_status = "disabled_branch"
+            capability_key = "supports_real_sor_order"
+        else:
+            branch_status = "local_fallback"
+    elif normalized_mode == NO_ORDER_DRY_RUN:
         branch_status = "local_fallback"
 
     return {
         "ok": True,
         "errors": [],
-        "mode": mode,
+        "mode": normalized_mode,
         "route": normalized_route,
         "state_machine": list(ORDER_STATES),
         "branch_status": branch_status,

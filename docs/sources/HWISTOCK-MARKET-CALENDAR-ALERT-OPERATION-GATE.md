@@ -47,8 +47,8 @@ operator-supplied run metadata, not as a baked-in service lifetime.
 | --- | --- | --- | --- |
 | 1 | KRX official trading-days/holidays page and KRX notices | Trading-day, holiday, year-end close, and exceptional market-management day authority | Public official source review or cached calendar only |
 | 2 | NXT official site/session notices | NXT session availability and session-window reference | Public official source review or cached calendar only |
-| 3 | KIS `국내휴장일조회[국내주식-040]` | Broker-side holiday/open-day cross-check after approval | Broker network call only inside a later approved KIS integration unit |
-| 4 | Local cached calendar | Runtime scheduler input during dry-run/adapter when broker calendar API is unavailable or adapter-unsupported | No network call during ordinary scheduler evaluation |
+| 3 | KIS `국내휴장일조회[국내주식-040]` | Broker-side holiday/open-day cross-check in the KIS adapter runtime | Broker network call only inside approved KIS adapter read/execution paths |
+| 4 | Local cached calendar | Runtime scheduler input and primary order gate even when provider holiday cross-check is available | No network call during ordinary scheduler evaluation |
 
 Checked public references on 2026-06-02:
 
@@ -69,12 +69,10 @@ Local KIS reference:
 - If the cached calendar is missing, expired, or does not cover the current
   KST date, active trading/order loops must stay idle with
   `calendar_unconfigured` or `calendar_stale`.
-- KIS holiday lookup is adapter-unsupported in the local KIS capability matrix.
-  It must not be called during no-order dry-run and must not be required for
-  KIS KRX adapter evidence unless a future approved broker-network unit enables
-  it.
-- If KIS holiday lookup is approved later, cache it at most once per KST day and
-  treat `opnd_yn` as a cross-check input, not the only trading gate.
+- KIS holiday lookup is implemented as provider cross-check evidence. It must
+  not replace the local cached calendar as the primary order gate.
+- Cache KIS holiday lookup at most once per KST day where practical and treat
+  `opnd_yn` as a cross-check input, not the only trading gate.
 
 ### 2.3 Session Context And Internal Adapter-Order Window
 
@@ -85,16 +83,18 @@ hwiStock keeps two separate concepts:
 2. **broker-facing adapter-order enablement** used by the executor.
 
 KRX public regular-session context is treated as 09:00-15:30 KST unless a
-future market-calendar source update records a special day. The current
-conservative internal KIS adapter-order enable window remains narrower:
+future market-calendar source update records a special day. NXT context covers
+the NXT-published session windows. KIS broker/order routing is then gated by the
+active investment mode:
 
-- KRX adapter-order enable window: 09:00-15:00 KST
-- NXT context window: 08:00-09:00 KST and 15:00-20:00 KST
-- Idle: outside 08:00-20:00 KST or when the calendar says closed/stale
-
-NXT is currently analysis/session context only. KIS adapter broker-facing order
-routes are KRX-only; NXT/SOR/integrated broker routes must abort before
-transport unless a future approved unit records stronger adapter-mode proof.
+- paper/mock mode: KRX broker order routing only; integrated realtime/market
+  operation inputs are market-data/account-truth helpers, not an integrated
+  broker-order venue.
+- real investment mode: KRX and NXT broker order routing where KIS capability
+  flags allow it.
+- SOR: disabled before transport until a future approved contract enables it.
+- Idle: outside the active venue envelope or when the calendar says
+  closed/stale.
 
 ## 3. Alert Channel Contract
 

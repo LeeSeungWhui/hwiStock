@@ -15,12 +15,11 @@ separate branches:
 
 - Market intelligence branch: runs 24 hours for news, articles, disclosures, and
   other permitted public information ingestion.
-- Trading branch: uses simple session context inside 08:00-20:00 KST. KRX
-  public regular-session context is 09:00-15:30 KST, while the current
-  conservative KIS broker-order enable window is KRX-only 09:00-15:00 KST.
-  08:00-09:00 / 15:00-20:00 KST remains NXT analysis/session context only.
-  KIS broker adapter broker-facing orders must stay KRX-only; NXT/SOR broker routes
-  abort before transport unless a later approved unit proves support.
+- Trading branch: uses simple session context inside 08:00-20:00 KST with an
+  explicit KIS investment-mode gate. Paper/mock mode enables KRX plus integrated
+  market-data/account-truth helpers and rejects NXT broker branches; real
+  investment mode enables KRX and NXT where KIS capability flags allow it. SOR
+  remains disabled until a future approved contract proves it.
 
 Strategy direction is short-term day trading (`단타`) with a fast intraday
 scalping/momentum hypothesis: enter only on approved signals, hold roughly
@@ -142,6 +141,14 @@ Current 2026-06-05 operational automated-trading authority:
   `docs/evidence/RUN-20260605_post-pro-corrective-go-check-unit-011-015.md`
 - Pro runtime safety remediation evidence:
   `docs/evidence/RUN-20260605_pro-runtime-safety-remediation.md`
+- Monday operation P0 safety-gate correction:
+  `docs/set/READY-SET-CORRECTION-20260606_monday-operation-p0-safety-gates.md`
+- Monday operation P0 safety-gate Go-Check evidence:
+  `docs/evidence/RUN-20260606_monday-operation-p0-safety-gates-go-check.md`
+- KIS mode-gated account-truth Go-Check evidence:
+  `docs/evidence/RUN-20260606_kis-mode-gated-account-truth-go-check.md`
+- Monday operation local calendar cache:
+  `config/market-calendar/krx-nxt-trading-days.json`
 
 Post-Pro reinforcement: this existing operational Ready-Set remains the current
 authority; it is not replaced by a parallel Ready-Set. The Pro critique is
@@ -173,14 +180,14 @@ Corrective reinforcements now attached to the existing queue:
    Go-Check passed in
    `docs/evidence/RUN-20260605_post-pro-corrective-go-check-unit-011-015.md`.
 3. `HWISTOCK-UNIT-012`: DeepSeek Pro/Flash timer and artifact truth.
-4. `HWISTOCK-UNIT-013`: source/calendar/KIS six-input readiness without order
-   submission.
+4. `HWISTOCK-UNIT-013`: source/calendar/KIS mode-aware market-data readiness
+   without order submission.
 5. `HWISTOCK-UNIT-014`: bounded KRX broker order/reconciliation smoke only after
    explicit approval and market/session preflight.
 
 Latest operational Go-Check update: UNIT-012 through UNIT-015 passed local
-no-network Go-Check for the owner-selected NAVER/OpenDART + KIS six-input
-scope. Provider network smoke, KIS broker adapter-read transport, KIS KRX adapter
+no-network Go-Check for the owner-selected NAVER/OpenDART + KIS mode-aware
+market-data scope. Provider network smoke, KIS broker adapter-read transport, KIS KRX adapter
 order/reconciliation smoke, browser/tunnel Prove, and final operator
 observation-window acceptance remain blocked until explicitly scoped. Therefore
 `broker_run_ready: false`, `continuous_runner_ready: false`, and
@@ -613,7 +620,7 @@ timer installation, while operational readiness remains false.
   (`docs/evidence/RUN-20260605_operational-go-check-units-012-015.md`).
 - `docs/units/HWISTOCK-UNIT-013_signal-to-intent-pipeline.md`:
   local no-network Go-Check passed for NAVER/OpenDART source-grounded
-  candidates, the KIS six-input collector boundary, deterministic risk gates,
+  candidates, the KIS mode-gated market-data collector boundary, deterministic risk gates,
   and `paper_order_intent/v0` queue generation; KIS broker adapter-read transport smoke
   remains blocked (`docs/evidence/RUN-20260605_operational-go-check-units-012-015.md`).
 - `docs/units/HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md`:
@@ -673,8 +680,8 @@ timer installation, while operational readiness remains false.
   authorization (`docs/evidence/RUN-20260604_unit-009-go-check-rebaseline.md`).
 - `docs/qa/QA-HWISTOCK-UNIT-010_kis-adapter-continuous-runner.md`:
   set QA for continuous KIS broker adapter runner behavior, operator-controlled
-  observation windows, KIS broker adapter/unapproved domain separation, KRX-only adapter
-  capability, risk overlay, no fake broker state, service lifecycle, and
+  observation windows, KIS broker adapter/unapproved domain separation,
+  mode-gated KRX/integrated/NXT capability, risk overlay, no fake broker state, service lifecycle, and
   read-only/local-only status surfaces.
 - `docs/qa/QA-HWISTOCK-UNIT-011_operational-runtime-supervisor.md`:
   set QA for user systemd install/start/restart/local-only supervision.
@@ -684,8 +691,9 @@ timer installation, while operational readiness remains false.
   smoke remains blocked.
 - `docs/qa/QA-HWISTOCK-UNIT-013_signal-to-intent-pipeline.md`:
   local no-network Go-Check QA passed for source-grounded candidate generation,
-  KIS six-input boundary, and deterministic `paper_order_intent/v0` gating; KIS
-  adapter-read transport smoke remains blocked.
+  KIS mode-gated market-data boundary, and deterministic
+  `paper_order_intent/v0` gating; KIS adapter-read transport smoke remains
+  blocked.
 - `docs/qa/QA-HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md`:
   local no-network Go-Check QA passed for KIS adapter domain guard, preflight,
   restart idempotency, realtime exit checks, and no-fake-broker behavior; order
@@ -877,6 +885,11 @@ timer installation, while operational readiness remains false.
   paper-order calendar/source approval, `paper_only`/broker-adapter intent
   preflight, FIFO queue reporting, AI readiness service-policy contradictions,
   and AI conversation access invariant.
+- `docs/evidence/RUN-20260606_monday-operation-p0-safety-gates-go-check.md`:
+  current Go-Check evidence for Monday operation P0 hardening: date-specific KST
+  calendar rows, KRX order-session requirement, KIS read-step account truth,
+  exit-before-entry queue priority, live/effective user-systemd policy, runtime
+  artifact freshness, focused tests, rule-gate, and no-order runner smoke.
 - `docs/evidence/RUN-20260605_unit-007-go-preflight-rebaseline.md`: current
   UNIT-007 rebaseline Go preflight evidence for read-only dashboard operator
   console doc-sync closure.
@@ -1027,11 +1040,11 @@ timer installation, while operational readiness remains false.
   management is intentionally not selected for the first pass.
 - Broker-visible broker-adapter balance is observed evidence only and does not
   expand hwiStock's 2,000,000 KRW risk-overlay capital. UNIT-009 Go-Check
-  confirms adapter/unapproved endpoint separation and documents KRX-bounded adapter proof
-  via the capability matrix and sanitized smoke cross-reference, but not a
-  sizing-budget change. KIS adapter proof is KRX-limited where the local API
-  references mark NXT/SOR, integrated realtime, holiday, sellable quantity, or
-  helper lookup APIs as adapter-unsupported.
+  confirms adapter/unapproved endpoint separation and documents mode-gated KIS
+  proof via the capability matrix and sanitized smoke cross-reference, but not a
+  sizing-budget change. Current KIS capability is paper/mock KRX plus integrated
+  market-data/account-truth helpers, with NXT enabled only in real investment
+  mode and SOR still disabled.
 - UI/dashboard scope is selected as read-only status, stored AI reports, logs,
   interactive AI conversation, and operator visibility. Direct buy/sell controls
   are excluded. A report-only AI panel without question input and backend answer

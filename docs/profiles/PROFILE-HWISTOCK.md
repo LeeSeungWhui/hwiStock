@@ -68,12 +68,11 @@ branches:
 
 - `market_intelligence`: 24-hour ingestion of permitted public news, articles,
   disclosures, chart/market-data context, and related signals.
-- `trading`: simple session-aware strategy/risk/order loop. KRX public
-  regular-session context is 09:00-15:30 KST, but the current conservative KIS
-  broker-order enable window is KRX-only 09:00-15:00 KST. 08:00-09:00 /
-  15:00-20:00 KST remains NXT analysis/session context only. KIS broker adapter
-  broker-facing orders must stay KRX-only; NXT/SOR broker routes abort before
-  transport unless a later approved unit proves support.
+- `trading`: simple session-aware strategy/risk/order loop. KIS mode is explicit:
+  paper/mock mode enables KRX plus integrated market-data/account-truth helpers
+  and rejects NXT broker branches; real investment mode enables KRX and NXT
+  where KIS capability flags allow it. SOR remains disabled until a future
+  approved contract proves it.
 
 This project is tooling and automation work, not investment advice. Strategy
 documentation must distinguish hypotheses, backtest results, automated-trading
@@ -130,12 +129,14 @@ Current owner-defined runtime architecture is file-driven:
    as a no-key fallback. KRX KIND or other portal scraping remains deferred
    until terms/access are explicitly recorded.
 2. `kis_intraday_market_collector` runs continuously during the approved
-   intraday window and collects KIS broker adapter-supported KRX market data:
-   WebSocket realtime trade price/orderbook where adapter-supported, plus REST
-   ranking/analysis snapshots every 1-3 minutes such as volume rank,
-   fluctuation, volume power, program-trading aggregate status where supported,
-   top-interest stocks, and intraday minute bars. NXT/SOR KIS broker-facing
-   collection remains disabled or fallback-only until later support confirmation.
+   intraday window and collects mode-aware KIS broker adapter-supported market
+   data: paper/mock mode enables KRX + integrated WebSocket realtime
+   trade/orderbook/market-operation inputs plus REST ranking/analysis snapshots
+   every 1-3 minutes such as volume rank, fluctuation, volume power, and
+   program-trading aggregate status where supported. Real investment mode
+   additionally enables NXT WebSocket realtime trade/orderbook/market-operation
+   inputs. SOR KIS broker-facing collection remains disabled or fallback-only
+   until later support confirmation.
 3. `deepseek_pro_hourly` runs on the top of every hour. It reads the accumulated
    news/disclosure and KIS market-data files. During market hours it includes
    market-regime/session analysis in the same hourly Pro artifact, not as a
@@ -216,11 +217,13 @@ an unscoped architecture summary or whole-project prompt.
   Observation window duration is chosen by the operator, not hardcoded by the
   runner.
 - Market scope: Korea domestic stocks (`국장`) first
-- Trading venues/session context: KRX + NXT
+- Trading venues/session context: KRX + integrated + NXT
 - KRX session truth: KRX public regular-session context is 09:00-15:30 KST
-- Current KIS broker-order enable window: KRX-only 09:00-15:00 KST
-- NXT/SOR broker route policy: analysis/session context only in adapter mode;
-  abort before KIS transport unless future approved proof changes this
+- Current KIS investment-mode policy: paper/mock mode enables KRX plus
+  integrated market-data/account-truth helpers; real investment mode enables
+  KRX and NXT where KIS capability flags allow it
+- SOR broker route policy: disabled/fallback before KIS transport unless future
+  approved proof changes this
 - Broker/API direction: Korea Investment & Securities Open API (`KIS`)
 - Blocked broker candidate: KB Securities personal use is blocked unless later
   official confirmation proves otherwise
@@ -414,8 +417,9 @@ Manual checklist review always includes:
   broker network adapters disabled until approved; broker-provided broker-adapter
   APIs allowed only after UNIT-009 docs verification plus explicit
   broker-network smoke approval
-- KIS broker adapter capability must expose KRX-only support where the local KIS
-  references mark NXT/SOR or integrated realtime feeds adapter-unsupported
+- KIS broker adapter capability must expose explicit mode-gated support:
+  paper/mock KRX plus integrated market-data/account-truth helpers, real
+  investment KRX/NXT where supported, and SOR disabled unless separately proved
 - market-session-aware scheduler for Korea domestic trading days, holidays, and
   exceptional sessions
 - branch separation between 24-hour information ingestion and market-session
@@ -527,11 +531,9 @@ Planned gate ids:
   fills during ordinary Go implementation rows.
 - `service-lifecycle-smoke`: future smoke gate for start, stop, restart, health,
   and log output of the home-server runner.
-- `market-calendar-smoke`: future smoke gate for KRX session context,
-  conservative KRX-only broker-order enablement 09:00-15:00 KST,
-  08:00-09:00 / 15:00-20:00 NXT analysis/session context,
-  out-of-envelope idle behavior, closed/stale-calendar idle behavior, and local
-  cached-calendar coverage.
+- `market-calendar-smoke`: future smoke gate for KRX/integrated/NXT session
+  context, investment-mode venue gating, out-of-envelope idle behavior,
+  closed/stale-calendar idle behavior, and local cached-calendar coverage.
 - `intel-ingestion-smoke`: future smoke gate for source allowlist, robots/terms
   compliance notes, deduplication, rate limiting, and disclosure/news evidence.
 - `ai-orchestration-smoke`: future smoke gate for structured AI output,
