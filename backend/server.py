@@ -483,17 +483,12 @@ app.add_middleware(RequestLogMiddleware)
 # 라우터 로딩
 logger.info("router load start")
 
-# 설정값에 따라 데모 라우터를 비활성화할 수 있음
-disableDemoRoutes = True
-try:
-    disableDemoRoutes = config["SERVER"].getboolean("disable_demo_routes", True)
-except Exception:
-    disableDemoRoutes = True
+disabledDemoRouterSuffixes = (".TransactionRouter", ".SampleRouter")
 
 for _, moduleName, _ in pkgutil.iter_modules(router.__path__, router.__name__ + "."):
 
-    # 데모/샘플 라우터는 비활성화 시 제외
-    if disableDemoRoutes and moduleName.endswith((".TransactionRouter", ".SampleRouter")):
+    # hwiStock 운영 표면에서는 MyWebTemplate 데모/샘플 라우터를 설정값과 무관하게 등록하지 않는다.
+    if moduleName.endswith(disabledDemoRouterSuffixes):
         continue
     module = importlib.import_module(moduleName)
     if hasattr(module, "router"):

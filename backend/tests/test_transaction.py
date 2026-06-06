@@ -1,7 +1,5 @@
 import os
 import sys
-import time
-from fastapi.testclient import TestClient
 
 from conftest import pgTestSettings
 from db_support import fetchValPg
@@ -12,68 +10,42 @@ if baseDir not in sys.path:
 
 
 def testTransactionSingleAndUniqueRollback():
-    from server import app
-
-    with TestClient(app) as client:
-        loginResponse = client.post(
-            "/api/v1/auth/app/login",
-            json={"username": "demo@demo.demo", "password": "password123"},
-        )
-        assert loginResponse.status_code == 200
-        loginPayload = loginResponse.json()
-        accessToken = loginPayload["result"]["accessToken"]
-        authHeaders = {"Authorization": f"Bearer {accessToken}"}
-
-        response = client.post("/api/v1/transaction/test/single", headers=authHeaders)
-        assert response.status_code == 200
-        assert response.json()["status"] is True
-
-        # access-log DB 쓰기(비동기)가 잠금을 해제할 시간을 준다.
-        time.sleep(0.35)
-
-        response = None
-        for _ in range(5):
-            response = client.post("/api/v1/transaction/test/unique-violation", headers=authHeaders)
-            if response.status_code == 409:
-                break
-
-            # 테스트 DB 런타임에서 일시적 잠금/경합이 날 수 있어 짧게 재시도한다.
-            time.sleep(0.05)
-        assert response is not None
-        assert response.status_code == 409
-        j = response.json()
-        assert j["status"] is False
-        assert j["code"] == "TX_409_UNIQUE"
-
-        cnt = fetchValPg(
-            pgTestSettings,
-            "SELECT COUNT(*) FROM T_TEST_TRANSACTION WHERE VALUE = $1",
-            "tx-dup",
-        )
-        assert cnt == 0
-
-
-def testTransactionUniqueViolationUnknownErrorReturns500(monkeypatch):
-    from server import app
+    from lib import Database as DB
+    from server import onShutdown, onStartup
     from service import TransactionService
+    import anyio
 
-    async def raiseUnexpectedError():
-        raise RuntimeError("db disconnected")
+    async def runScenario():
+        await onStartup()
+        try:
+            singleResult = await TransactionService.testSingle()
+            assert singleResult["inserted"].startswith("tx-")
 
-    monkeypatch.setattr(TransactionService, "testUniqueViolation", raiseUnexpectedError)
+            try:
+                await TransactionService.testUniqueViolation()
+            except Exception as exc:
+                assert "unique" in str(exc).lower() or "duplicate" in str(exc).lower()
+            else:
+                raise AssertionError("unique violation scenario did not raise")
+        finally:
+            await onShutdown()
+            DB.dbManagers.clear()
+            DB.setPrimaryDbName("main_db")
 
-    with TestClient(app) as client:
-        loginResponse = client.post(
-            "/api/v1/auth/app/login",
-            json={"username": "demo@demo.demo", "password": "password123"},
-        )
-        assert loginResponse.status_code == 200
-        loginPayload = loginResponse.json()
-        accessToken = loginPayload["result"]["accessToken"]
-        authHeaders = {"Authorization": f"Bearer {accessToken}"}
+    anyio.run(runScenario)
 
-        response = client.post("/api/v1/transaction/test/unique-violation", headers=authHeaders)
-        assert response.status_code == 500
-        body = response.json()
-        assert body["status"] is False
-        assert body["code"] == "TX_500_INTERNAL"
+    cnt = fetchValPg(
+        pgTestSettings,
+        "SELECT COUNT(*) FROM T_TEST_TRANSACTION WHERE VALUE = $1",
+        "tx-dup",
+    )
+    assert cnt == 0
+
+
+def testTransactionDemoRoutesStayQuarantined():
+    from server import app
+
+    route_paths = {getattr(route, "path", "") for route in app.routes}
+
+    assert "/api/v1/transaction/test/single" not in route_paths
+    assert "/api/v1/transaction/test/unique-violation" not in route_paths

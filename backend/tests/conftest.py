@@ -37,7 +37,6 @@ INTEGRATION_TEST_FILES = {
     "test_i18n_observability.py",
     "test_observability.py",
     "test_profile_api.py",
-    "test_sample_public_api.py",
     "test_transaction.py",
     "test_transaction_savepoint.py",
     "test_tx_logging.py",
