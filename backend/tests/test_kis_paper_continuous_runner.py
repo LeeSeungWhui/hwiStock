@@ -298,6 +298,24 @@ def test_systemd_ai_and_market_ticks_pin_paper_integrated_krx_policy():
         assert "HWISTOCK_EXECUTION_VENUE_MODE=krx_only" in service_text
 
 
+def test_systemd_units_are_lf_delimited_and_structured():
+    root = Path(__file__).resolve().parents[2] / "ops" / "systemd" / "user"
+    unit_paths = sorted([*root.glob("hwistock-*.service"), *root.glob("hwistock-*.timer")])
+    assert unit_paths
+    for path in unit_paths:
+        data = path.read_bytes()
+        assert b"\r" not in data, f"{path} must use LF line endings only"
+        text = data.decode("utf-8")
+        wrapped = "\n" + text
+        assert "\n[Unit]\n" in wrapped, f"{path} must have a line-delimited [Unit] section"
+        if path.suffix == ".service":
+            assert "\n[Service]\n" in wrapped, f"{path} must have a line-delimited [Service] section"
+            assert "\nExecStart=" in wrapped, f"{path} must have a line-delimited ExecStart directive"
+        if path.suffix == ".timer":
+            assert "\n[Timer]\n" in wrapped, f"{path} must have a line-delimited [Timer] section"
+            assert "\n[Install]\n" in wrapped, f"{path} must have a line-delimited [Install] section"
+
+
 def test_paper_domain_guard_rejects_live_domain():
     assert validatePaperBaseUrl("https://openapivts.koreainvestment.com:29443").endswith(":29443")
     with pytest.raises(KisPaperAdapterError):
