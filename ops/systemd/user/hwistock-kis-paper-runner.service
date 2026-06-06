@@ -1,5 +1,5 @@
 # hwiStock continuous KIS paper/mock runner tick.
-# Paper/mock KRX only. No live endpoint. No fake broker state.
+# Paper/mock KRX order gate with mode-aware market-data truth. No fake broker state.
 
 [Unit]
 Description=hwiStock continuous KIS paper/mock runner tick
@@ -12,8 +12,9 @@ WorkingDirectory=/data/workspace/My/hwiStock
 EnvironmentFile=-/home/hwi/.config/hwistock/hwistock.env
 EnvironmentFile=-/home/hwi/.config/hwistock/hwistockApi.env
 Environment=HWISTOCK_BIND_HOST=127.0.0.1
-Environment=HWISTOCK_MARKET_DATA_SOURCE=kis_paper_mock
-Environment=HWISTOCK_ALLOW_WEEKDAY_CALENDAR_FALLBACK=true
+Environment=HWISTOCK_MARKET_DATA_SOURCE=kis_market_mode_aware
+Environment=HWISTOCK_CALENDAR_PATH=/data/workspace/My/hwiStock/config/market-calendar/krx-nxt-trading-days.json
+Environment=HWISTOCK_ALLOW_WEEKDAY_CALENDAR_FALLBACK=false
 Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=false
 Environment=HWISTOCK_KIS_MIN_CALL_GAP_SEC=1.35
 ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-kis-paper-runner -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && python backend/service/kis_paper_continuous_runner.py --once --write-evidence --allow-paper-network'
