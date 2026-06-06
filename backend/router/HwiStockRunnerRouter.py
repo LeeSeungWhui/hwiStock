@@ -39,7 +39,7 @@ def hwiStockJsonResponse(result: Any, statusCode: int = 200) -> JSONResponse:
 
 @router.get("/status")
 async def runnerStatus(atKst: Optional[str] = None):
-    result = HwiStockRunnerService.get_runner_status(at_kst=atKst)
+    result = HwiStockRunnerService.getRunnerStatus(atKst=atKst)
     return hwiStockJsonResponse(result)
 
 

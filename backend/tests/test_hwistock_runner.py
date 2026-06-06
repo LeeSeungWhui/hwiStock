@@ -4,6 +4,7 @@ UNIT-002 focused tests: runner skeleton, routing, bind, systemd templates.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import subprocess
@@ -21,6 +22,7 @@ if baseDir not in sys.path:
     sys.path.insert(0, baseDir)
 
 from service import HwiStockRunnerService as runner  # noqa: E402
+from router import HwiStockRunnerRouter as runnerRouter  # noqa: E402
 import run as backendRun  # noqa: E402
 
 KST = ZoneInfo("Asia/Seoul")
@@ -305,6 +307,19 @@ def test_default_calendar_has_monday_operation_row(monkeypatch):
     assert status["routing"]["venue"] == "KRX"
     assert status["orderGate"] == "no_order_dry_run_only"
     assert status["marketData"]["tradingLoopsActive"] is True
+
+
+def test_runner_status_route_accepts_atKst_query(monkeypatch):
+    monkeypatch.setenv("HWISTOCK_MARKET_DATA_SOURCE", "kis_market_mode_aware")
+
+    response = asyncio.run(runnerRouter.runnerStatus(atKst="2026-06-08T09:30:00"))
+    payload = json.loads(response.body.decode("utf-8"))
+
+    assert response.status_code == 200
+    assert payload["status"] is True
+    assert payload["result"]["calendar"]["state"] == "calendar_ready"
+    assert payload["result"]["routing"]["venue"] == "KRX"
+    assert payload["result"]["orderGate"] == "no_order_dry_run_only"
 
 
 def test_source_unconfigured_idle(tmp_path, monkeypatch):
