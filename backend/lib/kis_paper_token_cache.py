@@ -24,7 +24,7 @@ def loadKisPaperAccessToken(
     now: Optional[datetime] = None,
 ) -> Tuple[Dict[str, Any], str, bool]:
     source = env if env is not None else os.environ
-    cacheable = hasattr(adapter, "_request")
+    cacheable = isCacheableKisPaperAdapter(adapter, source)
     if not cacheable:
         result, token = adapter.issueTokenWithValue()
         return result, token, False
@@ -63,6 +63,17 @@ def tokenCacheRevokeSkippedStep() -> Dict[str, Any]:
         "raw_response_stored": False,
         "credential_values_printed": False,
     }
+
+
+def isCacheableKisPaperAdapter(adapter: Any, env: Mapping[str, str]) -> bool:
+    request_method = getattr(adapter, "requestBrokerJson", None)
+    if not callable(request_method):
+        return False
+    if str(env.get("HWISTOCK_KIS_TOKEN_CACHE_FILE") or "").strip():
+        return True
+    transport = getattr(adapter, "transport", None)
+    transport_name = transport.__class__.__name__ if transport is not None else ""
+    return transport_name == "UrllibJsonTransport"
 
 
 def _cachePath(env: Mapping[str, str]) -> Path:

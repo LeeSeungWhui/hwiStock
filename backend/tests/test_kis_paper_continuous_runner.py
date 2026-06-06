@@ -5,6 +5,7 @@ No real KIS network call is made; tests use an injected fake transport.
 
 from __future__ import annotations
 
+from datetime import datetime
 import json
 import os
 import sys
@@ -17,6 +18,7 @@ if baseDir not in sys.path:
     sys.path.insert(0, baseDir)
 
 from lib import paper_trading_ledger as ledger  # noqa: E402
+from lib.kis_paper_token_cache import loadKisPaperAccessToken  # noqa: E402
 from service import HwiStockRunnerService as base_runner  # noqa: E402
 from service import kis_paper_continuous_runner as continuous  # noqa: E402
 from service.kis_paper_adapter import (  # noqa: E402
@@ -184,6 +186,35 @@ def _order_approval(tmp_path: Path, env: dict, *, run_id: str = "approved-order-
 
 def _mark_order_grade_source(env: dict) -> None:
     env["HWISTOCK_MARKET_DATA_SOURCE"] = "kis_market_mode_aware"
+
+
+def test_token_cache_uses_request_broker_json_adapter_without_private_request(tmp_path: Path):
+    class CacheableAdapter:
+        def __init__(self):
+            self.calls = 0
+
+        def requestBrokerJson(self):
+            raise AssertionError("requestBrokerJson is only used as a capability marker")
+
+        def issueTokenWithValue(self):
+            self.calls += 1
+            return {"step": "oauth_token", "status": "pass", "token_present": True}, f"fake-token-{self.calls}"
+
+    adapter = CacheableAdapter()
+    env = {"HWISTOCK_KIS_TOKEN_CACHE_FILE": str(tmp_path / "kis-token-cache.json")}
+    now = datetime.fromisoformat("2026-06-06T09:00:00+09:00")
+
+    first_result, first_token, first_managed = loadKisPaperAccessToken(adapter, env=env, now=now)
+    second_result, second_token, second_managed = loadKisPaperAccessToken(adapter, env=env, now=now)
+
+    assert adapter.calls == 1
+    assert first_token == "fake-token-1"
+    assert second_token == "fake-token-1"
+    assert first_managed is True
+    assert second_managed is True
+    assert first_result["cache_hit"] is False
+    assert second_result["step"] == "oauth_token_cache"
+    assert second_result["cache_hit"] is True
 
 
 def test_default_systemd_runner_does_not_enable_orders():
