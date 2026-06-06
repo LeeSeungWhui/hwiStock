@@ -269,19 +269,19 @@ AI conversation readiness, and recorded the loopback/frontend-BFF AI access
 invariant. Evidence:
 `docs/evidence/RUN-20260605_pro-review-fail-closed-followup.md`.
 
-Current 2026-06-05 correction authority:
+Superseded narrow UNIT-010 correction set:
 
-- New Ready-Set target:
+- Narrow Ready-Set target:
   `docs/set/READY-SET-COMPLETION-20260605_continuous-adapter-runner_hwistock.md`
-- New row closure:
+- Narrow row closure:
   `docs/set/READY-SET-ROW-CLOSURE-20260605_continuous-adapter-runner_hwistock.md`
-- New Go preflight:
+- Narrow Go preflight:
   `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_continuous-adapter-runner_hwistock.md`
-- New module/unit/QA:
+- Narrow module/unit/QA:
   - `docs/modules/HWISTOCK-MOD-008_continuous-adapter-runtime.md`
   - `docs/units/HWISTOCK-UNIT-010_kis-adapter-continuous-runner.md`
   - `docs/qa/QA-HWISTOCK-UNIT-010_kis-adapter-continuous-runner.md`
-- New evidence:
+- Narrow evidence:
   `docs/evidence/RUN-20260605_ready-set-continuous-adapter-runner.md`
 - Narrow correction: the next runner foundation was a **24-hour continuous KIS
   broker-adapter runner**, not a fixed seven-day program. The project owner/operator
@@ -289,7 +289,7 @@ Current 2026-06-05 correction authority:
   auto-pass, or auto-fail based on a hardcoded duration. Whole-program
   operational readiness is now governed by the UNIT-011, UNIT-016, and
   UNIT-012 through UNIT-015 queue above.
-- Current readiness: `HWISTOCK-UNIT-010` local no-network Go-Check has passed.
+- Narrow UNIT-010 readiness: `HWISTOCK-UNIT-010` local no-network Go-Check has passed.
   The continuous KIS broker adapter runner code exists and later UNIT-011 evidence shows
   service-managed runtime startup, but `broker_run_ready: false`,
   `continuous_runner_ready: false`, and `operational_readiness: false`
@@ -300,14 +300,15 @@ The current code baseline changed on 2026-06-04 when MyWebTemplate-derived
 `backend/` and `frontend-web/` code was imported. Earlier Ready-Set closure and
 Go-Check evidence are now historical, not current Go authorization.
 
-- Current rebaseline evidence:
+- Historical 2026-06-04 MyWebTemplate rebaseline evidence:
   `docs/evidence/RUN-20260604_ready-set-rebaseline-after-mywebtemplate-import.md`
-- Current Ready-Set reissue evidence:
+- Historical 2026-06-04 MyWebTemplate reissue evidence:
   `docs/evidence/RUN-20260604_ready-set-reissue-after-mywebtemplate-owner-decision.md`
 - Historical 2026-06-04 Ready-Set state marked the
   `skeleton_adapter_safe_rebaseline_queue` as implementation-ready only; this
   is **not** current operational trading readiness.
-- Current Ready-Set docs:
+- Historical 2026-06-04 MyWebTemplate rebaseline docs, still useful for
+  quarantine/replacement history:
   - `docs/set/READY-SET-OWNER-DECISION-20260604_rebaseline_hwistock.md`
   - `docs/set/READY-SET-COMPLETION-20260604_rebaseline_hwistock.md`
   - `docs/set/READY-SET-ROW-CLOSURE-20260604_rebaseline_hwistock.md`
@@ -475,8 +476,10 @@ timer installation, while operational readiness remains false.
 - `docs/design/HWISTOCK-DESIGN-20260605_lucid-command-dashboard.md`: Lucid
   Command dark desktop-first operator cockpit design artifact for UNIT-007.
 - `docs/set/READY-SET-COMPLETION-AUDIT-20260602_hwistock.md`: historical
-  pre-import requirement-by-requirement audit. The current post-import authority
-  is the 2026-06-04 rebaseline completion, row closure, and Go preflight set.
+  pre-import requirement-by-requirement audit. For operational claims, use the
+  2026-06-05 operational automated-trading Ready-Set; the 2026-06-04 rebaseline
+  completion, row closure, and Go preflight are historical MyWebTemplate-import
+  records.
 - `docs/set/READY-SET-APPROVAL-ACTIONS-20260602_hwistock.md`: historical owner
   approval choices, receipt checklist, and pre-import full expansion closure
   refs.
@@ -738,10 +741,10 @@ timer installation, while operational readiness remains false.
   conflict with the current profile/module/unit contracts or the latest
   Ready-Set evidence, treat the current contracts as authoritative.
 - `docs/evidence/RUN-20260604_ready-set-rebaseline-after-mywebtemplate-import.md`:
-  current rebaseline evidence explaining why the prior queue was superseded by
+  historical rebaseline evidence explaining why the prior queue was superseded by
   the MyWebTemplate code import.
 - `docs/evidence/RUN-20260604_ready-set-reissue-after-mywebtemplate-owner-decision.md`:
-  current Ready-Set reissue evidence after the owner selected MyWebTemplate
+  historical Ready-Set reissue evidence after the owner selected MyWebTemplate
   sample/public quarantine and hwiStock replacement.
 - `docs/set/READY-SET-COMPLETION-20260602_hwistock.md`: historical Ready-Set
   completion gate, now `implementation_ready: false` and

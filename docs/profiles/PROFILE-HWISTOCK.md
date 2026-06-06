@@ -305,8 +305,9 @@ an unscoped architecture summary or whole-project prompt.
   `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-automated-trading-program_hwistock.md`
 - Current KIS paper/mock runtime hotfix evidence:
   `docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md`
-- Current operational implementation units:
+- Current operational implementation / contract units:
   - `docs/units/HWISTOCK-UNIT-011_operational-runtime-supervisor.md`
+  - `docs/units/HWISTOCK-UNIT-016_runtime-contract-hardening.md`
   - `docs/units/HWISTOCK-UNIT-012_ai-analysis-runtime.md`
   - `docs/units/HWISTOCK-UNIT-013_signal-to-intent-pipeline.md`
   - `docs/units/HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md`
@@ -363,8 +364,10 @@ against the imported MyWebTemplate code baseline.
 The 2026-06-05 operational automated-trading Ready-Set is now
 `implementation_ready: true` only for the contract-hardened Go-Check queue after
 `HWISTOCK-UNIT-016` closed runtime data/execution contracts. This does not mean
-operation-ready, operationally complete, or operation-ready; UNIT-012, UNIT-013,
-UNIT-014, and UNIT-015 still require Go/Check/Prove evidence.
+operation-ready or operationally complete. UNIT-012 through UNIT-015 have local
+no-network Go-Check evidence, but provider network, KIS adapter-read/order
+transport, browser/tunnel Prove, and operator observation-window side-effect
+evidence remain blocked until explicitly scoped.
 
 ## 3. Source Of Truth Order
 

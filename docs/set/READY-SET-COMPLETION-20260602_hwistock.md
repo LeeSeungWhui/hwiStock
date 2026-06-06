@@ -113,7 +113,8 @@ residual_denied_approvals:
 > Superseded notice: this report is historical after the 2026-06-04
 > MyWebTemplate backend/frontend-web code import. Use
 > `docs/evidence/RUN-20260604_ready-set-rebaseline-after-mywebtemplate-import.md`
-> as the current rebaseline evidence. This file no longer authorizes Go-Check.
+> as historical import-rebaseline evidence. This file no longer authorizes
+> Go-Check.
 
 ## 1. Verdict
 

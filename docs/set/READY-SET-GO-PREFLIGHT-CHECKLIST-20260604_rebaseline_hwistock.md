@@ -212,13 +212,14 @@ Every Go report must include:
 - handoff state for Check;
 - **MyWebTemplate quarantine verification result** for affected rows.
 
-## 9. Current Status
+## 9. Historical Status
 
-This checklist is current authority after the 2026-06-04 MyWebTemplate
-backend/frontend-web import rebaseline. All nine rows are authorized for
-Go-Check **only** under the `skeleton_sandbox_safe_rebaseline_queue` scope and
-with the MyWebTemplate quarantine/local-only enforcement as a first-row
-requirement.
+This checklist was current authority only for the 2026-06-04 MyWebTemplate
+backend/frontend-web import rebaseline scope. It is now historical for
+operational claims and superseded by the 2026-06-05 operational automated-trading
+Ready-Set. The historical nine-row Go-Check authorization applied **only** under
+the `skeleton_sandbox_safe_rebaseline_queue` scope and with the MyWebTemplate
+quarantine/local-only enforcement as a first-row requirement.
 
 The safety boundaries below remain active constraints. They block any future
 selected row if:

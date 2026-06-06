@@ -28,8 +28,8 @@ code_paths:
     - backend/lib/trading_engine.py
     - backend/lib/strategy_risk.py
     - backend/tests/test_kis_paper_continuous_runner.py
-    - ops/systemd/user/hwistock-kis-adapter-runner.service
-    - ops/systemd/user/hwistock-kis-adapter-runner.timer
+    - ops/systemd/user/hwistock-kis-paper-runner.service
+    - ops/systemd/user/hwistock-kis-paper-runner.timer
   exclude:
     - "**/*.env"
     - backend/config.ini
