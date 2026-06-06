@@ -55,10 +55,10 @@ def loadKisPaperCapabilityFlags() -> Dict[str, Any]:
         "supports_paper_nxt_realtime": False,
         "supports_paper_integrated_realtime": True,
         "supports_paper_cancel_order": True,
-        "supports_paper_cancelable_query": True,
-        "supports_paper_sellable_quantity_query": True,
-        "supports_paper_realized_pnl_query": True,
-        "supports_paper_holiday_query": True,
+        "supports_paper_cancelable_query": False,
+        "supports_paper_sellable_quantity_query": False,
+        "supports_paper_realized_pnl_query": False,
+        "supports_paper_holiday_query": False,
         "supports_real_krx_realtime": True,
         "supports_real_integrated_realtime": True,
         "supports_real_nxt_realtime": True,
@@ -67,9 +67,10 @@ def loadKisPaperCapabilityFlags() -> Dict[str, Any]:
             "sor_order": "disabled_branch",
             "nxt_realtime": "real_mode_only",
             "integrated_realtime": "enabled_in_paper_and_real_modes",
-            "cancelable_query": "provider_query_required",
-            "sellable_quantity_query": "provider_query_required",
-            "holiday_query": "provider_query_available",
+            "cancelable_query": "paper_mock_unsupported",
+            "sellable_quantity_query": "paper_mock_unsupported",
+            "realized_pnl_query": "paper_mock_unsupported",
+            "holiday_query": "paper_mock_unsupported",
         },
     }
 
@@ -263,6 +264,25 @@ def summarizeKisCancelableOrdersPayload(response: Mapping[str, Any]) -> Dict[str
             if isinstance(row, Mapping) and str(row.get("odno") or row.get("ODNO") or "").strip()
         ][:20],
     }
+
+
+def unsupportedPaperMockStep(
+    step: str,
+    *,
+    summaryKey: Optional[str] = None,
+    summary: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Any]:
+    result: Dict[str, Any] = {
+        "step": step,
+        "status": "skipped_provider_unsupported",
+        "reason": "kis_paper_mock_tr_unsupported_by_local_reference",
+        "broker_endpoint_called": False,
+        "raw_response_stored": False,
+        "credential_values_printed": False,
+    }
+    if summaryKey:
+        result[summaryKey] = dict(summary or {})
+    return result
 
 
 def extractKisOrderIdentifiers(response: Mapping[str, Any]) -> Dict[str, str]:
@@ -499,36 +519,20 @@ class KisPaperAdapter:
         return result
 
     def inquireSellable(self, token: str, symbol: str) -> Dict[str, Any]:
-        params = {
-            "CANO": self.envValue("KIS_PAPER_ACCOUNT_NO"),
-            "ACNT_PRDT_CD": self.envValue("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
-            "PDNO": symbol,
-        }
-        response = self.requestBrokerJson(
-            "GET",
-            f"/uapi/domestic-stock/v1/trading/inquire-psbl-sell?{urllib.parse.urlencode(params)}",
-            headers=self.authHeaders(token, "TTTC8408R"),
+        del token, symbol
+        return unsupportedPaperMockStep(
+            "sellable_inquire_psbl_sell",
+            summaryKey="dashboard_sellable_summary",
+            summary={"sellable_quantity": None},
         )
-        result = sanitizeKisResponse(response, step="sellable_inquire_psbl_sell")
-        result["dashboard_sellable_summary"] = summarizeKisSellablePayload(response)
-        return result
 
     def inquireRealizedPnl(self, token: str) -> Dict[str, Any]:
-        params = {
-            "CANO": self.envValue("KIS_PAPER_ACCOUNT_NO"),
-            "ACNT_PRDT_CD": self.envValue("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
-            "INQR_DVSN": "00",
-            "CTX_AREA_FK100": "",
-            "CTX_AREA_NK100": "",
-        }
-        response = self.requestBrokerJson(
-            "GET",
-            f"/uapi/domestic-stock/v1/trading/inquire-balance-rlz-pl?{urllib.parse.urlencode(params)}",
-            headers=self.authHeaders(token, "TTTC8494R"),
+        del token
+        return unsupportedPaperMockStep(
+            "realized_pnl_inquire",
+            summaryKey="dashboard_realized_pnl_summary",
+            summary={"realized_pnl_krw": None, "real_eval_pnl_krw": None, "eval_pnl_sum_krw": None},
         )
-        result = sanitizeKisResponse(response, step="realized_pnl_inquire", row_count_key="output1")
-        result["dashboard_realized_pnl_summary"] = summarizeKisRealizedPnlPayload(response)
-        return result
 
     def dailyOrderFillLookup(self, token: str, *, date_yyyymmdd: str, symbol: str = "") -> Dict[str, Any]:
         params = {
@@ -555,36 +559,16 @@ class KisPaperAdapter:
         return sanitizeKisResponse(response, step="daily_order_fill_inquire", row_count_key="output1")
 
     def inquireCancelableOrders(self, token: str, *, side: str = "all") -> Dict[str, Any]:
-        side_code = {"all": "0", "sell": "1", "buy": "2"}.get(str(side or "all").lower(), "0")
-        params = {
-            "CANO": self.envValue("KIS_PAPER_ACCOUNT_NO"),
-            "ACNT_PRDT_CD": self.envValue("KIS_PAPER_ACCOUNT_PRODUCT_CODE"),
-            "CTX_AREA_FK100": "",
-            "CTX_AREA_NK100": "",
-            "INQR_DVSN_1": "0",
-            "INQR_DVSN_2": side_code,
-        }
-        response = self.requestBrokerJson(
-            "GET",
-            f"/uapi/domestic-stock/v1/trading/inquire-psbl-rvsecncl?{urllib.parse.urlencode(params)}",
-            headers=self.authHeaders(token, "TTTC0084R"),
+        del token, side
+        return unsupportedPaperMockStep(
+            "cancelable_order_inquire",
+            summaryKey="dashboard_cancelable_summary",
+            summary={"cancelable_order_count": 0, "cancelable_order_numbers": []},
         )
-        result = sanitizeKisResponse(response, step="cancelable_order_inquire", row_count_key="output")
-        result["dashboard_cancelable_summary"] = summarizeKisCancelableOrdersPayload(response)
-        return result
 
     def inquireHoliday(self, token: str, *, date_yyyymmdd: str) -> Dict[str, Any]:
-        params = {
-            "BASS_DT": date_yyyymmdd,
-            "CTX_AREA_NK": "",
-            "CTX_AREA_FK": "",
-        }
-        response = self.requestBrokerJson(
-            "GET",
-            f"/uapi/domestic-stock/v1/quotations/chk-holiday?{urllib.parse.urlencode(params)}",
-            headers=self.authHeaders(token, "CTCA0903R"),
-        )
-        return sanitizeKisResponse(response, step="holiday_inquire", row_count_key="output")
+        del token, date_yyyymmdd
+        return unsupportedPaperMockStep("holiday_inquire")
 
     def subscribeRealtime(
         self,

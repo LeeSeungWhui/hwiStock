@@ -291,8 +291,10 @@ class TradingEngineOrderStateTests(unittest.TestCase):
         self.assertFalse(capabilities["supports_paper_nxt_order"])
         self.assertFalse(capabilities["supports_paper_sor_order"])
         self.assertTrue(capabilities["supports_paper_integrated_realtime"])
-        self.assertTrue(capabilities["supports_paper_cancelable_query"])
-        self.assertTrue(capabilities["supports_paper_sellable_quantity_query"])
+        self.assertFalse(capabilities["supports_paper_cancelable_query"])
+        self.assertFalse(capabilities["supports_paper_sellable_quantity_query"])
+        self.assertFalse(capabilities["supports_paper_realized_pnl_query"])
+        self.assertFalse(capabilities["supports_paper_holiday_query"])
         self.assertTrue(capabilities["supports_real_nxt_order"])
         self.assertTrue(capabilities["supports_real_nxt_realtime"])
 

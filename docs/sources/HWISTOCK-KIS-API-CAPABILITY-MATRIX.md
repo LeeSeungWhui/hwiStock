@@ -54,13 +54,13 @@ broker.
 | API reference | KIS mode | broker-adapter handling | operation follow-up |
 | --- | --- | --- | --- |
 | `주식주문(현금)[v1_국내주식-001].xlsx` | Cash buy/sell order | `paper_constrained` + `paper_proven_bounded_20260604` for minimal KRX broker cash buy/cancel smoke. Current runtime is mode-gated: paper/mock enables KRX, real investment mode enables KRX/NXT where KIS capability flags allow it, and SOR stays disabled. | Verify active-mode KRX/NXT order acceptance before enabling each operation venue route. Enforce hwiStock cash-only policy even if KIS permits 미수. |
-| `주식주문(정정취소)[v1_국내주식-003].xlsx` | Modify/cancel order | `paper_constrained` + `paper_proven_bounded_20260604` for broker cancel on the bounded smoke path. Cancel calls must be preceded by provider `정정취소가능주문조회` truth where possible and local ambiguous state must fail closed. | Verify operation modify/cancel workflow with provider cancelable-order truth before operation route enablement. |
-| `주식정정취소가능주문조회[v1_국내주식-004].xlsx` | Query modify/cancel-eligible orders | Implemented in adapter/runtime as `GET /uapi/domestic-stock/v1/trading/inquire-psbl-rvsecncl`, `tr_id=TTTC0084R`; sanitized account truth records cancelable count/order numbers without raw payload storage. | Compare provider cancelable list against local pending-order state before cancel automation. |
+| `주식주문(정정취소)[v1_국내주식-003].xlsx` | Modify/cancel order | `paper_constrained` + `paper_proven_bounded_20260604` for broker cancel on the bounded smoke path. Cancel calls must still fail closed when provider cancelable-order truth is unavailable. | Verify operation modify/cancel workflow with provider cancelable-order truth before operation route enablement. |
+| `주식정정취소가능주문조회[v1_국내주식-004].xlsx` | Query modify/cancel-eligible orders | Local reference marks mock as `모의투자 미지원`; paper/mock runtime must not call `TTTC0084R` and records `skipped_provider_unsupported`. Real-investment support remains a later explicit proof item. | Compare provider cancelable list against local pending-order state before cancel automation; in paper/mock, rely on local pending-order state and fail closed on ambiguity. |
 | `주식일별주문체결조회[v1_국내주식-005].xlsx` | Daily order/fill lookup | `paper_constrained` + `paper_proven_bounded_20260604` on KRX adapter path. | Verify operation KRX/NXT/SOR query filters and pagination. |
 | `주식잔고조회[v1_국내주식-006].xlsx` | Balance/position lookup | `paper_proven_bounded_20260604` on KRX adapter path; use in approved KIS KRX broker adapter for cash/position reconciliation. | Verify operation response fields, masking, and account/product-code mapping. |
 | `매수가능조회[v1_국내주식-007].xlsx` | Buyable amount lookup | `paper_proven_bounded_20260604` on KRX adapter path; use in approved KIS broker adapter as an input to cash gate, while still applying hwiStock 2,000,000 KRW virtual capital cap if configured. | Verify operation cash-only fields and ensure 미수/credit buying power is ignored. |
-| `매도가능수량조회 [국내주식-165].xlsx` | Sellable quantity lookup | Implemented in adapter/runtime as `GET /uapi/domestic-stock/v1/trading/inquire-psbl-sell`, `tr_id=TTTC8408R`; SELL preflight now requires provider sellable quantity truth and blocks if the requested quantity exceeds it. | Compare provider sellable quantity against local position/lock state before broad exit automation. |
-| `주식잔고조회_실현손익[v1_국내주식-041].xlsx` | Realized PnL lookup | Adapter endpoint implemented from the supplied API reference: `GET /uapi/domestic-stock/v1/trading/inquire-balance-rlz-pl`, `tr_id=TTTC8494R`; sanitized runner evidence records status and `rlzt_pfls` summary when returned. | Compare provider-realized PnL against system-calculated fill/fee/tax PnL before trusting discrepancies. |
+| `매도가능수량조회 [국내주식-165].xlsx` | Sellable quantity lookup | Local reference marks mock as `모의투자 미지원`; paper/mock runtime must not call `TTTC8408R` and records `skipped_provider_unsupported`. SELL preflight therefore blocks unless a supported provider truth source is available. | Compare provider sellable quantity against local position/lock state before broad exit automation. |
+| `주식잔고조회_실현손익[v1_국내주식-041].xlsx` | Realized PnL lookup | Local reference marks mock as `모의투자 미지원`; paper/mock runtime must not call `TTTC8494R` and records `skipped_provider_unsupported`. Realized PnL should be derived from supported fills/ledger until real-investment proof exists. | Compare provider-realized PnL against system-calculated fill/fee/tax PnL before trusting discrepancies. |
 
 ## 5. Realtime Quote / Fill APIs
 
@@ -106,13 +106,13 @@ outside the market-signal collector and belong to broker execution/account truth
 
 | API reference | KIS mode | broker-adapter handling | operation follow-up |
 | --- | --- | --- | --- |
-| `국내휴장일조회[국내주식-040].xlsx` | Holiday/open-day lookup | Implemented in adapter/runtime as `GET /uapi/domestic-stock/v1/quotations/chk-holiday`, `tr_id=CTCA0903R`; local calendar remains the primary order gate and provider holiday status is recorded as cross-check truth. | Cache at most once per day and fail closed on calendar/provider disagreement before orders. |
+| `국내휴장일조회[국내주식-040].xlsx` | Holiday/open-day lookup | Local reference marks mock as `모의투자 미지원`; paper/mock runtime must not call `CTCA0903R` and records `skipped_provider_unsupported`. Local cached KRX/NXT calendar remains the primary order gate. | Cache provider holiday truth only after a supported mode is explicitly proven; fail closed on calendar/provider disagreement before orders. |
 
 ## 8. Implementation Contract
 
 - Adapter capabilities must be explicit, for example:
   `supportsPaperKrxOrder=true`, `supportsPaperNxtOrder=false`,
-  `supportsPaperIntegratedRealtime=true`, `supportsPaperCancelableQuery=true`,
+  `supportsPaperIntegratedRealtime=true`, `supportsPaperCancelableQuery=false`,
   `supportsPaperSellableQuantityQuery=true`, and
   `supportsRealNxtRealtime=true`.
 - KIS broker adapter code must reject or fallback on unsupported NXT/SOR branches
@@ -139,5 +139,5 @@ Current-authority UNIT-009 rebaseline closure reference:
 
 This section references the completed 2026-06-04 bounded smoke only. It does
 not replace the later mode-gated runtime proof for NXT orders, SOR disabled
-behavior, provider holiday/calendar cross-checks, sellable quantity,
+behavior, real-mode provider holiday/calendar cross-checks, sellable quantity,
 cancelable-order lookup, or operation-domain behavior.

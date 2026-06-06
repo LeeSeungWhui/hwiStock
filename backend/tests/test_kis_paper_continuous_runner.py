@@ -32,10 +32,12 @@ from service.kis_paper_adapter import (  # noqa: E402
 
 
 class FakeTransport:
-    def __init__(self, *, order_status="pass", sellable_quantity="10"):
+    def __init__(self, *, order_status="pass", sellable_quantity="10", invalid_balance_once=False):
         self.calls = []
         self.order_status = order_status
         self.sellable_quantity = sellable_quantity
+        self.invalid_balance_once = invalid_balance_once
+        self.invalid_balance_returned = False
 
     def requestJson(self, method, url, *, headers=None, body=None, timeout=20):
         self.calls.append({"method": method, "url": url, "headers": dict(headers or {}), "body": dict(body or {}) if body else None})
@@ -64,6 +66,9 @@ class FakeTransport:
                 },
             }
         if "/uapi/domestic-stock/v1/trading/inquire-balance" in url:
+            if self.invalid_balance_once and not self.invalid_balance_returned:
+                self.invalid_balance_returned = True
+                return {"http_status": 500, "payload": {"rt_cd": "1", "msg_cd": "EGW00121", "msg1": "유효하지 않은 token 입니다."}}
             return {
                 "http_status": 200,
                 "payload": {
@@ -217,6 +222,37 @@ def test_token_cache_uses_request_broker_json_adapter_without_private_request(tm
     assert second_result["cache_hit"] is True
 
 
+def test_tick_invalidates_cached_token_once_when_account_step_rejects_it(tmp_path: Path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    env = _env()
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(tmp_path / "data")
+    env["HWISTOCK_KIS_TOKEN_CACHE_FILE"] = str(tmp_path / "kis-token-cache.json")
+    transport = FakeTransport(invalid_balance_once=True)
+    adapter = KisPaperAdapter(env=env, transport=transport)
+
+    cached_result, cached_token, cached_managed = loadKisPaperAccessToken(
+        adapter,
+        env=env,
+    )
+    assert cached_result["cache_hit"] is False
+    assert cached_token == "fake-token"
+    assert cached_managed is True
+
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=adapter,
+        at_kst="2026-06-05T09:30:00",
+    )
+
+    balance_steps = [step for step in payload["steps"] if step.get("step") == "balance_inquire"]
+    assert len(balance_steps) == 1
+    assert balance_steps[0]["status"] == "pass"
+    assert any(step.get("step") == "oauth_token_cache" and step.get("cache_hit") is True for step in payload["steps"])
+    assert any(step.get("step") == "oauth_token_cache_invalidate" and step.get("status") == "pass" for step in payload["steps"])
+    assert any(step.get("step") == "oauth_token" and step.get("cache_hit") is False for step in payload["steps"])
+
+
 def test_default_systemd_runner_does_not_enable_orders():
     service_path = Path(__file__).resolve().parents[2] / "ops" / "systemd" / "user" / "hwistock-kis-paper-runner.service"
     service_text = service_path.read_text(encoding="utf-8")
@@ -308,7 +344,7 @@ def test_adapter_balance_summary_preserves_zero_pnl_value():
     assert summary["positions_count"] == 0
 
 
-def test_adapter_realized_pnl_uses_documented_endpoint_and_extracts_values():
+def test_adapter_realized_pnl_skips_paper_unsupported_endpoint():
     transport = FakeTransport()
     adapter = KisPaperAdapter(env=_env(), transport=transport)
     token_result, token = adapter.issueTokenWithValue()
@@ -316,15 +352,12 @@ def test_adapter_realized_pnl_uses_documented_endpoint_and_extracts_values():
 
     result = adapter.inquireRealizedPnl(token)
 
-    assert result["status"] == "pass"
+    assert result["status"] == "skipped_provider_unsupported"
     assert result["step"] == "realized_pnl_inquire"
-    assert result["row_count"] == 1
-    assert result["dashboard_realized_pnl_summary"]["realized_pnl_krw"] == 34_000
-    assert result["dashboard_realized_pnl_summary"]["real_eval_pnl_krw"] == 34_000
-    assert result["dashboard_realized_pnl_summary"]["eval_pnl_sum_krw"] == -84_200
-    realized_call = [call for call in transport.calls if "inquire-balance-rlz-pl" in call["url"]][0]
-    assert "INQR_DVSN=00" in realized_call["url"]
-    assert realized_call["headers"]["tr_id"] == "TTTC8494R"
+    assert result["reason"] == "kis_paper_mock_tr_unsupported_by_local_reference"
+    assert result["broker_endpoint_called"] is False
+    assert result["dashboard_realized_pnl_summary"]["realized_pnl_krw"] is None
+    assert not any("inquire-balance-rlz-pl" in call["url"] for call in transport.calls)
 
 
 def test_adapter_realized_pnl_summary_preserves_zero_value():
@@ -511,14 +544,24 @@ def test_tick_with_fake_transport_processes_safe_krx_paper_intent_when_order_ena
     assert "paper-app-secret" not in rendered
     assert payload["account_truth"]["source"] == "kis_paper_read_steps"
     assert payload["account_truth"]["buyable_cash_krw"] == 1_720_000
-    assert payload["account_truth"]["sellable_status"] == "pass"
-    assert payload["account_truth"]["sellable_quantity"] == 10
-    assert payload["account_truth"]["cancelable_order_status"] == "pass"
-    assert payload["account_truth"]["cancelable_order_count"] == 1
+    assert payload["account_truth"]["sellable_status"] == "skipped_provider_unsupported"
+    assert payload["account_truth"]["sellable_quantity"] is None
+    assert payload["account_truth"]["cancelable_order_status"] == "skipped_provider_unsupported"
+    assert payload["account_truth"]["cancelable_order_count"] == 0
     assert payload["executionPreflight"]["riskOverlay"]["risk_overlay"]["account_truth_source"] == "kis_paper_read_steps"
     assert any(step.get("step") == "ws_fill_notice" and step.get("tr_id") == "H0STCNI9" for step in payload["steps"])
-    assert any(step.get("step") == "sellable_inquire_psbl_sell" and step.get("status") == "pass" for step in payload["steps"])
-    assert any(step.get("step") == "cancelable_order_inquire" and step.get("status") == "pass" for step in payload["steps"])
+    assert any(
+        step.get("step") == "sellable_inquire_psbl_sell"
+        and step.get("status") == "skipped_provider_unsupported"
+        and step.get("broker_endpoint_called") is False
+        for step in payload["steps"]
+    )
+    assert any(
+        step.get("step") == "cancelable_order_inquire"
+        and step.get("status") == "skipped_provider_unsupported"
+        and step.get("broker_endpoint_called") is False
+        for step in payload["steps"]
+    )
     assert any(step.get("step") == "cash_order" and step.get("broker_endpoint_called") is True for step in payload["steps"])
     assert any("/order-cash" in call["url"] for call in transport.calls)
 
@@ -586,8 +629,9 @@ def test_tick_blocks_sell_when_provider_sellable_quantity_is_insufficient(tmp_pa
 
     cash_order = [step for step in payload["steps"] if step.get("step") == "cash_order"][-1]
     assert cash_order["status"] == "blocked_risk_overlay"
-    assert "sellable_quantity_insufficient" in cash_order["errors"]
-    assert payload["account_truth"]["sellable_quantity"] == 0
+    assert "sellable_quantity_truth_not_pass" in cash_order["errors"]
+    assert payload["account_truth"]["sellable_status"] == "skipped_provider_unsupported"
+    assert payload["account_truth"]["sellable_quantity"] is None
     assert payload["executionPreflight"]["riskOverlay"]["risk_overlay"]["sellable_quantity"] == 0
     assert not any("/order-cash" in call["url"] for call in transport.calls)
 
@@ -844,9 +888,9 @@ def test_tick_prioritizes_exit_sell_intent_before_entry_fifo(tmp_path, monkeypat
     )
     assert payload["intent_source"] == "next_intent_queue_exit_priority_fifo"
     assert payload["executionPreflight"]["idempotency_key"] == "intent-sell-exit"
-    state = json.loads((data_root / "state" / "kis-paper-runner-state.json").read_text(encoding="utf-8"))
-    assert "intent-sell-exit" in state["consumed_intent_keys"]
-    assert "intent-buy-first" not in state["consumed_intent_keys"]
+    assert "sellable_quantity_truth_not_pass" in payload["executionPreflight"]["errors"]
+    assert not (data_root / "state" / "kis-paper-runner-state.json").exists()
+    assert not any("/order-cash" in call["url"] for call in transport.calls)
 
 
 def test_tick_does_not_mark_intent_consumed_when_broker_warns(tmp_path, monkeypatch):

@@ -16,14 +16,18 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 try:
-    from lib.kis_paper_token_cache import loadKisPaperAccessToken, tokenCacheRevokeSkippedStep
+    from lib.kis_paper_token_cache import (
+        invalidateKisPaperAccessToken,
+        loadKisPaperAccessToken,
+        tokenCacheRevokeSkippedStep,
+    )
     from lib import paper_trading_ledger as ledger
     from service import HwiStockRunnerService as base_runner
     from service.kis_paper_adapter import (
@@ -34,7 +38,11 @@ try:
         loadKisPaperCapabilityFlags,
     )
 except ImportError:  # pragma: no cover
-    from backend.lib.kis_paper_token_cache import loadKisPaperAccessToken, tokenCacheRevokeSkippedStep
+    from backend.lib.kis_paper_token_cache import (
+        invalidateKisPaperAccessToken,
+        loadKisPaperAccessToken,
+        tokenCacheRevokeSkippedStep,
+    )
     from backend.lib import paper_trading_ledger as ledger
     from backend.service import HwiStockRunnerService as base_runner
     from backend.service.kis_paper_adapter import (
@@ -458,7 +466,7 @@ def _account_truth_from_steps(steps: Sequence[Mapping[str, Any]], *, produced_at
             holiday_status = step.get("status")
     buyable_cash = _int_or_none(buyable_summary.get("buyable_cash_krw"))
     cash_balance = _int_or_none(balance_summary.get("cash_balance_krw"))
-    sellable_quantity = _int_or_none(sellable_summary.get("sellable_quantity")) or 0
+    sellable_quantity = _int_or_none(sellable_summary.get("sellable_quantity"))
     positions_count = _int_or_none(balance_summary.get("positions_count")) or 0
     available_cash = buyable_cash if buyable_cash is not None else cash_balance
     return {
@@ -482,6 +490,37 @@ def _account_truth_from_steps(steps: Sequence[Mapping[str, Any]], *, produced_at
         "credential_values_printed": False,
         "raw_response_stored": False,
     }
+
+
+def _isInvalidTokenStep(step: Mapping[str, Any]) -> bool:
+    return str(step.get("msg_cd") or "").strip() == "EGW00121"
+
+
+def _runAccountStepWithTokenRefresh(
+    *,
+    adapter: KisPaperAdapter,
+    source: Mapping[str, str],
+    now: datetime,
+    result: Dict[str, Any],
+    token: str,
+    tokenCacheManaged: bool,
+    tokenResult: Mapping[str, Any],
+    call: Callable[[str], Dict[str, Any]],
+) -> tuple[Dict[str, Any], str, bool, Mapping[str, Any]]:
+    step = call(token)
+    if not (_isInvalidTokenStep(step) and tokenCacheManaged and tokenResult.get("cache_hit")):
+        return step, token, tokenCacheManaged, tokenResult
+    result["steps"].append(
+        invalidateKisPaperAccessToken(
+            source,
+            reason=f"{step.get('step') or 'account_step'}_invalid_cached_token",
+        )
+    )
+    refreshedResult, refreshedToken, refreshedManaged = loadKisPaperAccessToken(adapter, env=source, now=now)
+    result["steps"].append(refreshedResult)
+    if not refreshedResult.get("token_present") or not refreshedToken:
+        return step, token, tokenCacheManaged, tokenResult
+    return call(refreshedToken), refreshedToken, refreshedManaged, refreshedResult
 
 
 def runContinuousPaperTick(
@@ -576,15 +615,45 @@ def runContinuousPaperTick(
     ).strip() or "005930"
     result["steps"].append(adapter.inquirePrice(token, sample_symbol))
     _sleepForKisCallGap(config)
-    result["steps"].append(adapter.inquireBalance(token))
+    balanceStep, token, token_cache_managed, token_result = _runAccountStepWithTokenRefresh(
+        adapter=adapter,
+        source=source,
+        now=now,
+        result=result,
+        token=token,
+        tokenCacheManaged=token_cache_managed,
+        tokenResult=token_result,
+        call=adapter.inquireBalance,
+    )
+    result["steps"].append(balanceStep)
     _sleepForKisCallGap(config)
-    result["steps"].append(adapter.inquireBuyable(token, sample_symbol))
+    buyableStep, token, token_cache_managed, token_result = _runAccountStepWithTokenRefresh(
+        adapter=adapter,
+        source=source,
+        now=now,
+        result=result,
+        token=token,
+        tokenCacheManaged=token_cache_managed,
+        tokenResult=token_result,
+        call=lambda value: adapter.inquireBuyable(value, sample_symbol),
+    )
+    result["steps"].append(buyableStep)
     _sleepForKisCallGap(config)
     result["steps"].append(adapter.inquireSellable(token, sample_symbol))
     _sleepForKisCallGap(config)
     result["steps"].append(adapter.inquireRealizedPnl(token))
     _sleepForKisCallGap(config)
-    result["steps"].append(adapter.dailyOrderFillLookup(token, date_yyyymmdd=now.strftime("%Y%m%d")))
+    dailyStep, token, token_cache_managed, token_result = _runAccountStepWithTokenRefresh(
+        adapter=adapter,
+        source=source,
+        now=now,
+        result=result,
+        token=token,
+        tokenCacheManaged=token_cache_managed,
+        tokenResult=token_result,
+        call=lambda value: adapter.dailyOrderFillLookup(value, date_yyyymmdd=now.strftime("%Y%m%d")),
+    )
+    result["steps"].append(dailyStep)
     _sleepForKisCallGap(config)
     result["steps"].append(adapter.inquireCancelableOrders(token))
     _sleepForKisCallGap(config)

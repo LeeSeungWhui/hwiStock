@@ -65,6 +65,40 @@ def tokenCacheRevokeSkippedStep() -> Dict[str, Any]:
     }
 
 
+def invalidateKisPaperAccessToken(
+    env: Optional[Mapping[str, str]] = None,
+    *,
+    reason: str = "invalid_token_response",
+) -> Dict[str, Any]:
+    source = env if env is not None else os.environ
+    cache_path = _cachePath(source)
+    existed = cache_path.is_file()
+    try:
+        cache_path.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        return {
+            "step": "oauth_token_cache_invalidate",
+            "status": "warn",
+            "reason": reason,
+            "cache_path": str(cache_path),
+            "cache_existed": existed,
+            "error_class": exc.__class__.__name__,
+            "credential_values_printed": False,
+            "raw_response_stored": False,
+        }
+    return {
+        "step": "oauth_token_cache_invalidate",
+        "status": "pass",
+        "reason": reason,
+        "cache_path": str(cache_path),
+        "cache_existed": existed,
+        "credential_values_printed": False,
+        "raw_response_stored": False,
+    }
+
+
 def isCacheableKisPaperAdapter(adapter: Any, env: Mapping[str, str]) -> bool:
     request_method = getattr(adapter, "requestBrokerJson", None)
     if not callable(request_method):

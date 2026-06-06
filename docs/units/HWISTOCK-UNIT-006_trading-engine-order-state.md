@@ -211,10 +211,10 @@ The first KIS broker adapter must expose:
 - `supports_paper_nxt_realtime=false`
 - `supports_paper_integrated_realtime=true`
 - `supports_paper_cancel_order=true`
-- `supports_paper_cancelable_query=true`
-- `supports_paper_sellable_quantity_query=true`
-- `supports_paper_realized_pnl_query=true`
-- `supports_paper_holiday_query=true`
+- `supports_paper_cancelable_query=false`
+- `supports_paper_sellable_quantity_query=false`
+- `supports_paper_realized_pnl_query=false`
+- `supports_paper_holiday_query=false`
 - `supports_real_krx_order=true`
 - `supports_real_nxt_order=true`
 - `supports_real_sor_order=false`

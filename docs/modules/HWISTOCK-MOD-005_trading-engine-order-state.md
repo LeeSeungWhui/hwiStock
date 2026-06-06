@@ -146,10 +146,10 @@ The adapter capability must expose at least:
 - `supports_paper_nxt_realtime=false`
 - `supports_paper_integrated_realtime=true`
 - `supports_paper_cancel_order=true`
-- `supports_paper_cancelable_query=true`
-- `supports_paper_sellable_quantity_query=true`
-- `supports_paper_realized_pnl_query=true`
-- `supports_paper_holiday_query=true`
+- `supports_paper_cancelable_query=false`
+- `supports_paper_sellable_quantity_query=false`
+- `supports_paper_realized_pnl_query=false`
+- `supports_paper_holiday_query=false`
 - `supports_real_krx_order=true`
 - `supports_real_nxt_order=true`
 - `supports_real_sor_order=false`
@@ -159,10 +159,12 @@ The adapter capability must expose at least:
 
 KIS broker order/fill reconciliation uses the supported KRX adapter APIs listed in
 `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md`: cash order,
-modify/cancel order, daily order/fill lookup, balance, buyable amount, sellable
-quantity, cancelable-order lookup, holiday lookup, KRX/integrated/NXT
-mode-gated realtime market data, order book, and realtime fill notice. SOR
-remains a disabled branch until a future contract enables it.
+modify/cancel order, daily order/fill lookup, balance, buyable amount,
+KRX/integrated/NXT mode-gated realtime market data, order book, and realtime
+fill notice. Paper/mock explicitly skips provider-unsupported sellable quantity,
+cancelable-order lookup, realized PnL, and holiday lookup instead of calling
+real-investment TR IDs. SOR remains a disabled branch until a future contract
+enables it.
 
 ## 3. Interfaces
 

@@ -86,10 +86,12 @@ and account conditions are present. Unapproved adapter operation remains forbidd
   order/fill inquiry before retry after timeout, crash, or ambiguous result.
 - Place broker cash orders only through the configured KIS adapter domain for the
   active investment mode.
-- Support cancel/modify only after provider cancelable-order truth and local
-  pending-order state agree; fail closed on ambiguity.
-- Run daily order/fill lookup, balance, buyable, sellable, cancelable-order, and
-  holiday/provider-calendar cross-check reconciliation.
+- Support cancel/modify only after provider cancelable-order truth is available
+  in the active mode and local pending-order state agrees; paper/mock skips the
+  provider-unsupported cancelable query and fails closed on ambiguity.
+- Run daily order/fill lookup, balance, and buyable reconciliation in paper/mock;
+  sellable, cancelable-order, realized-PnL, and holiday/provider-calendar
+  cross-checks remain skipped until a supported mode is proven.
 - Store masked broker order ids/account aliases only when safe.
 - Calculate system cash/position/exposure/PnL from actual broker events, not fake
   broker data.

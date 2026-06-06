@@ -98,10 +98,12 @@ The operational trading program is one coordinated system with these branches:
      - volume power (`ranking/volume-power`);
      - program-trading aggregate status where the KIS broker adapter capability matrix
        proves the endpoint/support contract.
-   - Adapter fill notice (`H0STCNI9`), balances, buyable cash, sellable
-     quantity, cancelable-order truth, holiday/provider-calendar cross-checks,
-     and order/fill reconciliation belong to `broker_execution` / UNIT-014, not
-     UNIT-013 signal generation.
+   - Adapter fill notice (`H0STCNI9`), balances, buyable cash, supported
+     sellable/cancelable truth, provider-calendar cross-checks, and order/fill
+     reconciliation belong to `broker_execution` / UNIT-014, not UNIT-013
+     signal generation. In paper/mock, local references mark sellable,
+     cancelable, realized-PnL, and holiday TRs as unsupported, so the runtime
+     skips them and fails closed where the missing truth matters.
    - NXT broker-facing market-data collection is disabled in paper/mock mode and
      enabled only in real investment mode; SOR remains disabled unless a later
      support-confirmation gate adds it.
