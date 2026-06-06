@@ -7,7 +7,12 @@ docs_base: docs
 profile_id: PROFILE-HWISTOCK
 created_at: 2026-06-04
 updated_at: 2026-06-04
-current_authority: true
+current_authority: false
+historical_authority: true
+superseded_by:
+  - docs/set/READY-SET-COMPLETION-20260605_operational-automated-trading-program_hwistock.md
+  - docs/set/READY-SET-ROW-CLOSURE-20260605_operational-automated-trading-program_hwistock.md
+  - docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-automated-trading-program_hwistock.md
 owner_decision_ref: docs/set/READY-SET-OWNER-DECISION-20260604_rebaseline_hwistock.md
 completion_report_ref: docs/set/READY-SET-COMPLETION-20260604_rebaseline_hwistock.md
 row_closure_matrix_ref: docs/set/READY-SET-ROW-CLOSURE-20260604_rebaseline_hwistock.md
@@ -26,9 +31,16 @@ selected_queue_scope: full_queue_skeleton_adapter_safe
 
 # Ready-Set Go Preflight Checklist — Rebaseline 2026-06-04
 
-> **Scope notice**: This checklist is current authority after the 2026-06-04
-> MyWebTemplate code import rebaseline. It replaces the superseded checklist
-> `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260602_hwistock.md`.
+> **Historical authority notice**: this checklist remains useful as the
+> MyWebTemplate-import preflight history record, but it is not current
+> operational authority. Use the 2026-06-05 operational automated-trading
+> Ready-Set, row-closure matrix, and Go preflight listed in `superseded_by` for
+> current operational claims.
+
+> **Scope notice**: This checklist was issued for the 2026-06-04 MyWebTemplate
+> code import rebaseline. It replaced the superseded checklist
+> `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260602_hwistock.md` for that
+> historical scope.
 
 ## 1. Purpose
 

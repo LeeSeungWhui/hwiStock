@@ -96,6 +96,30 @@ The orchestrator, not the models, moves data between these systems. AI outputs
 create analysis and trade-document artifacts only; deterministic
 strategy/risk/order state machines own executable broker-order decisions.
 
+## CURRENT-READINESS — 2026-06-06 KST
+
+| Gate | Status | Meaning | Canonical evidence |
+| --- | --- | --- | --- |
+| Documentation authority | 🟢 CURRENT | The current operational authority is the 2026-06-05 operational automated-trading Ready-Set. The 2026-06-04 rebaseline files are historical and must not be cited as current operational authority. | `docs/set/READY-SET-COMPLETION-20260605_operational-automated-trading-program_hwistock.md`; `docs/set/READY-SET-ROW-CLOSURE-20260605_operational-automated-trading-program_hwistock.md`; `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-automated-trading-program_hwistock.md` |
+| Service observability | 🟡 OBSERVABLE | API, frontend, timers, and runtime artifacts may be active on loopback/systemd, but service activity is not automated-trading readiness. | `docs/evidence/RUN-20260605_unit-011-runtime-start-go.md`; `docs/evidence/RUN-20260606_monday-operation-p0-safety-gates-go-check.md` |
+| Data/AI artifact pipeline | 🟡 PARTIAL | Local Go-Check evidence exists for Pro/Flash artifacts, source grounding, KIS mode-aware market data, and fail-closed behavior; provider/network observation still needs scoped evidence. | `docs/evidence/RUN-20260605_operational-go-check-units-012-015.md`; `docs/evidence/RUN-20260606_monday-operation-p0-safety-gates-go-check.md` |
+| KIS paper/mock account truth | 🟡 PARTIAL | Supported KIS paper/mock read steps pass in the latest sanitized smoke; provider-unsupported helper TRs are skipped as `skipped_provider_unsupported` and unknown sellable truth is not converted to zero. | `docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md`; `docs/sources/HWISTOCK-KIS-API-CAPABILITY-MATRIX.md` |
+| Order submission readiness | ❌ FALSE | Account-affecting order submission is not a current readiness claim. It still requires explicit unit scope, market/session preflight, account truth, adapter guard, idempotency/reconciliation evidence, and operator approval. | `docs/units/HWISTOCK-UNIT-014_kis-broker-order-execution-reconciliation.md`; `docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md` |
+| Observation acceptance | ❌ FALSE | No operator-selected market-hours observation window has been accepted as final operational proof. | `docs/units/HWISTOCK-UNIT-015_operator-console-observation-prove.md`; `docs/sources/HWISTOCK-MARKET-CALENDAR-ALERT-OPERATION-GATE.md` |
+
+Terminology for the current docs:
+
+- `operational-automated-trading-program` is the canonical current program
+  wording. It means file-driven automation and deterministic order-state
+  control; it does not imply order-submit readiness.
+- `broker-adapter` is the order submission/reconciliation abstraction.
+- `KIS paper/mock` is the currently configured KIS investment environment.
+  Paper/mock enables KRX plus integrated market-data/account-truth helpers, but
+  it does not make unsupported KIS helper TRs available.
+- `real investment mode` is a later mode-gated branch for KRX/NXT where KIS
+  capability flags and separate proof allow it. SOR remains disabled unless a
+  future contract proves it.
+
 ## Current Rebaseline Status
 
 Current 2026-06-05 operational automated-trading authority:
@@ -147,6 +171,8 @@ Current 2026-06-05 operational automated-trading authority:
   `docs/evidence/RUN-20260606_monday-operation-p0-safety-gates-go-check.md`
 - KIS mode-gated account-truth Go-Check evidence:
   `docs/evidence/RUN-20260606_kis-mode-gated-account-truth-go-check.md`
+- KIS paper token-cache and mock-unsupported TR hotfix evidence:
+  `docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md`
 - Monday operation local calendar cache:
   `config/market-calendar/krx-nxt-trading-days.json`
 
@@ -166,10 +192,13 @@ Current truth after the Pro critique:
 
 The runtime can be observed through local services, timers, artifacts, the
 dashboard, and the operator snapshot API. That is not the same as a validated
-automated-trading observation run. The current operator snapshot still reports
+automated-trading observation run. Earlier post-Pro operator snapshots reported
 `brokerNetworkEnabled: false`, `brokerOrdersSubmitted: false`,
-`operationObservationAccepted: false`, `operationalReadiness: false`, and
-`orderGate: blocked_calendar_unconfigured`.
+`operationObservationAccepted: false`, `operationalReadiness: false`, and a
+blocked `orderGate`. The 2026-06-06 Monday P0 safety gate now separately records
+implemented order-gate behavior: date-specific KST calendar rows are required,
+Saturday/non-trading days are blocked as `blocked_calendar_non_trading_day`, and
+KRX order submission additionally requires `krxOrderSessionOpen=true`.
 
 Corrective reinforcements now attached to the existing queue:
 
@@ -890,6 +919,12 @@ timer installation, while operational readiness remains false.
   calendar rows, KRX order-session requirement, KIS read-step account truth,
   exit-before-entry queue priority, live/effective user-systemd policy, runtime
   artifact freshness, focused tests, rule-gate, and no-order runner smoke.
+- `docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md`:
+  current KIS paper/mock hotfix evidence for token-cache recognition, invalid
+  token retry, provider-unsupported sellable/cancelable/realized-PnL/holiday TR
+  skipping as `skipped_provider_unsupported`, unknown sellable truth preservation,
+  90 backend tests plus 11 subtests, rule-gate pass, and sanitized runtime smoke.
+  This evidence does not claim order-submit readiness.
 - `docs/evidence/RUN-20260605_unit-007-go-preflight-rebaseline.md`: current
   UNIT-007 rebaseline Go preflight evidence for read-only dashboard operator
   console doc-sync closure.

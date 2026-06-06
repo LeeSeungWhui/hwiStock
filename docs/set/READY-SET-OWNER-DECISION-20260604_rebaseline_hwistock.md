@@ -7,7 +7,13 @@ docs_base: docs
 profile_id: PROFILE-HWISTOCK
 created_at: 2026-06-04
 updated_at: 2026-06-04
-current_authority: true
+current_authority: false
+historical_authority: true
+decision_still_binding_for_imported_code: true
+superseded_by:
+  - docs/set/READY-SET-COMPLETION-20260605_operational-automated-trading-program_hwistock.md
+  - docs/set/READY-SET-ROW-CLOSURE-20260605_operational-automated-trading-program_hwistock.md
+  - docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-automated-trading-program_hwistock.md
 decision_owner: hwi
 decision_scope: mywebtemplate_import_rebaseline
 supersedes_decision_refs:
@@ -20,6 +26,12 @@ prior_go_preflight_ref: docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260602_hwist
 ---
 
 # Ready-Set Owner Decision — MyWebTemplate Code Import Rebaseline
+
+> **Historical authority notice**: this owner decision remains binding for
+> imported MyWebTemplate code quarantine/replacement work, but it is not current
+> operational Ready-Set authority. Current operational claims must use the
+> 2026-06-05 operational automated-trading Ready-Set, row-closure matrix, and Go
+> preflight listed in `superseded_by`.
 
 ## 1. Decision Summary
 

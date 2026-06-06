@@ -7,7 +7,7 @@ project_root: /data/workspace/My/hwiStock
 docs_base: docs
 status: active
 owner: hwi
-updated_at: 2026-06-05
+updated_at: 2026-06-06
 vcs_adapter: git
 frameworks:
   - python
@@ -120,6 +120,15 @@ readiness now requires the 2026-06-05 operational queue
 DeepSeek Pro/Flash runtime analysis, source-grounded trade-document to order
 intent generation, KIS KRX broker order execution/reconciliation, and read-only
 operator observation Prove.
+
+Latest KIS paper/mock runtime correction: as of
+`docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md`,
+the KIS paper/mock runner must use the token cache on the current adapter
+transport shape, retry once after invalid token evidence, skip provider-unsupported
+sellable/cancelable/realized-PnL/holiday helper TRs as
+`skipped_provider_unsupported`, and preserve unsupported sellable truth as
+unknown instead of converting it to zero. This hotfix is evidence for safer
+runtime/account-truth handling, not order-submit readiness.
 
 Current owner-defined runtime architecture is file-driven:
 
@@ -294,6 +303,8 @@ an unscoped architecture summary or whole-project prompt.
   `docs/set/READY-SET-ROW-CLOSURE-20260605_operational-automated-trading-program_hwistock.md`
 - Current operational Go preflight:
   `docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-automated-trading-program_hwistock.md`
+- Current KIS paper/mock runtime hotfix evidence:
+  `docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md`
 - Current operational implementation units:
   - `docs/units/HWISTOCK-UNIT-011_operational-runtime-supervisor.md`
   - `docs/units/HWISTOCK-UNIT-012_ai-analysis-runtime.md`

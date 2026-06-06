@@ -41,6 +41,7 @@ evidence_refs:
   - docs/evidence/RUN-20260605_gpt-pro-operational-ready-set-review.md
   - docs/evidence/RUN-20260605_operational-go-check-units-012-015.md
   - docs/evidence/RUN-20260606_kis-mode-gated-account-truth-go-check.md
+  - docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md
 ---
 
 # KIS Broker Order Execution And Reconciliation
@@ -49,6 +50,12 @@ evidence_refs:
 > side-effect boundary. It cannot run broker order smoke until explicit owner
 > approval, KRX regular-session preflight, adapter-only guard, and reconciliation
 > evidence scope are all current.
+>
+> KIS paper/mock hotfix note (2026-06-06): paper/mock cannot rely on provider
+> sellable/cancelable/realized-PnL/holiday helper TRs that local references mark
+> unsupported. Runtime must skip those helper TRs as
+> `skipped_provider_unsupported`, keep unsupported sellable truth as unknown, and
+> fail closed where supported provider truth is required.
 
 ## 1. Goal
 

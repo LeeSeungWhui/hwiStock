@@ -6,7 +6,12 @@ project_root: /data/workspace/My/hwiStock
 docs_base: docs
 profile_id: PROFILE-HWISTOCK
 updated_at: 2026-06-05
-current_authority: true
+current_authority: false
+historical_authority: true
+superseded_by:
+  - docs/set/READY-SET-COMPLETION-20260605_operational-automated-trading-program_hwistock.md
+  - docs/set/READY-SET-ROW-CLOSURE-20260605_operational-automated-trading-program_hwistock.md
+  - docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-automated-trading-program_hwistock.md
 implementation_ready: true
 implementation_ready_scope: skeleton_adapter_safe_rebaseline_queue_with_dashboard_ai_conversation_correction
 owner_decision_ref: docs/set/READY-SET-OWNER-DECISION-20260604_rebaseline_hwistock.md
@@ -30,10 +35,16 @@ selected_queue_scope: full_queue_skeleton_adapter_safe
 
 # Ready-Set Row Closure Matrix — Rebaseline 2026-06-04
 
-> **Scope notice**: This matrix is current authority after the 2026-06-04
-> MyWebTemplate code import rebaseline. Every row's allowed first Go scope
-> explicitly includes MyWebTemplate sample/public quarantine and local-only
-> bind/access enforcement as a **first-row requirement**, not optional cleanup.
+> **Historical authority notice**: this matrix remains useful as the
+> MyWebTemplate-import row history record, but it is not current operational
+> authority. Use the 2026-06-05 operational automated-trading Ready-Set,
+> row-closure matrix, and Go preflight listed in `superseded_by` for current
+> operational claims.
+
+> **Scope notice**: This matrix was issued for the 2026-06-04 MyWebTemplate code
+> import rebaseline. Every row's allowed first Go scope explicitly included
+> MyWebTemplate sample/public quarantine and local-only bind/access enforcement as
+> a **first-row requirement**, not optional cleanup.
 
 ## 1. Queue Rows
 

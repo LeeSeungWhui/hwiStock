@@ -14,7 +14,7 @@ operational_readiness: false
 priority: P0
 source_of_truth: user_intent
 owner: hwi
-updated_at: 2026-06-05
+updated_at: 2026-06-06
 profile_refs:
   - PROFILE-HWISTOCK
 module_refs:
@@ -38,6 +38,8 @@ evidence_refs:
   - docs/evidence/RUN-20260605_gpt-pro-operational-ready-set-review.md
   - docs/evidence/RUN-20260605_unit-016-runtime-contract-hardening-set.md
   - docs/evidence/RUN-20260605_post-pro-corrective-go-check-unit-011-015.md
+  - docs/evidence/RUN-20260606_monday-operation-p0-safety-gates-go-check.md
+  - docs/evidence/RUN-20260606_kis-paper-token-cache-and-mock-unsupported-tr-hotfix.md
 contract_refs:
   - docs/contracts/HWISTOCK-RUNTIME-DATA-EXECUTION-CONTRACTS.md
   - docs/contracts/hwistock-runtime-contracts.schema.json
@@ -49,6 +51,11 @@ contract_refs:
 > target, and the existing operational Ready-Set remains current authority.
 > Service/timer visibility, local tests, and dashboard rendering are not enough
 > to claim operation readiness.
+>
+> KIS paper/mock hotfix note (2026-06-06): latest runtime evidence preserves
+> provider-unsupported account-helper truth as unknown and skips unsupported KIS
+> helper TRs instead of calling real-investment TR ids. This strengthens runtime
+> safety but does not make the order-submit path ready.
 
 ## 1. Purpose
 
@@ -159,9 +166,11 @@ The operational trading program is one coordinated system with these branches:
      state, operation observation-window metadata, and read-only KIS broker adapter status.
    - Provides no direct buy/sell controls.
 
-## 3. Current Runtime Gap Inventory
+## 3. Runtime Gap Inventory Snapshot
 
-Observed on 2026-06-05:
+Observed on 2026-06-05. This snapshot is retained as the Go-Check gap baseline;
+later evidence may narrow individual gaps without making the whole program
+operation-ready.
 
 - The user systemd runtime bundle is active for API, frontend, market
   intelligence collection, DeepSeek Pro analysis, runner evidence, KIS broker adapter
@@ -171,8 +180,12 @@ Observed on 2026-06-05:
   coverage must still be proven per source.
 - The currently running KIS broker adapter runner can perform read/reconciliation ticks,
   but broker cash order submission is disabled unless explicitly enabled.
-- The current base runner reports `blocked_calendar_unconfigured`, which would
-  block order flow until calendar/session evidence is configured.
+- The 2026-06-05 base runner reported `blocked_calendar_unconfigured`, which
+  blocked order flow until calendar/session evidence was configured. The
+  2026-06-06 Monday P0 safety gate later hardened this behavior: date-specific
+  KST calendar rows are required, Saturday/non-trading days block as
+  `blocked_calendar_non_trading_day`, and KRX order submission additionally
+  requires `krxOrderSessionOpen=true`.
 - DeepSeek Pro hourly analysis exists, but the target Pro artifact must be
   upgraded to include KIS market-data snapshots and market-regime/session
   analysis during market hours.

@@ -6,7 +6,12 @@ project_root: /data/workspace/My/hwiStock
 docs_base: docs
 profile_id: PROFILE-HWISTOCK
 updated_at: 2026-06-05
-current_authority: true
+current_authority: false
+historical_authority: true
+superseded_by:
+  - docs/set/READY-SET-COMPLETION-20260605_operational-automated-trading-program_hwistock.md
+  - docs/set/READY-SET-ROW-CLOSURE-20260605_operational-automated-trading-program_hwistock.md
+  - docs/set/READY-SET-GO-PREFLIGHT-CHECKLIST-20260605_operational-automated-trading-program_hwistock.md
 implementation_ready: true
 implementation_ready_scope: skeleton_adapter_safe_rebaseline_queue_with_dashboard_ai_conversation_correction
 operational_trading_readiness: false
@@ -36,6 +41,12 @@ selected_queue_scope: full_queue_skeleton_adapter_safe
 ---
 
 # Ready-Set Completion Gate — Rebaseline 2026-06-04
+
+> **Historical authority notice**: this rebaseline remains useful as the
+> MyWebTemplate-import history record, but it is not current operational
+> authority. Use the 2026-06-05 operational automated-trading Ready-Set,
+> row-closure matrix, and Go preflight listed in `superseded_by` for current
+> operational claims.
 
 > **Scope notice**: `implementation_ready: true` in this report applies **only**
 > to a `skeleton_sandbox_safe_rebaseline_queue`. This is **not** operational
