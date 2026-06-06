@@ -372,6 +372,10 @@ def test_systemd_api_service_template():
     assert "/data/workspace/My/hwiStock" in text
     assert "EnvironmentFile=/home/hwi/.config/hwistock/hwistock.env" in text
     assert "127.0.0.1" in text
+    assert "Environment=HWISTOCK_KIS_INVESTMENT_MODE=paper" in text
+    assert "Environment=HWISTOCK_MARKET_DATA_SOURCE=kis_market_mode_aware" in text
+    assert "Environment=HWISTOCK_ALLOW_WEEKDAY_CALENDAR_FALLBACK=false" in text
+    assert "config/market-calendar/krx-nxt-trading-days.json" in text
     assert "--reload" not in text
     assert "reload=True" not in text
 
