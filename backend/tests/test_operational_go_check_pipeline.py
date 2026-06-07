@@ -438,6 +438,17 @@ def test_unit015_operator_snapshot_is_read_only_and_exposes_local_account_summar
     assert snapshot["summary"]["cashBalance"] == "잔고 조회 비활성"
     assert snapshot["summary"]["reserveBalance"] == 500_000
     assert snapshot["summary"]["realizedPnl"] == "실현손익 조회 비활성"
+    assert snapshot["summary"]["accountRefreshStatus"] == "skipped_disabled_by_env"
+    assert snapshot["summary"]["accountRefreshAttempted"] is False
+    assert snapshot["summary"]["accountRefreshAllowedBySession"] is True
+    assert snapshot["summary"]["dashboardAccountSummaryOnly"] is True
+    assert snapshot["summary"]["usableForOrderPreflight"] is False
+    assert snapshot["summary"]["dashboardAccountSummaryReusedForOrder"] is False
+    assert snapshot["summary"]["orderPreflightTruthSource"] == "trading_account_truth"
+    assert snapshot["summary"]["accountAsOfKst"] == "2026-06-05T09:40:00+09:00"
+    assert snapshot["summary"]["dashboardSnapshotAtKst"] == "2026-06-05T09:40:00+09:00"
+    assert snapshot["runtime"]["dashboardAccountSummary"]["accountRefreshStatus"] == "skipped_disabled_by_env"
+    assert snapshot["runtime"]["dashboardAccountSummary"]["usableForOrderPreflight"] is False
     assert snapshot["readinessTruth"]["headline"] == "PAPER_EXPERIMENT_BLOCKED"
     assert snapshot["readinessTruth"]["serviceVisibilityIsNotReadiness"] is True
     assert snapshot["readinessTruth"]["paperNetworkEnabled"] is True
