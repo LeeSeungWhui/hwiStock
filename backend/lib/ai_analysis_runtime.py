@@ -14,7 +14,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
@@ -69,10 +69,20 @@ def _read_recent_events(data_root: Path, *, limit: Optional[int] = None, at: Opt
                 "event_type": str(row.get("event_type") or ""),
                 "title": str(row.get("title") or "")[:160],
                 "published_at_kst": str(row.get("published_at_kst") or ""),
+                "collected_at_kst": str(row.get("collected_at_kst") or ""),
                 "query": str(row.get("query") or ""),
             }
         )
     return rows[-row_limit:]
+
+
+def _iter_dates(start: date, end: date) -> List[date]:
+    days: List[date] = []
+    current = start
+    while current <= end:
+        days.append(current)
+        current = current + timedelta(days=1)
+    return days
 
 
 def _parse_optional_kst(value: Any) -> Optional[datetime]:
@@ -88,19 +98,38 @@ def _parse_optional_kst(value: Any) -> Optional[datetime]:
     return parsed.astimezone(KST)
 
 
+def _read_events_for_window(
+    data_root: Path,
+    *,
+    start: datetime,
+    end: datetime,
+    limit: int = 200,
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for day in _iter_dates(start.date(), end.date()):
+        rows.extend(_read_recent_events(data_root, limit=limit, at=datetime.combine(day, datetime.min.time(), tzinfo=KST)))
+    filtered: List[Dict[str, Any]] = []
+    for row in rows:
+        event_time = _parse_optional_kst(row.get("published_at_kst")) or _parse_optional_kst(row.get("collected_at_kst"))
+        if event_time is None or start <= event_time < end:
+            filtered.append(row)
+    return filtered[-limit:]
+
+
 def _read_events_for_hour_window(data_root: Path, *, at: datetime, limit: int = 200) -> tuple[List[Dict[str, Any]], Dict[str, str]]:
     window = rp.proHourlyInputWindow(at)
     start = _parse_optional_kst(window["start_kst"])
     end = _parse_optional_kst(window["end_kst"])
-    rows = _read_recent_events(data_root, limit=limit, at=at)
     if not start or not end:
-        return rows, window
-    filtered = []
-    for row in rows:
-        published = _parse_optional_kst(row.get("published_at_kst"))
-        if published is None or start <= published < end:
-            filtered.append(row)
-    return filtered, window
+        return _read_recent_events(data_root, limit=limit, at=at), window
+    return _read_events_for_window(data_root, start=start, end=end, limit=limit), window
+
+
+def _read_events_for_flash_window(data_root: Path, *, at: datetime, limit: int = 200) -> tuple[List[Dict[str, Any]], Dict[str, str]]:
+    start = at - timedelta(minutes=10)
+    end = at
+    window = {"start_kst": start.isoformat(), "end_kst": end.isoformat()}
+    return _read_events_for_window(data_root, start=start, end=end, limit=limit), window
 
 
 def _read_json_artifact(path: Path) -> Optional[Dict[str, Any]]:
@@ -136,6 +165,41 @@ def _read_recent_kis_snapshots(data_root: Path, *, at: datetime, limit: int = 6)
     return rows
 
 
+def _artifact_timestamp(payload: Mapping[str, Any]) -> Optional[datetime]:
+    for key in (
+        "produced_at_kst",
+        "timestamp_kst",
+        "collected_at_kst",
+        "snapshot_at_kst",
+        "created_at_kst",
+    ):
+        parsed = _parse_optional_kst(payload.get(key))
+        if parsed:
+            return parsed
+    return None
+
+
+def _read_kis_snapshots_for_window(data_root: Path, *, at: datetime, limit: int = 12) -> List[Dict[str, Any]]:
+    start = at - timedelta(minutes=10)
+    end = at
+    paths: List[Path] = []
+    for day in _iter_dates(start.date(), end.date()):
+        day_text = day.isoformat()
+        for subdir in ("kis-market", "market", "runtime"):
+            directory = data_root / subdir / day_text
+            if directory.is_dir():
+                paths.extend(p for p in directory.glob("*.json") if p.is_file() and not p.name.startswith("."))
+    rows: List[Dict[str, Any]] = []
+    for path in sorted(paths):
+        payload = _read_json_artifact(path)
+        if not payload:
+            continue
+        timestamp = _artifact_timestamp(payload)
+        if timestamp is None or start <= timestamp < end:
+            rows.append(payload)
+    return rows[-limit:]
+
+
 def _read_compiled_watch(data_root: Path, *, at: datetime) -> List[Dict[str, Any]]:
     path = _latest_json_file(data_root, "compiled-watch", at.date().isoformat())
     payload = _read_json_artifact(path) if path else None
@@ -161,6 +225,142 @@ def _read_morning_watchlist(data_root: Path, *, at: datetime) -> Optional[Dict[s
         if isinstance(payload, Mapping):
             return dict(payload)
     return None
+
+
+def _morning_artifact_id(target_trade_date: str, now: datetime, suffix: str) -> str:
+    return f"art_morning_watchlist_{target_trade_date.replace('-', '')}_{now.strftime('%H%M%S')}_{suffix}"
+
+
+def _write_morning_watchlist_latest(
+    payload: Mapping[str, Any],
+    *,
+    data_root: Path,
+    target_trade_date: str,
+    at: datetime,
+) -> Dict[str, str]:
+    text = json.dumps(dict(payload), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    stamp = at.strftime("%H%M%S")
+    paths: Dict[str, str] = {}
+    for family in ("morning-watchlist", "ai"):
+        output_dir = data_root / family / target_trade_date
+        output_dir.mkdir(parents=True, exist_ok=True)
+        latest_path = output_dir / "morning-watchlist-latest.json"
+        stamped_path = output_dir / f"morning-watchlist-{stamp}.json"
+        tmp_path = latest_path.with_suffix(".tmp")
+        tmp_path.write_text(text, encoding="utf-8")
+        tmp_path.replace(latest_path)
+        stamped_path.write_text(text, encoding="utf-8")
+        paths[f"{family}_latest"] = str(latest_path)
+        paths[f"{family}_stamped"] = str(stamped_path)
+    evidence_dir = data_root / "evidence" / at.date().isoformat()
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    health_path = evidence_dir / "morning-watchlist-publish-health.json"
+    health_path.write_text(
+        json.dumps(
+            {
+                "event": "morning_watchlist_publish_health",
+                "timestamp_kst": at.isoformat(),
+                "target_trade_date_kst": target_trade_date,
+                "status": payload.get("validation_status") or payload.get("status"),
+                "artifact_id": payload.get("artifact_id") or payload.get("safe_block_id"),
+                "orders_enabled": False,
+                "broker_calls_enabled": False,
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    paths["health"] = str(health_path)
+    return paths
+
+
+def publish_morning_watchlist_artifact(
+    *,
+    payload: Optional[Mapping[str, Any]] = None,
+    source_path: Optional[Path] = None,
+    data_root: Path = DEFAULT_DATA_ROOT,
+    target_trade_date: Optional[str] = None,
+    at: Optional[datetime] = None,
+    purpose: Optional[str] = None,
+) -> Dict[str, Any]:
+    now = at or _now_kst()
+    source_payload = dict(payload or {})
+    if source_path is not None:
+        source_payload = _read_json_artifact(source_path) or {}
+
+    requested_target = str(
+        target_trade_date
+        or source_payload.get("target_trade_date_kst")
+        or source_payload.get("trading_date_kst")
+        or source_payload.get("trading_date")
+        or now.date().isoformat()
+    ).strip()
+    artifact: Dict[str, Any]
+    errors: List[str] = []
+    schema = str(source_payload.get("schema_version") or source_payload.get("schema") or "").strip()
+    route = str(source_payload.get("route") or "").strip()
+    payload_target = str(
+        source_payload.get("target_trade_date_kst")
+        or source_payload.get("trading_date_kst")
+        or source_payload.get("trading_date")
+        or requested_target
+    ).strip()
+
+    if not source_payload:
+        errors.append("missing_morning_watchlist_payload")
+    elif schema != "morning_watchlist/v0":
+        errors.append("schema_version_must_be_morning_watchlist_v0")
+    elif route and route != "codex_cli_local_browser_use":
+        errors.append("route_must_be_codex_cli_local_browser_use")
+    elif payload_target != requested_target:
+        errors.append("target_trade_date_mismatch")
+
+    if errors:
+        artifact = {
+            "schema_version": "morning_watchlist/v0",
+            "artifact_type": "morning_watchlist_safe_block",
+            "safe_block_id": _morning_artifact_id(requested_target, now, "safe_block"),
+            "target_trade_date_kst": requested_target,
+            "generated_at_kst": now.isoformat(),
+            "route": "codex_cli_local_browser_use",
+            "document_kind": "NO_TRADE",
+            "no_trade_reason": "morning_watchlist_publish_validation_failed",
+            "validation_errors": errors,
+            "items": [],
+            "forbidden_actions_acknowledged": True,
+            "validation_status": "safe_block",
+            "broker_calls_enabled": False,
+            "orders_enabled": False,
+        }
+    else:
+        artifact = dict(source_payload)
+        artifact["schema_version"] = "morning_watchlist/v0"
+        artifact["artifact_type"] = "morning_watchlist"
+        artifact["artifact_id"] = str(
+            artifact.get("artifact_id")
+            or artifact.get("watchlist_id")
+            or _morning_artifact_id(requested_target, now, "imported")
+        )
+        artifact["target_trade_date_kst"] = requested_target
+        artifact["trading_date"] = requested_target
+        artifact["generated_at_kst"] = str(artifact.get("generated_at_kst") or artifact.get("produced_at_kst") or now.isoformat())
+        artifact["purpose"] = str(purpose or artifact.get("purpose") or "monday_preopen_import")
+        artifact["route"] = "codex_cli_local_browser_use"
+        artifact["forbidden_actions_acknowledged"] = artifact.get("forbidden_actions_acknowledged") is not False
+        artifact["validation_status"] = "accepted"
+        artifact["broker_calls_enabled"] = False
+        artifact["orders_enabled"] = False
+
+    artifact["artifact_paths"] = _write_morning_watchlist_latest(
+        artifact,
+        data_root=data_root,
+        target_trade_date=requested_target,
+        at=now,
+    )
+    return artifact
 
 
 def _build_prompt(events: Sequence[Mapping[str, Any]], *, produced_at_kst: str) -> str:
@@ -241,7 +441,12 @@ def _build_flash_prompt(
     return (
         "JSON만 출력. 직접 주문 실행 금지. 후보는 compiled_watch 안에서 최대 5개만 평가. "
         "보유/대기 주문과 충돌하는 신규매수 금지. "
-        "형식: {\"summary\":\"한문장\", \"candidate_notes\":[{\"symbol\":\"000000\",\"stance\":\"watch|avoid\",\"reason\":\"짧게\"}], "
+        "actions는 다음 10분 매매문서 초안이며 허용 action은 WAIT_BUY, BUY_NOW, HOLD, SELL, NO_TRADE뿐이다. "
+        "형식: {\"summary\":\"한문장\", "
+        "\"actions\":[{\"symbol\":\"000000\",\"action\":\"WAIT_BUY|BUY_NOW|HOLD|SELL|NO_TRADE\","
+        "\"entry_price_limit\":10000,\"target_price\":10500,\"stop_loss_price\":9800,"
+        "\"planned_order_cash_krw\":100000,\"quantity\":0,\"reason\":\"짧게\"}], "
+        "\"candidate_notes\":[{\"symbol\":\"000000\",\"stance\":\"watch|avoid\",\"reason\":\"짧게\"}], "
         "\"risk_flags\":[\"리스크\"], \"order_safety\":\"no_direct_order\"}. "
         f"시각={produced_at_kst}. "
         f"Pro분석={json.dumps(_compact_json_for_prompt(pro_artifact, 2000), ensure_ascii=False)} "
@@ -269,6 +474,17 @@ def _parse_provider_json(text: str) -> Dict[str, Any]:
     except json.JSONDecodeError:
         return {}
     return dict(parsed) if isinstance(parsed, Mapping) else {}
+
+
+def _provider_action_rows(provider_json: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    rows = provider_json.get("actions")
+    if not isinstance(rows, list):
+        rows = provider_json.get("trade_actions")
+    if not isinstance(rows, list):
+        rows = provider_json.get("candidate_actions")
+    if not isinstance(rows, list):
+        return []
+    return [dict(row) for row in rows[:5] if isinstance(row, Mapping)]
 
 
 def _provider_meta(provider: Optional[Mapping[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -616,8 +832,8 @@ def run_flash_trade_document_once(
         or _latest_json_file(data_root, "ai", day)
     )
     pro_artifact = _read_json_artifact(latest_pro_path) if latest_pro_path else None
-    events = _read_recent_events(data_root, limit=20, at=now)
-    kis_snapshots = _read_recent_kis_snapshots(data_root, at=now)
+    events, flash_input_window = _read_events_for_flash_window(data_root, at=now)
+    kis_snapshots = _read_kis_snapshots_for_window(data_root, at=now)
     compiled_watch = _read_compiled_watch(data_root, at=now)
     portfolio = _read_json_artifact(_latest_json_file(data_root, "portfolio", day) or Path()) or _default_portfolio_snapshot(now)
     order_state = _read_json_artifact(_latest_json_file(data_root, "orders", day) or Path()) or _default_order_state_snapshot(now, data_root=data_root)
@@ -653,9 +869,11 @@ def run_flash_trade_document_once(
         order_state_snapshot=order_state,
         previous_trade_documents=previous_docs,
         morning_watchlist=morning_watchlist,
+        provider_actions=_provider_action_rows(provider_json),
         investment_mode=rp.runtimePolicyFromEnv(os.environ)["investment_mode"],
         market_analysis_feed_mode=rp.runtimePolicyFromEnv(os.environ)["market_analysis_feed_mode"],
         execution_venue_mode=rp.runtimePolicyFromEnv(os.environ)["execution_venue_mode"],
+        input_window_kst=flash_input_window,
         produced_at_kst=now.isoformat(),
     )
     artifact["model_name"] = selected_model
@@ -791,12 +1009,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--once", action="store_true", help="Run one analysis tick")
     parser.add_argument(
         "--job",
-        choices=("legacy-summary", "pro-hourly", "flash-10m"),
+        choices=("legacy-summary", "pro-hourly", "flash-10m", "publish-morning-watchlist"),
         default=os.getenv("HWISTOCK_AI_JOB", "pro-hourly"),
         help="AI runtime job to execute",
     )
     parser.add_argument("--data-root", default=str(DEFAULT_DATA_ROOT), help="Runtime data root")
     parser.add_argument("--model", default=os.getenv("HWISTOCK_DEEPSEEK_MODEL", DEFAULT_DEEPSEEK_MODEL), help="DeepSeek model id")
+    parser.add_argument("--source-json", help="Sanitized local GPT Pro morning_watchlist/v0 JSON file to publish")
+    parser.add_argument("--target-trade-date", help="Target trade date for morning watchlist latest paths")
+    parser.add_argument("--purpose", help="Override morning watchlist purpose metadata")
     args = parser.parse_args(list(argv) if argv is not None else None)
     if not args.once:
         parser.print_help(sys.stderr)
@@ -805,6 +1026,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result = run_pro_hourly_once(data_root=Path(args.data_root), model=args.model)
     elif args.job == "flash-10m":
         result = run_flash_trade_document_once(data_root=Path(args.data_root), model=args.model)
+    elif args.job == "publish-morning-watchlist":
+        result = publish_morning_watchlist_artifact(
+            source_path=Path(args.source_json) if args.source_json else None,
+            data_root=Path(args.data_root),
+            target_trade_date=args.target_trade_date,
+            purpose=args.purpose,
+        )
     else:
         result = run_analysis_once(data_root=Path(args.data_root), model=args.model)
     sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n")

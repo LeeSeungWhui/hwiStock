@@ -365,9 +365,11 @@ def buildFlashTradeDocument(
     order_state_snapshot: Optional[Mapping[str, Any]] = None,
     previous_trade_documents: Optional[Sequence[Mapping[str, Any]]] = None,
     morning_watchlist: Optional[Mapping[str, Any]] = None,
+    provider_actions: Optional[Sequence[Mapping[str, Any]]] = None,
     investment_mode: str = rp.PAPER_INVESTMENT_MODE,
     market_analysis_feed_mode: str = rp.MARKET_ANALYSIS_FEED_INTEGRATED,
     execution_venue_mode: str = rp.EXECUTION_VENUE_KRX_ONLY,
+    input_window_kst: Optional[Mapping[str, Any]] = None,
     produced_at_kst: Optional[str] = None,
 ) -> Dict[str, Any]:
     produced_at = produced_at_kst or _default_now_kst()
@@ -444,9 +446,22 @@ def buildFlashTradeDocument(
     portfolio_ref = str(portfolio.get("artifact_id") or portfolio.get("snapshot_id") or "art_portfolio_fixture").strip()
     order_state_ref = str(order_state.get("artifact_id") or order_state.get("snapshot_id") or "art_order_state_fixture").strip()
     order_open, order_close = rp.orderWindowForMode(mode)
+    watch_by_symbol = {
+        str(row.get("symbol") or row.get("ticker") or "").strip(): row
+        for row in watch_rows
+        if str(row.get("symbol") or row.get("ticker") or "").strip()
+    }
+    provider_rows = _normalize_flash_provider_action_sources(provider_actions, watch_by_symbol)
+    action_sources = provider_rows or [
+        {"row": row, "provider": {}, "action_source": "compiled_watch_deterministic_fallback"}
+        for row in watch_rows[:5]
+    ]
 
     actions: List[Dict[str, Any]] = []
-    for index, row in enumerate(watch_rows[:5], start=1):
+    for index, action_source in enumerate(action_sources[:5], start=1):
+        row = action_source["row"]
+        provider_action = action_source["provider"]
+        action_source_name = action_source["action_source"]
         symbol = str(row.get("symbol") or row.get("ticker") or "").strip()
         if not symbol:
             continue
@@ -459,13 +474,41 @@ def buildFlashTradeDocument(
             conflict_reasons.append("prior_trade_document_still_valid")
         entry_intent = row.get("entry_intent") if isinstance(row.get("entry_intent"), Mapping) else {}
         exit_plan = row.get("exit_plan") if isinstance(row.get("exit_plan"), Mapping) else {}
-        action = "NO_TRADE" if conflict_reasons else "WAIT_BUY"
-        entry_zone = list(entry_intent.get("entry_zone") or entry_intent.get("entryZone") or [])
-        entry_price_limit = entry_zone[0] if entry_zone else entry_intent.get("entry_price_limit")
-        stop_loss = entry_intent.get("stop_loss") or exit_plan.get("stop_loss")
-        take_profit = entry_intent.get("take_profit") or exit_plan.get("take_profit")
+        provider_action_type = _normalize_flash_action_type(provider_action.get("action") or provider_action.get("stance"))
+        action = provider_action_type or ("NO_TRADE" if conflict_reasons else "WAIT_BUY")
+        if conflict_reasons and action in {"WAIT_BUY", "BUY_NOW"}:
+            action = "NO_TRADE"
+        entry_zone = _normalize_price_list(
+            provider_action.get("entry_zone")
+            or provider_action.get("entryZone")
+            or entry_intent.get("entry_zone")
+            or entry_intent.get("entryZone")
+        )
+        entry_price_limit = _first_non_empty(
+            provider_action.get("entry_price_limit"),
+            provider_action.get("entry_price_krw"),
+            provider_action.get("price"),
+            entry_zone[0] if entry_zone else None,
+            entry_intent.get("entry_price_limit"),
+        )
+        if not entry_zone and _safe_positive_int(entry_price_limit) > 0:
+            entry_zone = [_safe_positive_int(entry_price_limit)]
+        stop_loss = _first_non_empty(
+            provider_action.get("stop_loss_price"),
+            provider_action.get("stop_loss"),
+            entry_intent.get("stop_loss"),
+            exit_plan.get("stop_loss"),
+        )
+        take_profit = _first_non_empty(
+            provider_action.get("target_price"),
+            provider_action.get("take_profit"),
+            entry_intent.get("take_profit"),
+            exit_plan.get("take_profit"),
+        )
         valid_until_kst = (
-            entry_intent.get("valid_until_kst")
+            provider_action.get("valid_until_kst")
+            or provider_action.get("cancel_if_not_filled_until")
+            or entry_intent.get("valid_until_kst")
             or entry_intent.get("cancel_if_not_filled_until")
             or row.get("valid_until_kst")
         )
@@ -480,18 +523,28 @@ def buildFlashTradeDocument(
                 "name": str(row.get("name") or row.get("symbol_name") or symbol),
                 "action": action,
                 "side": "BUY" if action in {"WAIT_BUY", "BUY_NOW"} else ("SELL" if action == "SELL" else action),
-                "quantity": int(entry_intent.get("quantity") or row.get("quantity") or 0),
+                "quantity": _safe_positive_int(provider_action.get("quantity") or entry_intent.get("quantity") or row.get("quantity")),
                 "entry_zone": entry_zone,
-                "entry_price_limit": entry_price_limit or 0,
-                "target_price": take_profit or 0,
+                "entry_price_limit": _safe_positive_int(entry_price_limit),
+                "target_price": _safe_positive_int(take_profit),
                 "take_profit": take_profit,
-                "stop_loss_price": stop_loss or 0,
+                "stop_loss_price": _safe_positive_int(stop_loss),
                 "stop_loss": stop_loss,
-                "trailing_stop_pct": entry_intent.get("trailing_stop_pct") or exit_plan.get("trailing_stop_pct"),
+                "trailing_stop_pct": _first_non_empty(
+                    provider_action.get("trailing_stop_pct"),
+                    entry_intent.get("trailing_stop_pct"),
+                    exit_plan.get("trailing_stop_pct"),
+                ),
                 "cancel_if_not_filled_until": valid_until_kst,
                 "valid_until": valid_until_kst,
                 "valid_until_kst": valid_until_kst,
-                "position_size_pct": entry_intent.get("position_size_pct"),
+                "position_size_pct": _first_non_empty(provider_action.get("position_size_pct"), entry_intent.get("position_size_pct")),
+                "planned_order_cash_krw": _safe_positive_int(
+                    provider_action.get("planned_order_cash_krw")
+                    or provider_action.get("max_cash_krw")
+                    or entry_intent.get("planned_order_cash_krw")
+                    or row.get("planned_order_cash_krw")
+                ),
                 "max_cash_deployment_ratio": rp.MAX_CASH_DEPLOYMENT_RATIO,
                 "source_refs": source_refs or list(row.get("source_ids") or []),
                 "pro_refs": [str(dict(pro_artifact).get("artifact_id") or "")],
@@ -507,8 +560,13 @@ def buildFlashTradeDocument(
                     "has_conflict": bool(conflict_reasons),
                     "reasons": conflict_reasons,
                 },
-                "reason": "portfolio/order conflict" if conflict_reasons else "compiled watch candidate with source/KIS context",
+                "reason": str(
+                    provider_action.get("reason")
+                    or provider_action.get("thesis")
+                    or ("portfolio/order conflict" if conflict_reasons else "compiled watch candidate with source/KIS context")
+                ),
                 "risk_flags": conflict_reasons,
+                "action_source": action_source_name,
                 "executable_intent_allowed": False,
                 "paper_only": True,
                 "no_live_order": True,
@@ -535,6 +593,7 @@ def buildFlashTradeDocument(
         "market_analysis_feed_mode": market_feed,
         "execution_venue_mode": execution_mode,
         "trade_window_kst": f"{order_open.strftime('%H:%M')}-{order_close.strftime('%H:%M')}",
+        "input_window_kst": dict(input_window_kst or {}),
         "bucket_id": _ten_minute_bucket_id(produced_at),
         "document_kind": "TRADE_ACTIONS",
         "pro_hourly_report_ref": str(dict(pro_artifact).get("artifact_id") or ""),
@@ -1230,6 +1289,81 @@ def _active_symbols_from_trade_documents(documents: Sequence[Mapping[str, Any]],
                 if symbol:
                     symbols.add(symbol)
     return symbols
+
+
+def _normalize_flash_provider_action_sources(
+    provider_actions: Optional[Sequence[Mapping[str, Any]]],
+    watch_by_symbol: Mapping[str, Mapping[str, Any]],
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+    for provider_action in provider_actions or []:
+        if not isinstance(provider_action, Mapping):
+            continue
+        symbol = str(provider_action.get("symbol") or provider_action.get("ticker") or "").strip()
+        if not symbol or symbol in seen:
+            continue
+        watch_row = watch_by_symbol.get(symbol)
+        if not watch_row:
+            continue
+        action_type = _normalize_flash_action_type(provider_action.get("action") or provider_action.get("stance"))
+        if not action_type:
+            continue
+        rows.append(
+            {
+                "row": deepcopy(dict(watch_row)),
+                "provider": deepcopy(dict(provider_action)),
+                "action_source": "deepseek_flash_provider",
+            }
+        )
+        seen.add(symbol)
+        if len(rows) >= 5:
+            break
+    return rows
+
+
+def _normalize_flash_action_type(value: Any) -> str:
+    raw = str(value or "").strip().upper().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "BUY": "BUY_NOW",
+        "ENTRY": "WAIT_BUY",
+        "WAIT": "WAIT_BUY",
+        "WATCH": "HOLD",
+        "WATCH_ONLY": "HOLD",
+        "AVOID": "NO_TRADE",
+        "REJECT": "NO_TRADE",
+    }
+    normalized = aliases.get(raw, raw)
+    return normalized if normalized in {"WAIT_BUY", "BUY_NOW", "HOLD", "SELL", "NO_TRADE"} else ""
+
+
+def _normalize_price_list(value: Any) -> List[int]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        return []
+    prices: List[int] = []
+    for item in value:
+        parsed = _safe_positive_int(item)
+        if parsed > 0:
+            prices.append(parsed)
+    return prices[:2]
+
+
+def _safe_positive_int(value: Any) -> int:
+    raw = str(value or "").strip().replace(",", "")
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if not digits:
+        return 0
+    try:
+        return int(digits)
+    except ValueError:
+        return 0
+
+
+def _first_non_empty(*values: Any) -> Any:
+    for value in values:
+        if value not in (None, "", [], {}):
+            return value
+    return None
 
 
 def _first_flash_morning_watchlist_warnings(

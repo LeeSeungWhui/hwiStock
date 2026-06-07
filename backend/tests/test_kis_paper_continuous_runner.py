@@ -283,6 +283,7 @@ def test_systemd_runner_enables_paper_experiment_orders_with_session_gate():
 def test_systemd_ai_and_market_ticks_pin_paper_integrated_krx_policy():
     root = Path(__file__).resolve().parents[2] / "ops" / "systemd" / "user"
     for filename in [
+        "hwistock-intel-collector.service",
         "hwistock-kis-market-data.service",
         "hwistock-ai-analysis.service",
         "hwistock-ai-flash.service",

@@ -78,6 +78,8 @@ Out of scope:
 | QA-010 | P0 | adapter | Submit policy-approved `order_intent` before KIS adapter approval | Intent is recorded as no-order dry-run only; no broker endpoint, internal fake broker, simulated fill, or fake balance is reachable | adapter/network log |
 | QA-011 | P0 | safety | Submit AI output naming a KIS/external broker endpoint, broker demo endpoint, unapproved endpoint, or credential | Output is rejected and logged as policy violation | policy log |
 | QA-012 | P0 | schedule | Inspect AI job registry | DeepSeek Pro hourly aggregate analysis, Flash 10-minute trade-document generation, GPT Pro/morning-watchlist 07:15 via local Codex CLI browser-use, and mode-aware daily report jobs are separated; SSH browser-use is forbidden; market-regime/session analysis is inside the Pro hourly artifact for operational runtime | schema/config review |
+| QA-012A | P0 | flash-window | Run Flash with older and in-window source/KIS artifacts | The Flash input bundle uses the exact previous 10-minute window and persists `input_window_kst`; older artifacts are not treated as current input | runtime test |
+| QA-012B | P0 | flash-provider-actions | Run Flash with structured DeepSeek Flash `actions` plus a compiled-watch universe | Provider actions become the trade-document action source only when they are in-universe and pass deterministic refs/portfolio/order guards | runtime test |
 | QA-013 | P1 | fallback | Simulate GPT Pro late/unavailable before the first Flash bucket | A DeepSeek-derived `morning_watchlist/v0` artifact or explicit `NO_TRADE` safe-block artifact is written and fallback is logged | scheduler/log |
 | QA-013A | P0 | stale-watchlist | Simulate Monday first Flash with only a Sunday rehearsal/candidate morning watchlist | Flash keeps the correct-target artifact usable but marks it `provisional`, sets `morning_watchlist_refresh_required=true`, and records warning reasons instead of silently treating it as final | schema/runtime test |
 | QA-014 | P1 | calculation | Generate mode-aware daily report | PnL numbers come from system calculations and AI only explains/interprets them | report review |
@@ -125,6 +127,8 @@ Current execution evidence:
 | QA-010 | pass | No-order dry-run record validation with no broker/fake/adapter-mode execution. |
 | QA-011 | pass | KIS/broker/demo/testbed/adapter/unapproved endpoint reference rejection tests. |
 | QA-012 | pass | Six-role job registry separation test. |
+| QA-012A | pass | Flash runtime window test keeps only prior 10-minute event/KIS artifacts and records `input_window_kst`. |
+| QA-012B | pass | Flash runtime test uses structured provider `actions` as the action source while compiled-watch remains the universe guard. |
 | QA-013 | pass | ChatGPT Pro late/unavailable fallback requires `morning_watchlist/v0` or explicit `NO_TRADE` safe-block. |
 | QA-014 | pass | Daily close report system-PnL source validation test. |
 | QA-015 | pass | Tool-use disabled and tool request rejection test. |

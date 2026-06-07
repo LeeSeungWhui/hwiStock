@@ -13,6 +13,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from lib.ai_analysis_runtime import (
     main,
+    publish_morning_watchlist_artifact,
     run_analysis_once,
     run_flash_trade_document_once,
     run_pro_hourly_once,
@@ -20,6 +21,7 @@ from lib.ai_analysis_runtime import (
 
 __all__ = (
     "main",
+    "publish_morning_watchlist_artifact",
     "run_analysis_once",
     "run_flash_trade_document_once",
     "run_pro_hourly_once",

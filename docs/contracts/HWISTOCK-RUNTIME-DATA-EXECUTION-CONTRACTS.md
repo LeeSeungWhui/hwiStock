@@ -108,6 +108,9 @@ decision bucket**.
   - `pro_hourly_report_ref`;
   - `morning_watchlist_ref` for the first active Flash bucket, or a
     `NO_TRADE` safe-block reason when the watchlist is missing.
+- Flash input selection is a strict 10-minute window ending at the bucket
+  timestamp. Runtime readers must not replace this with an unbounded "recent N"
+  scan. The document must persist `input_window_kst`.
 - If the model produces a valid trade document, the artifact is
   `flash_trade_document/v0`.
 - If the model times out, returns malformed data, is unavailable, has stale
@@ -117,6 +120,11 @@ decision bucket**.
 - Valid trade documents may contain at most five symbol actions.
 - Allowed action values are `WAIT_BUY`, `BUY_NOW`, `HOLD`, `SELL`, and
   `NO_TRADE`.
+- When DeepSeek Flash returns structured `actions`, those provider actions are
+  the preferred action source. `compiled_watch/v0` remains the universe,
+  fallback, and deterministic guard. Off-universe provider actions are ignored
+  before validation; accepted actions carry
+  `action_source=deepseek_flash_provider`.
 - Every document and every action must carry a validity window. Pending
   `WAIT_BUY` orders from a previous document are canceled when the next accepted
   document supersedes them unless the new document explicitly renews the wait
