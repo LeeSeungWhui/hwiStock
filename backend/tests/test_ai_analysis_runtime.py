@@ -424,6 +424,23 @@ def test_gpt_morning_input_window_uses_previous_trading_close_for_monday(tmp_pat
     assert "pro-before" not in prompt
 
 
+def test_default_calendar_supports_20260608_monday_morning_window(monkeypatch):
+    monkeypatch.delenv("HWISTOCK_CALENDAR_PATH", raising=False)
+    produced_at = datetime.fromisoformat("2026-06-08T07:15:00+09:00")
+
+    result = runtime._morning_prompt_input_window(  # noqa: SLF001
+        target_trade_date="2026-06-08",
+        at=produced_at,
+    )
+
+    assert result["window_source"] == "calendar_previous_trading_close"
+    assert result["input_window_start_kst"] == "2026-06-05T15:00:00+09:00"
+    assert result["input_window_end_kst"] == "2026-06-08T07:15:00+09:00"
+    assert result["included_dates"] == ["2026-06-05", "2026-06-06", "2026-06-07", "2026-06-08"]
+    assert result["non_trading_day_carryover"] is True
+    assert result["previous_trading_day"] == "2026-06-05"
+
+
 def test_gpt_morning_input_window_handles_long_weekend_previous_trading_close(tmp_path: Path, monkeypatch):
     produced_at = datetime.fromisoformat("2026-06-09T07:15:00+09:00")
     calendar = tmp_path / "calendar.json"

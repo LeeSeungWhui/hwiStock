@@ -1,6 +1,6 @@
 {
   "schema_version": "krx_nxt_trading_calendar_cache/v0",
-  "generatedAtKst": "2026-06-06T14:30:00+09:00",
+  "generatedAtKst": "2026-06-08T00:30:00+09:00",
   "validUntil": "2026-06-10T23:59:59+09:00",
   "sourceAuthority": "manual_local_cache_after_krx_notice_and_public_holiday_crosscheck",
   "sourceHierarchy": "KRX notice for June 3 holiday; public-holiday cross-check for June 8 no substitute holiday; local cache row required before broker-order preflight",
@@ -22,10 +22,29 @@
       "isTradingDay": false,
       "reason": "KRX notice holiday: 2026 local election day"
     },
+    "2026-06-05": {
+      "dateKst": "2026-06-05",
+      "isTradingDay": true,
+      "krx": {
+        "regularOpen": "09:00",
+        "regularClose": "15:30",
+        "orderOpen": "09:00",
+        "orderClose": "15:00"
+      },
+      "nxt": {
+        "open": "08:00",
+        "close": "20:00"
+      }
+    },
     "2026-06-06": {
       "dateKst": "2026-06-06",
       "isTradingDay": false,
       "reason": "Saturday and Memorial Day"
+    },
+    "2026-06-07": {
+      "dateKst": "2026-06-07",
+      "isTradingDay": false,
+      "reason": "Sunday"
     },
     "2026-06-08": {
       "dateKst": "2026-06-08",
