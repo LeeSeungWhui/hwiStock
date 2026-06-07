@@ -229,6 +229,220 @@ def _read_morning_watchlist(data_root: Path, *, at: datetime) -> Optional[Dict[s
     return None
 
 
+def _read_recent_pro_hourly_artifacts(
+    data_root: Path,
+    *,
+    at: datetime,
+    target_trade_date: str,
+    limit: int = 8,
+) -> List[Dict[str, Any]]:
+    paths: List[Path] = []
+    candidate_days = {
+        at.date().isoformat(),
+        target_trade_date,
+        (at - timedelta(days=1)).date().isoformat(),
+    }
+    for day in sorted(candidate_days):
+        directory = data_root / "ai" / day
+        if not directory.is_dir():
+            continue
+        paths.extend(
+            p
+            for p in directory.glob("pro-hourly-*.json")
+            if p.is_file() and p.name != "pro-hourly-latest.json"
+        )
+        latest = directory / "pro-hourly-latest.json"
+        if latest.is_file():
+            paths.append(latest)
+
+    rows: List[Dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for path in sorted(paths)[-limit * 2 :]:
+        payload = _read_json_artifact(path)
+        if not payload:
+            continue
+        artifact_id = str(payload.get("artifact_id") or path)
+        if artifact_id in seen_ids:
+            continue
+        seen_ids.add(artifact_id)
+        rows.append(payload)
+    return rows[-limit:]
+
+
+def _build_morning_watchlist_prompt_text(
+    *,
+    target_trade_date: str,
+    produced_at_kst: str,
+    pro_artifacts: Sequence[Mapping[str, Any]],
+    recent_events: Sequence[Mapping[str, Any]],
+    kis_snapshots: Sequence[Mapping[str, Any]],
+    compiled_watch: Sequence[Mapping[str, Any]],
+    calendar_context: Mapping[str, Any],
+) -> str:
+    required_schema = {
+        "schema_version": "morning_watchlist/v1",
+        "reviewer": "chatgpt_pro",
+        "route": "codex_cli_local_browser_use",
+        "target_trade_date_kst": target_trade_date,
+        "analysis_language": "ko-KR",
+        "forbidden_actions_acknowledged": True,
+        "market_open_plan": {
+            "opening_bias": "selective_watch|defensive|no_trade_bias",
+            "why": "한국어",
+            "must_wait_for_market_confirmation": True,
+            "first_flash_questions": ["한국어 질문"],
+        },
+        "items": [
+            {
+                "ticker": "000000",
+                "name": "종목명",
+                "stance": "eligible_for_flash_review|watch_only|avoid",
+                "thesis": "한국어",
+                "opening_trigger_conditions": ["한국어"],
+                "invalidation_conditions": ["한국어"],
+                "source_refs": [],
+                "pro_refs": [],
+                "confidence": 0.0,
+            }
+        ],
+        "no_trade_reasons": [],
+        "risk_notes": [],
+    }
+    pro_digest = [
+        {
+            "artifact_id": row.get("artifact_id"),
+            "produced_at_kst": row.get("produced_at_kst") or row.get("generated_at_kst"),
+            "validation_status": row.get("validation_status"),
+            "document_kind": row.get("document_kind"),
+            "summary": row.get("summary"),
+            "market_regime": row.get("market_regime"),
+            "theme_map": row.get("theme_map"),
+            "flash_guidance": row.get("flash_guidance"),
+            "questions_for_next_flash": row.get("questions_for_next_flash"),
+            "source_refs": row.get("source_refs"),
+            "market_data_refs": row.get("market_data_refs"),
+        }
+        for row in pro_artifacts[-8:]
+    ]
+    event_digest = [
+        {
+            "event_id": row.get("event_id") or row.get("source_id"),
+            "event_type": row.get("event_type"),
+            "title": row.get("title"),
+            "published_at_kst": row.get("published_at_kst"),
+            "collected_at_kst": row.get("collected_at_kst"),
+            "query": row.get("query"),
+        }
+        for row in recent_events[-80:]
+    ]
+    watch_digest = [
+        {
+            "symbol": row.get("symbol") or row.get("ticker"),
+            "name": row.get("name") or row.get("symbol_name"),
+            "entry_intent": row.get("entry_intent"),
+            "source_ids": row.get("source_ids") or row.get("source_refs"),
+        }
+        for row in compiled_watch[:20]
+    ]
+    return (
+        "너는 hwiStock의 ChatGPT Pro 장전 감시목록 외부 분석자다. "
+        "아래 입력만 근거로 삼아 morning_watchlist/v1 strict JSON object 하나만 반환해. "
+        "Markdown, 설명문, 코드블록 금지. JSON 외 텍스트 금지. "
+        "사람이 읽는 자연어 문자열 값은 모두 한국어로 작성하고, schema key/enum/ticker/route/source_ref/pro_ref 같은 기계값은 지정 형식 그대로 유지해. "
+        "이 산출물은 주문이 아니라 09:00 첫 Flash가 검토할 감시목록이다. broker API 호출, 주문 제출, 수량/주문가/주문유형/직접 매수 지시 금지. "
+        "후보는 입력된 Pro 분석, 뉴스/공시, compiled watch 근거 밖에서 만들지 마. 근거가 부족하면 items를 비우고 no_trade_reasons를 채워라. "
+        "각 eligible_for_flash_review item은 ticker, thesis, opening_trigger_conditions, invalidation_conditions, source_refs 또는 pro_refs, confidence를 반드시 포함해. "
+        "market_open_plan.opening_bias, why, must_wait_for_market_confirmation, first_flash_questions를 반드시 포함해. "
+        f"필수 JSON 스키마 예시={json.dumps(required_schema, ensure_ascii=False)} "
+        f"target_trade_date_kst={target_trade_date}. produced_at_kst={produced_at_kst}. "
+        f"calendar_context={json.dumps(dict(calendar_context), ensure_ascii=False)} "
+        f"pro_hourly_artifacts={json.dumps(_compact_json_for_prompt(pro_digest, 9000), ensure_ascii=False)} "
+        f"recent_events={json.dumps(_compact_json_for_prompt(event_digest, 9000), ensure_ascii=False)} "
+        f"kis_market_snapshots={json.dumps(_compact_json_for_prompt(list(kis_snapshots)[-6:], 6000), ensure_ascii=False)} "
+        f"compiled_watch={json.dumps(_compact_json_for_prompt(watch_digest, 5000), ensure_ascii=False)}"
+    )
+
+
+def build_morning_watchlist_prompt(
+    *,
+    data_root: Path = DEFAULT_DATA_ROOT,
+    target_trade_date: Optional[str] = None,
+    at: Optional[datetime] = None,
+    purpose: Optional[str] = None,
+) -> Dict[str, Any]:
+    now = at or _now_kst()
+    requested_target = str(target_trade_date or now.date().isoformat()).strip()
+    gate = msg.evaluateKisCallGate(now_kst=now, call_family="gpt_morning", env=os.environ)
+    start = now - timedelta(hours=18)
+    events = _read_events_for_window(data_root, start=start, end=now, limit=240)
+    kis_snapshots = _read_recent_kis_snapshots(data_root, at=now, limit=8)
+    compiled_watch = _read_compiled_watch(data_root, at=now)
+    pro_artifacts = _read_recent_pro_hourly_artifacts(
+        data_root,
+        at=now,
+        target_trade_date=requested_target,
+    )
+    prompt_text = _build_morning_watchlist_prompt_text(
+        target_trade_date=requested_target,
+        produced_at_kst=now.isoformat(),
+        pro_artifacts=pro_artifacts,
+        recent_events=events,
+        kis_snapshots=kis_snapshots,
+        compiled_watch=compiled_watch,
+        calendar_context=gate["calendar_context"],
+    )
+    stamp = now.strftime("%H%M%S")
+    prompt_paths: Dict[str, str] = {}
+    for family, latest_name, stamped_name in (
+        ("ai", "gpt-morning-prompt-latest.txt", f"gpt-morning-prompt-{stamp}.txt"),
+        ("prompts", "gpt-morning-watchlist-latest.txt", f"gpt-morning-watchlist-{stamp}.txt"),
+    ):
+        output_dir = data_root / family / requested_target
+        output_dir.mkdir(parents=True, exist_ok=True)
+        latest_path = output_dir / latest_name
+        stamped_path = output_dir / stamped_name
+        tmp_path = latest_path.with_suffix(".tmp")
+        tmp_path.write_text(prompt_text, encoding="utf-8")
+        tmp_path.replace(latest_path)
+        stamped_path.write_text(prompt_text, encoding="utf-8")
+        prompt_paths[f"{family}_latest"] = str(latest_path)
+        prompt_paths[f"{family}_stamped"] = str(stamped_path)
+
+    evidence_dir = data_root / "evidence" / now.date().isoformat()
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    health_path = evidence_dir / "gpt-morning-prompt-health.json"
+    health = {
+        "event": "gpt_morning_prompt_health",
+        "timestamp_kst": now.isoformat(),
+        "target_trade_date_kst": requested_target,
+        "status": "ok",
+        "schema_version": "gpt_morning_prompt/v0",
+        "purpose": str(purpose or "morning_watchlist_0715_local_browser_use"),
+        "prompt_paths": prompt_paths,
+        "input_counts": {
+            "pro_hourly_artifacts": len(pro_artifacts),
+            "recent_events": len(events),
+            "kis_market_snapshots": len(kis_snapshots),
+            "compiled_watch_items": len(compiled_watch),
+        },
+        "orders_enabled": False,
+        "broker_calls_enabled": False,
+    }
+    health_path.write_text(json.dumps(health, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return {
+        "schema_version": "gpt_morning_prompt/v0",
+        "status": "ok",
+        "target_trade_date_kst": requested_target,
+        "generated_at_kst": now.isoformat(),
+        "purpose": health["purpose"],
+        "prompt_paths": prompt_paths,
+        "health_path": str(health_path),
+        "input_counts": health["input_counts"],
+        "orders_enabled": False,
+        "broker_calls_enabled": False,
+    }
+
+
 def _morning_artifact_id(target_trade_date: str, now: datetime, suffix: str) -> str:
     return f"art_morning_watchlist_{target_trade_date.replace('-', '')}_{now.strftime('%H%M%S')}_{suffix}"
 
@@ -461,6 +675,36 @@ def _build_prompt(events: Sequence[Mapping[str, Any]], *, produced_at_kst: str) 
     )
 
 
+def _cluster_events_for_prompt(events: Sequence[Mapping[str, Any]], *, max_clusters: int = 10) -> List[Dict[str, Any]]:
+    clusters: Dict[str, Dict[str, Any]] = {}
+    order: List[str] = []
+    for event in events:
+        title = str(event.get("title") or "").strip()
+        query = str(event.get("query") or "").strip()
+        event_type = str(event.get("event_type") or "news").strip() or "news"
+        key_seed = query or " ".join(title.split()[:2]) or event_type
+        cluster_key = f"{event_type}:{key_seed}"[:80]
+        if cluster_key not in clusters:
+            clusters[cluster_key] = {
+                "cluster_id": f"cluster_{len(order) + 1:02d}",
+                "theme_hint": key_seed[:80],
+                "representative_titles": [],
+                "source_refs": [],
+                "event_count": 0,
+                "freshness": "last_1h",
+            }
+            order.append(cluster_key)
+        cluster = clusters[cluster_key]
+        cluster["event_count"] += 1
+        if title and len(cluster["representative_titles"]) < 3:
+            cluster["representative_titles"].append(title[:160])
+        source_ref = str(event.get("event_id") or event.get("source_id") or event.get("source_event_id") or "").strip()
+        if source_ref and source_ref not in cluster["source_refs"] and len(cluster["source_refs"]) < 5:
+            cluster["source_refs"].append(source_ref[:100])
+    ranked = sorted((clusters[key] for key in order), key=lambda row: int(row.get("event_count") or 0), reverse=True)
+    return [dict(row) for row in ranked[:max_clusters]]
+
+
 def _build_pro_hourly_prompt(
     events: Sequence[Mapping[str, Any]],
     kis_snapshots: Sequence[Mapping[str, Any]],
@@ -468,14 +712,7 @@ def _build_pro_hourly_prompt(
     produced_at_kst: str,
     calendar_context: Optional[Mapping[str, Any]] = None,
 ) -> str:
-    titles = [
-        {
-            "event_id": str(event.get("event_id") or event.get("source_id") or "")[:80],
-            "title": str(event.get("title") or "")[:160],
-            "type": str(event.get("event_type") or "")[:40],
-        }
-        for event in events[:20]
-    ]
+    top_news_clusters = _cluster_events_for_prompt(events, max_clusters=10)
     market_rows = []
     for snapshot in kis_snapshots[-6:]:
         market_rows.append(
@@ -529,16 +766,19 @@ def _build_pro_hourly_prompt(
         "JSON만 출력. 설명/Markdown 금지. "
         "너는 한국 주식 단기 paper 운용을 위한 1시간 시장 전략 분석가다. "
         "너는 주문하지 않고, 종목 매수/매도 지시를 직접 내리지 않는다. "
-        "단순 뉴스 요약 금지. 뉴스/공시와 통합 KIS 시장 데이터를 연결해 Flash 10분 매매문서가 사용할 전략 컨텍스트를 만들어라. "
+        "단순 뉴스 요약 금지. 뉴스/공시 클러스터와 통합 KIS 시장 데이터를 연결해 Flash 10분 매매문서가 사용할 전략 컨텍스트를 만들어라. "
         "사람이 읽는 자연어 문자열은 한국어로 쓰고, schema key/enum/source_ref/ticker 같은 기계값은 지정 형식 그대로 유지해. "
         "theme_map, flash_guidance, no_trade_conditions, contradiction_notes, source_ref_map, questions_for_next_flash를 반드시 채워라. "
         "calendar_context.kis_realtime_expected=false이면 KIS 실시간 부재는 정상 오프세션/휴장 상태로 취급하고 KIS 장애/수신 장애라고 쓰지 마. "
         "runtime evidence에 실제 token/transport/provider failure가 있을 때만 KIS 실패라고 써라. "
         "summary/themes/risk_flags만 내면 news_only_low_utility로 간주된다. "
+        "top_news_clusters는 압축된 입력이다. source_ref_map claim은 '최근 1시간 입력 묶음' 같은 비분석 문장을 쓰지 말고, 테마/종목군/확인조건을 연결한 판단 문장으로 써라. "
+        "오프세션/휴장으로 calendar_context.kis_realtime_expected=false이면 market_confirmation_status=confirmed 금지; not_available, awaiting_next_open, carryover_only 중 하나를 써라. "
+        "오프세션/휴장에서는 no_trade_conditions에 '개장 후 KRX 거래대금/체결강도 확인 전 BUY_NOW 금지'를 반드시 포함해라. "
         f"필수 JSON 스키마 예시={json.dumps(required_schema, ensure_ascii=False)} "
         f"시각={produced_at_kst}. "
         f"calendar_context={json.dumps(dict(calendar_context or {}), ensure_ascii=False)} "
-        f"뉴스/공시={json.dumps(titles, ensure_ascii=False)} "
+        f"top_news_clusters={json.dumps(top_news_clusters, ensure_ascii=False)} "
         f"KIS요약={json.dumps(market_rows, ensure_ascii=False)}"
     )
 
@@ -738,6 +978,8 @@ def _provider_status(provider: Mapping[str, Any]) -> str:
         return "blocked_missing_deepseek_api_key"
     if error:
         return "provider_failed"
+    if provider.get("finish_reason") == "length":
+        return "provider_output_truncated"
     if provider.get("finish_reason") == "stop" and str(provider.get("text") or "").strip():
         return "ok"
     if provider.get("http_status") == 200 and str(provider.get("text") or "").strip():
@@ -832,7 +1074,7 @@ def _deepseek_max_tokens(job: str) -> int:
     if override:
         return int(override)
     if job == "pro-hourly":
-        return int(os.getenv("HWISTOCK_DEEPSEEK_PRO_MAX_TOKENS", "2200"))
+        return int(os.getenv("HWISTOCK_DEEPSEEK_PRO_MAX_TOKENS", "3500"))
     if job == "flash-10m":
         return int(os.getenv("HWISTOCK_DEEPSEEK_FLASH_MAX_TOKENS", "2200"))
     return int(os.getenv("HWISTOCK_DEEPSEEK_LEGACY_MAX_TOKENS", "1000"))
@@ -1120,7 +1362,7 @@ def run_pro_hourly_once(
             provider_json=provider_json,
             calendar_context=calendar_context,
         )
-    if provider_status not in {"ok", "blocked_no_source_inputs"}:
+    if provider_status not in {"ok", "blocked_no_source_inputs", "provider_output_truncated"}:
         artifact["validation_status"] = "safe_block"
         artifact["document_kind"] = "NO_TRADE"
         artifact["market_regime"]["mode"] = "NO_TRADE"
@@ -1356,11 +1598,11 @@ def run_analysis_once(
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="hwiStock direct DeepSeek analysis runner")
+    parser = argparse.ArgumentParser(description="hwiStock direct AI analysis runner")
     parser.add_argument("--once", action="store_true", help="Run one analysis tick")
     parser.add_argument(
         "--job",
-        choices=("legacy-summary", "pro-hourly", "flash-10m", "publish-morning-watchlist"),
+        choices=("legacy-summary", "pro-hourly", "flash-10m", "build-morning-prompt", "publish-morning-watchlist"),
         default=os.getenv("HWISTOCK_AI_JOB", "pro-hourly"),
         help="AI runtime job to execute",
     )
@@ -1377,6 +1619,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result = run_pro_hourly_once(data_root=Path(args.data_root), model=args.model)
     elif args.job == "flash-10m":
         result = run_flash_trade_document_once(data_root=Path(args.data_root), model=args.model)
+    elif args.job == "build-morning-prompt":
+        result = build_morning_watchlist_prompt(
+            data_root=Path(args.data_root),
+            target_trade_date=args.target_trade_date,
+            purpose=args.purpose,
+        )
     elif args.job == "publish-morning-watchlist":
         result = publish_morning_watchlist_artifact(
             source_path=Path(args.source_json) if args.source_json else None,

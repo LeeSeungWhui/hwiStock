@@ -286,6 +286,167 @@ def _window_seconds(window: Optional[Mapping[str, Any]]) -> Optional[int]:
     return max(0, int((end - start).total_seconds()))
 
 
+LOW_UTILITY_PRO_STATUSES = {"news_only_low_utility", "truncated_low_utility"}
+
+GENERIC_PRO_SUMMARY_FRAGMENTS = (
+    "근거 입력을 바탕으로",
+    "시간별 시장 분석입니다",
+    "생성한 deepseek pro",
+)
+
+GENERIC_PRO_THEME_FRAGMENTS = (
+    "최근 1시간 입력 기반 감시",
+    "입력 기반 감시",
+    "시장 반응 확인 필요",
+)
+
+GENERIC_PRO_CLAIM_FRAGMENTS = (
+    "최근 1시간 입력 묶음",
+    "입력 묶음",
+)
+
+GENERIC_NEXT_FLASH_QUESTIONS = (
+    "실제 거래대금과 체결강도가 붙는가",
+    "보유/대기주문과 신규 진입 후보가 충돌하지 않는가",
+)
+
+
+def _contains_any_fragment(value: Any, fragments: Sequence[str]) -> bool:
+    text = str(value or "").strip().lower()
+    return bool(text) and any(fragment.lower() in text for fragment in fragments)
+
+
+def _is_off_session_pro_context(payload: Mapping[str, Any]) -> bool:
+    calendar = payload.get("calendar_context") if isinstance(payload.get("calendar_context"), Mapping) else {}
+    market_context = payload.get("market_context") if isinstance(payload.get("market_context"), Mapping) else {}
+    return (
+        calendar.get("kis_realtime_expected") is False
+        or calendar.get("market_context_open") is False
+        or market_context.get("market_context_open") is False
+        or market_context.get("kis_realtime_expected") is False
+    )
+
+
+def _append_default_off_session_no_trade_condition(payload: Dict[str, Any]) -> None:
+    conditions = payload.setdefault("no_trade_conditions", [])
+    if not isinstance(conditions, list):
+        payload["no_trade_conditions"] = conditions = []
+    if conditions:
+        return
+    conditions.append(
+        {
+            "condition": "개장 후 KRX 거래대금/체결강도 확인 전 BUY_NOW 금지",
+            "reason": "오프세션/휴장일 carryover 분석만으로는 장중 수급 확인이 불가능합니다",
+            "source_refs": [],
+            "market_data_refs": [],
+        }
+    )
+
+
+def _apply_low_utility_pro_status(
+    payload: Dict[str, Any],
+    warnings: List[str],
+    *,
+    status: str,
+    warning: str,
+    aggression_cap: str = "no_buy_now",
+) -> None:
+    if status == "truncated_low_utility" or payload.get("investment_utility_status") not in {"safe_block"}:
+        payload["investment_utility_status"] = status
+    payload["flash_usable"] = False
+    payload["flash_aggression_cap"] = aggression_cap
+    warnings.append(warning)
+
+
+def _semantic_pro_quality_warnings(payload: Dict[str, Any]) -> List[str]:
+    warnings: List[str] = []
+    summary = str(payload.get("summary") or "")
+    if _contains_any_fragment(summary, GENERIC_PRO_SUMMARY_FRAGMENTS):
+        warnings.append("generic_pro_summary")
+
+    theme_map = payload.get("theme_map") if isinstance(payload.get("theme_map"), list) else []
+    if theme_map:
+        generic_theme_only = True
+        all_groups_empty = True
+        off_session_confirmed = False
+        for theme in theme_map:
+            if not isinstance(theme, Mapping):
+                continue
+            if not (
+                _contains_any_fragment(theme.get("theme"), GENERIC_PRO_THEME_FRAGMENTS)
+                or _contains_any_fragment(theme.get("why_it_matters"), GENERIC_PRO_THEME_FRAGMENTS)
+            ):
+                generic_theme_only = False
+            if theme.get("affected_groups") or theme.get("avoid_groups"):
+                all_groups_empty = False
+            if str(theme.get("market_confirmation_status") or "").strip() == "confirmed":
+                off_session_confirmed = True
+        if generic_theme_only:
+            warnings.append("generic_theme_map")
+        if all_groups_empty:
+            warnings.append("theme_map_empty_groups")
+        if off_session_confirmed and _is_off_session_pro_context(payload):
+            warnings.append("off_session_market_confirmation_confirmed")
+            for theme in theme_map:
+                if isinstance(theme, dict) and str(theme.get("market_confirmation_status") or "").strip() == "confirmed":
+                    theme["market_confirmation_status"] = "awaiting_next_open"
+
+    source_ref_map = payload.get("source_ref_map") if isinstance(payload.get("source_ref_map"), list) else []
+    if source_ref_map:
+        generic_claims = 0
+        weak_confidence = 0
+        for item in source_ref_map:
+            if not isinstance(item, Mapping):
+                continue
+            if _contains_any_fragment(item.get("claim"), GENERIC_PRO_CLAIM_FRAGMENTS):
+                generic_claims += 1
+            try:
+                confidence = float(item.get("confidence"))
+            except (TypeError, ValueError):
+                confidence = 0.0
+            if confidence <= 0.3:
+                weak_confidence += 1
+        if generic_claims == len(source_ref_map):
+            warnings.append("generic_source_ref_claim")
+        if weak_confidence == len(source_ref_map):
+            warnings.append("weak_source_ref_confidence")
+
+    questions = [str(item or "") for item in payload.get("questions_for_next_flash") or []]
+    if questions and all(any(fragment in question for fragment in GENERIC_NEXT_FLASH_QUESTIONS) for question in questions):
+        warnings.append("generic_questions_for_next_flash")
+
+    if _is_off_session_pro_context(payload):
+        guidance = payload.get("flash_guidance") if isinstance(payload.get("flash_guidance"), dict) else {}
+        if guidance:
+            if guidance.get("preferred_bias") not in {"defensive", "selective_watch", "no_trade_bias"}:
+                warnings.append("off_session_flash_bias_too_aggressive")
+                guidance["preferred_bias"] = "selective_watch"
+            if guidance.get("max_aggression") not in {None, "none", "low"}:
+                warnings.append("off_session_flash_aggression_too_high")
+                guidance["max_aggression"] = "low"
+            must_check = guidance.setdefault("must_check_before_buy", [])
+            if isinstance(must_check, list):
+                must_check.extend(
+                    item
+                    for item in (
+                        "KRX execution quote",
+                        "거래대금/체결강도 확인",
+                        "morning watchlist consistency",
+                        "75% exposure cap",
+                        "보유/대기주문 충돌 확인",
+                    )
+                    if item not in must_check
+                )
+        if not payload.get("no_trade_conditions"):
+            warnings.append("off_session_no_trade_conditions_required")
+            _append_default_off_session_no_trade_condition(payload)
+        data_quality = payload.get("data_quality") if isinstance(payload.get("data_quality"), dict) else {}
+        if data_quality and data_quality.get("kis_data_status") in {"missing", "degraded"}:
+            data_quality["kis_data_status"] = "expected_off_session_no_realtime"
+
+    return _dedupe_strings(warnings)
+
+
 def buildProHourlyMarketAnalysis(
     *,
     events: Optional[Sequence[Mapping[str, Any]]] = None,
@@ -578,8 +739,9 @@ def buildFlashTradeDocument(
     pro_regime = pro_map.get("market_regime") if isinstance(pro_map.get("market_regime"), Mapping) else {}
     pro_guidance = pro_map.get("flash_guidance") if isinstance(pro_map.get("flash_guidance"), Mapping) else {}
     pro_low_utility = (
-        str(pro_map.get("investment_utility_status") or "").strip() == "news_only_low_utility"
+        str(pro_map.get("investment_utility_status") or "").strip() in LOW_UTILITY_PRO_STATUSES
         or str(pro_map.get("validation_status") or "").strip() == "accepted_with_warnings"
+        or pro_map.get("flash_usable") is False
     )
     market_context_open = bool(produced_dt and rp.isMarketContextOpen(produced_dt, investment_mode=mode))
     broker_order_open = bool(produced_dt and rp.isOrderWindowOpen(produced_dt, investment_mode=mode))
@@ -607,7 +769,6 @@ def buildFlashTradeDocument(
         action = provider_action_type or ("NO_TRADE" if conflict_reasons else "WAIT_BUY")
         if pro_low_utility and action == "BUY_NOW":
             action = "WAIT_BUY"
-            conflict_reasons.append("pro_hourly_low_utility_no_aggressive_buy")
         if conflict_reasons and action in {"WAIT_BUY", "BUY_NOW"}:
             action = "NO_TRADE"
         entry_zone = _normalize_price_list(
@@ -840,7 +1001,7 @@ def buildFlashTradeDocument(
         ],
         "actions": actions,
         "no_trade_reasons": [],
-        "global_risk_flags": ["pro_hourly_low_utility"] if pro_low_utility else [],
+        "global_risk_flags": ["pro_hourly_low_utility", "pro_context_low_utility"] if pro_low_utility else [],
         "operator_notes": [],
         "analysis_language": "ko-KR",
         "max_holdings_after_trade": rp.MAX_SIMULTANEOUS_HOLDINGS,
@@ -954,10 +1115,35 @@ def validateProHourlyMarketAnalysis(
     if not str(payload.get("investment_utility_status") or "").strip():
         errors.append("investment_utility_status_required")
 
+    provider = payload.get("provider") if isinstance(payload.get("provider"), Mapping) else {}
+    if provider.get("finish_reason") == "length":
+        _apply_low_utility_pro_status(
+            payload,
+            warnings,
+            status="truncated_low_utility",
+            warning="provider_output_truncated",
+        )
+
+    semantic_warnings = _semantic_pro_quality_warnings(payload)
+    if semantic_warnings:
+        warnings.extend(semantic_warnings)
+        if "provider_output_truncated" not in warnings and payload.get("investment_utility_status") not in {"truncated_low_utility"}:
+            _apply_low_utility_pro_status(
+                payload,
+                warnings,
+                status="news_only_low_utility",
+                warning="low_investment_utility",
+            )
+
     payload["warnings"] = _dedupe_strings(warnings)
-    payload["validation_status"] = "rejected" if errors else (
-        "safe_block" if payload.get("document_kind") == "NO_TRADE" else "accepted"
-    )
+    if errors:
+        payload["validation_status"] = "rejected"
+    elif payload.get("document_kind") == "NO_TRADE":
+        payload["validation_status"] = "safe_block"
+    elif payload.get("investment_utility_status") in LOW_UTILITY_PRO_STATUSES or payload.get("flash_usable") is False:
+        payload["validation_status"] = "accepted_with_warnings"
+    else:
+        payload["validation_status"] = "accepted"
     return {
         "ok": not errors,
         "errors": errors,
@@ -1026,6 +1212,12 @@ def validateFlashTradeDocument(
         market_context_open = rp.isMarketContextOpen(produced_dt, investment_mode=mode)
     if broker_order_open is None and produced_dt:
         broker_order_open = rp.isOrderWindowOpen(produced_dt, investment_mode=mode)
+    global_risk_flags = {
+        str(item or "").strip()
+        for item in (payload.get("global_risk_flags") or [])
+        if str(item or "").strip()
+    }
+    pro_context_low_utility = bool(global_risk_flags & {"pro_hourly_low_utility", "pro_context_low_utility"})
     for index, action in enumerate(actions):
         if not isinstance(action, Mapping):
             errors.append(f"actions_item_{index}_must_be_object")
@@ -1084,6 +1276,8 @@ def validateFlashTradeDocument(
             )
             if action_type == "BUY_NOW" and ref_kind_count < 2:
                 errors.append(f"actions_item_{index}_buy_now_requires_two_ref_kinds")
+            if action_type == "BUY_NOW" and pro_context_low_utility:
+                errors.append(f"actions_item_{index}_buy_now_forbidden_when_pro_context_low_utility")
             if action_type == "BUY_NOW" and (
                 _safe_positive_int(action.get("quantity")) <= 0
                 and _safe_positive_int(action.get("planned_order_cash_krw")) <= 0

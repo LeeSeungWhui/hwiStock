@@ -12,6 +12,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from lib.ai_analysis_runtime import (
+    build_morning_watchlist_prompt,
     main,
     publish_morning_watchlist_artifact,
     run_analysis_once,
@@ -20,6 +21,7 @@ from lib.ai_analysis_runtime import (
 )
 
 __all__ = (
+    "build_morning_watchlist_prompt",
     "main",
     "publish_morning_watchlist_artifact",
     "run_analysis_once",

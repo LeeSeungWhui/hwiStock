@@ -56,6 +56,8 @@ RAW_RESPONSE="${RUN_DIR}/response.raw.txt"
 SUMMARY="${RUN_DIR}/summary.json"
 PUBLISH_OUT="${RUN_DIR}/publish.json"
 PUBLISH_ERR="${RUN_DIR}/publish.err.log"
+PROMPT_BUILD_OUT="${RUN_DIR}/prompt-build.json"
+PROMPT_BUILD_ERR="${RUN_DIR}/prompt-build.err.log"
 CODEX_EVENTS="${RUN_DIR}/codex-events.jsonl"
 CODEX_LAST="${RUN_DIR}/codex-last-message.md"
 CODEX_STDERR="${RUN_DIR}/codex-stderr.log"
@@ -71,6 +73,7 @@ SECRET_SCAN_JSON="${RUN_DIR}/prompt-secret-scan.json"
 export RUN_ID RUN_DIR TARGET_TRADE_DATE PURPOSE PROMPT_SOURCE START_EPOCH START_ISO
 export REPO_ROOT DATA_DIR DAY
 export RESPONSE RAW_RESPONSE SUMMARY PUBLISH_OUT PUBLISH_ERR CODEX_EVENTS CODEX_LAST CODEX_STDERR
+export PROMPT_BUILD_OUT PROMPT_BUILD_ERR
 export PREFLIGHT_CODEX_EVENTS PREFLIGHT_CODEX_LAST PREFLIGHT_CODEX_STDERR
 export PREFLIGHT_BROWSER_PROMPT PREFLIGHT_BROWSER_EVENTS PREFLIGHT_BROWSER_LAST PREFLIGHT_BROWSER_STDERR
 export SECRET_SCAN_JSON
@@ -177,6 +180,8 @@ summary = {
     "raw_response": os.environ["RAW_RESPONSE"],
     "publish_output": os.environ["PUBLISH_OUT"],
     "publish_stderr": os.environ["PUBLISH_ERR"],
+    "prompt_build_output": os.environ["PROMPT_BUILD_OUT"],
+    "prompt_build_stderr": os.environ["PROMPT_BUILD_ERR"],
     "codex_events": os.environ["CODEX_EVENTS"],
     "codex_last_message": os.environ["CODEX_LAST"],
     "codex_stderr": os.environ["CODEX_STDERR"],
@@ -215,10 +220,66 @@ run_codex_exec() {
     - <"$prompt_path" >"$events_path" 2>"$stderr_path"
 }
 
+build_prompt_if_missing() {
+  if [[ -n "$PROMPT_SOURCE" && -f "$PROMPT_SOURCE" ]]; then
+    return 0
+  fi
+
+  set +e
+  source ./env.sh >/dev/null 2>&1
+  local env_source_code=$?
+  if [[ "$env_source_code" -eq 0 ]]; then
+    export HWISTOCK_DATA_DIR="$DATA_DIR"
+    python backend/service/ai_analysis_runner.py --once \
+      --job build-morning-prompt \
+      --target-trade-date "$TARGET_TRADE_DATE" \
+      --purpose "$PURPOSE" \
+      >"$PROMPT_BUILD_OUT" 2>"$PROMPT_BUILD_ERR"
+    local build_code=$?
+  else
+    local build_code="$env_source_code"
+    printf 'env.sh source failed: %s\n' "$env_source_code" >"$PROMPT_BUILD_ERR"
+  fi
+  set -e
+  if [[ "$build_code" -ne 0 ]]; then
+    return "$build_code"
+  fi
+
+  PROMPT_SOURCE="$(
+    python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+payload = json.loads(Path(os.environ["PROMPT_BUILD_OUT"]).read_text(encoding="utf-8"))
+paths = payload.get("prompt_paths") if isinstance(payload, dict) else {}
+for key in ("ai_latest", "prompts_latest"):
+    value = str((paths or {}).get(key) or "").strip()
+    if value and Path(value).is_file():
+        print(value)
+        break
+PY
+  )"
+  export PROMPT_SOURCE
+  [[ -n "$PROMPT_SOURCE" && -f "$PROMPT_SOURCE" ]]
+}
+
 if [[ ! -x "$CODEX_BIN" ]]; then
   publish_safe_block_or_fail "codex_bin_missing"
   write_summary "safe_block" "codex_bin_missing:${CODEX_BIN}" 1
   exit 0
+fi
+
+if [[ -z "$PROMPT_SOURCE" || ! -f "$PROMPT_SOURCE" ]]; then
+  set +e
+  build_prompt_if_missing
+  prompt_build_code=$?
+  set -e
+  if [[ "$prompt_build_code" -ne 0 ]]; then
+    publish_safe_block_or_fail "prompt_build_failed"
+    write_summary "safe_block" "prompt_build_failed:${prompt_build_code}" "$prompt_build_code"
+    exit 0
+  fi
 fi
 
 if [[ "${HWISTOCK_GPT_SKIP_PREFLIGHT:-false}" != "true" ]]; then

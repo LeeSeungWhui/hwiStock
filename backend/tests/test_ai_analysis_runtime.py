@@ -169,6 +169,65 @@ def test_publish_morning_watchlist_writes_target_trade_date_latest_paths(tmp_pat
         assert payload["target_trade_date_kst"] == "2026-06-08"
 
 
+def test_build_morning_watchlist_prompt_writes_default_prompt_paths(tmp_path: Path, monkeypatch):
+    produced_at = datetime.fromisoformat("2026-06-07T20:00:00+09:00")
+    calendar = tmp_path / "calendar.json"
+    _write_calendar(calendar, day="2026-06-08", trading=True)
+    monkeypatch.setenv("HWISTOCK_CALENDAR_PATH", str(calendar))
+    _append_jsonl(
+        tmp_path / "normalized" / "2026-06-07" / "events.jsonl",
+        [
+            {
+                "event_id": "event-1",
+                "event_type": "news",
+                "title": "삼성전자 반도체 투자 확대",
+                "published_at_kst": "2026-06-07T19:30:00+09:00",
+            }
+        ],
+    )
+    _write_json(
+        tmp_path / "ai" / "2026-06-07" / "pro-hourly-latest.json",
+        {
+            "schema_version": "pro_hourly_market_analysis/v1",
+            "artifact_id": "art_pro_hourly_20260607_2000",
+            "produced_at_kst": "2026-06-07T20:00:00+09:00",
+            "validation_status": "accepted",
+            "summary": "반도체 뉴스와 거래대금 확인 필요",
+            "market_regime": {"mode": "NEUTRAL", "confidence": 0.4},
+            "theme_map": [{"theme": "반도체", "source_refs": ["event-1"]}],
+        },
+    )
+    _write_json(
+        tmp_path / "compiled-watch" / "2026-06-07" / "compiled-watch-latest.json",
+        {
+            "schema_version": "compiled_watch/v0",
+            "items": [{"symbol": "005930", "name": "삼성전자", "source_ids": ["event-1"]}],
+        },
+    )
+
+    result = runtime.build_morning_watchlist_prompt(
+        data_root=tmp_path,
+        target_trade_date="2026-06-08",
+        at=produced_at,
+        purpose="morning_watchlist_0715_local_browser_use",
+    )
+
+    assert result["status"] == "ok"
+    assert result["schema_version"] == "gpt_morning_prompt/v0"
+    assert result["input_counts"]["pro_hourly_artifacts"] == 1
+    for path in (
+        tmp_path / "ai" / "2026-06-08" / "gpt-morning-prompt-latest.txt",
+        tmp_path / "prompts" / "2026-06-08" / "gpt-morning-watchlist-latest.txt",
+    ):
+        assert path.is_file()
+        text = path.read_text(encoding="utf-8")
+        assert "morning_watchlist/v1" in text
+        assert "strict JSON object" in text
+        assert "art_pro_hourly_20260607_2000" in text
+        assert "broker API 호출, 주문 제출" in text
+    assert Path(result["health_path"]).is_file()
+
+
 def test_flash_runtime_uses_exact_10m_window_and_provider_actions(tmp_path: Path, monkeypatch):
     now = datetime.fromisoformat("2026-06-08T09:00:00+09:00")
     calendar = tmp_path / "calendar.json"
@@ -404,6 +463,245 @@ def test_pro_v1_requires_source_ref_map():
     assert "source_ref_map_required" in result["errors"]
 
 
+def test_provider_finish_reason_length_is_not_accepted(tmp_path: Path, monkeypatch):
+    now = datetime.fromisoformat("2026-06-08T09:00:00+09:00")
+    _append_jsonl(
+        tmp_path / "normalized" / "2026-06-08" / "events.jsonl",
+        [{"event_id": "event-1", "title": "삼성전자 투자 확대", "published_at_kst": "2026-06-08T08:50:00+09:00"}],
+    )
+    _write_json(
+        tmp_path / "kis-market" / "2026-06-08" / "snap.json",
+        {"schema_version": "kis_market_snapshot/v0", "artifact_id": "snap-1", "produced_at_kst": "2026-06-08T08:59:00+09:00"},
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_call_deepseek",
+        lambda *_args, **_kwargs: {
+            "http_status": 200,
+            "finish_reason": "length",
+            "model": "deepseek-v4-pro",
+            "text": json.dumps(_pro_v1_payload(), ensure_ascii=False),
+            "usage": {"completion_tokens": 2000},
+            "error": None,
+        },
+    )
+
+    result = runtime.run_pro_hourly_once(data_root=tmp_path, at=now, model="deepseek-v4-pro")
+
+    assert result["validation_status"] == "accepted_with_warnings"
+    assert result["investment_utility_status"] == "truncated_low_utility"
+    assert result["flash_usable"] is False
+    assert "provider_output_truncated" in result["validation_warnings"]
+
+
+def test_generic_pro_summary_is_low_utility():
+    payload = _pro_v1_payload(summary="근거 입력을 바탕으로 생성한 DeepSeek Pro 시간별 시장 분석입니다")
+
+    result = ao.validateProHourlyMarketAnalysis(payload)
+
+    assert result["document"]["validation_status"] == "accepted_with_warnings"
+    assert result["document"]["investment_utility_status"] == "news_only_low_utility"
+    assert result["document"]["flash_usable"] is False
+    assert "low_investment_utility" in result["warnings"]
+    assert "generic_pro_summary" in result["warnings"]
+
+
+def test_generic_theme_map_is_low_utility():
+    payload = _pro_v1_payload(
+        theme_map=[
+            {
+                "theme": "최근 1시간 입력 기반 감시",
+                "direction": "neutral",
+                "strength": 0.3,
+                "freshness": "last_1h",
+                "affected_groups": [],
+                "avoid_groups": [],
+                "why_it_matters": "시장 반응 확인 필요",
+                "source_refs": ["event-1"],
+                "market_data_refs": ["snap-1"],
+                "market_confirmation_status": "confirmed",
+            }
+        ]
+    )
+
+    result = ao.validateProHourlyMarketAnalysis(payload)
+
+    assert result["document"]["validation_status"] == "accepted_with_warnings"
+    assert result["document"]["investment_utility_status"] == "news_only_low_utility"
+    assert "generic_theme_map" in result["warnings"]
+    assert "theme_map_empty_groups" in result["warnings"]
+
+
+def test_empty_no_trade_conditions_off_session_is_low_utility():
+    payload = _pro_v1_payload(
+        calendar_context={"kis_realtime_expected": False, "market_context_open": False},
+        no_trade_conditions=[],
+    )
+
+    result = ao.validateProHourlyMarketAnalysis(payload)
+
+    assert result["document"]["validation_status"] == "accepted_with_warnings"
+    assert result["document"]["flash_usable"] is False
+    assert result["document"]["no_trade_conditions"]
+    assert "off_session_no_trade_conditions_required" in result["warnings"]
+
+
+def test_off_session_market_confirmation_confirmed_is_invalid():
+    payload = _pro_v1_payload(
+        calendar_context={"kis_realtime_expected": False, "market_context_open": False},
+        no_trade_conditions=[
+            {
+                "condition": "개장 후 KRX 거래대금/체결강도 확인 전 BUY_NOW 금지",
+                "reason": "오프세션",
+            }
+        ],
+    )
+
+    result = ao.validateProHourlyMarketAnalysis(payload)
+
+    assert result["document"]["validation_status"] == "accepted_with_warnings"
+    assert result["document"]["theme_map"][0]["market_confirmation_status"] == "awaiting_next_open"
+    assert "off_session_market_confirmation_confirmed" in result["warnings"]
+
+
+def test_off_session_requires_no_trade_condition():
+    payload = _pro_v1_payload(
+        calendar_context={"kis_realtime_expected": False, "market_context_open": False},
+        theme_map=[
+            {
+                "theme": "정책 carryover",
+                "direction": "positive_watch",
+                "strength": 0.5,
+                "freshness": "carryover",
+                "affected_groups": ["건설"],
+                "avoid_groups": ["개장 전 BUY_NOW"],
+                "why_it_matters": "월요일 장초 수급 확인 대상",
+                "source_refs": ["event-1"],
+                "market_data_refs": [],
+                "market_confirmation_status": "awaiting_next_open",
+            }
+        ],
+        no_trade_conditions=[],
+    )
+
+    result = ao.validateProHourlyMarketAnalysis(payload)
+
+    assert result["document"]["no_trade_conditions"][0]["condition"] == "개장 후 KRX 거래대금/체결강도 확인 전 BUY_NOW 금지"
+    assert result["document"]["validation_status"] == "accepted_with_warnings"
+
+
+def test_clustered_source_prompt_limits_raw_event_count():
+    events = [
+        {"event_id": f"event-{index}", "title": f"반도체 투자 확대 {index}", "event_type": "news", "query": "반도체"}
+        for index in range(60)
+    ]
+
+    prompt = runtime._build_pro_hourly_prompt(  # noqa: SLF001
+        events,
+        [],
+        produced_at_kst="2026-06-08T09:00:00+09:00",
+        calendar_context={"kis_realtime_expected": True},
+    )
+
+    assert "top_news_clusters" in prompt
+    assert "뉴스/공시=" not in prompt
+    assert prompt.count("event-") <= 5
+
+
+def test_good_off_session_strategy_context_is_accepted_with_selective_watch():
+    payload = _pro_v1_payload(
+        calendar_context={"kis_realtime_expected": False, "market_context_open": False},
+        theme_map=[
+            {
+                "theme": "정책/건설 carryover",
+                "direction": "positive_watch",
+                "strength": 0.52,
+                "freshness": "carryover",
+                "affected_groups": ["건설", "시멘트"],
+                "avoid_groups": ["개장 전 BUY_NOW"],
+                "why_it_matters": "주말 정책 뉴스가 월요일 장초 수급 확인 대상입니다",
+                "source_refs": ["event-1"],
+                "market_data_refs": [],
+                "market_confirmation_status": "awaiting_next_open",
+                "confirmation_signals_for_flash": ["09:00 이후 거래대금 상위 진입"],
+            }
+        ],
+        flash_guidance={
+            "preferred_bias": "selective_watch",
+            "max_aggression": "low",
+            "candidate_focus": ["정책 carryover 테마"],
+            "avoid_focus": ["개장 전 BUY_NOW"],
+            "must_check_before_buy": ["KRX execution quote", "거래대금/체결강도 확인"],
+            "position_management_notes": [],
+        },
+        no_trade_conditions=[
+            {
+                "condition": "개장 후 KRX 거래대금/체결강도 확인 전 BUY_NOW 금지",
+                "reason": "휴장일 뉴스 기반 carryover만으로는 장초 수급 확인이 불가능함",
+            }
+        ],
+        source_ref_map=[
+            {
+                "claim": "정책/건설 carryover는 월요일 장초 거래대금 확인 전 관찰 대상입니다",
+                "source_refs": ["event-1"],
+                "market_data_refs": [],
+                "confidence": 0.55,
+            }
+        ],
+        questions_for_next_flash=["정책 테마 후보가 09:00 이후 거래대금 상위에 진입하는가?"],
+    )
+
+    result = ao.validateProHourlyMarketAnalysis(payload)
+
+    assert result["ok"] is True
+    assert result["document"]["validation_status"] == "accepted"
+    assert result["document"]["investment_utility_status"] == "actionable_context"
+
+
+def test_good_market_open_strategy_context_is_actionable_context():
+    result = ao.validateProHourlyMarketAnalysis(_pro_v1_payload())
+
+    assert result["ok"] is True
+    assert result["document"]["validation_status"] == "accepted"
+    assert result["document"]["investment_utility_status"] == "actionable_context"
+
+
+def test_flash_forbids_buy_now_when_pro_context_low_utility():
+    doc = ao.buildFlashTradeDocument(
+        pro_artifact={
+            "artifact_id": "art_pro_low",
+            "investment_utility_status": "truncated_low_utility",
+            "flash_usable": False,
+            "market_regime": {"mode": "NEUTRAL"},
+            "flash_guidance": {"preferred_bias": "selective_watch"},
+        },
+        recent_events=[{"event_id": "event-1"}],
+        kis_market_snapshots=[{"artifact_id": "snap-1"}],
+        compiled_watch=[
+            {
+                "schema_version": "compiled_watch/v0",
+                "symbol": "005930",
+                "source_ids": ["event-1"],
+                "entry_intent": {"entry_zone": [10000], "take_profit": 10500, "stop_loss": 9800},
+                "valid_until_kst": "2026-06-08T09:10:00+09:00",
+            }
+        ],
+        portfolio_snapshot={"artifact_id": "portfolio-1", "holdings": []},
+        order_state_snapshot={"artifact_id": "orders-1", "pending_orders": []},
+        morning_watchlist={
+            "schema_version": "morning_watchlist/v1",
+            "artifact_id": "art_morning_20260608",
+            "target_trade_date_kst": "2026-06-08",
+            "generated_at_kst": "2026-06-08T07:15:00+09:00",
+        },
+        provider_actions=[{"symbol": "005930", "action": "BUY_NOW", "confidence": 0.8}],
+        produced_at_kst="2026-06-08T09:00:00+09:00",
+    )
+
+    assert doc["actions"][0]["action"] == "WAIT_BUY"
+    assert "pro_context_low_utility" in doc["global_risk_flags"]
+
+
 def _flash_v1_document(**action_overrides):
     action = {
         "action_id": "act_005930_0900_01",
@@ -503,6 +801,16 @@ def test_flash_v1_blocks_paper_after_1500():
 
     assert result["ok"] is False
     assert "actions_item_0_paper_buy_sell_after_1500_forbidden" in result["errors"]
+
+
+def test_flash_validator_rejects_buy_now_when_pro_context_low_utility():
+    doc = _flash_v1_document()
+    doc["global_risk_flags"] = ["pro_context_low_utility"]
+
+    result = ao.validateFlashTradeDocument(doc)
+
+    assert result["ok"] is False
+    assert "actions_item_0_buy_now_forbidden_when_pro_context_low_utility" in result["errors"]
 
 
 def test_morning_v1_requires_market_open_plan(tmp_path: Path):

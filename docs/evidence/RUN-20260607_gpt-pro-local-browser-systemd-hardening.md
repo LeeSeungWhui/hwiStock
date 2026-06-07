@@ -81,10 +81,11 @@ PASS for the wrapper/timer hardening and systemd viability:
 - A real ChatGPT Pro browser leg completed under systemd and produced a valid
   `morning_watchlist/v0` JSON artifact.
 
-Remaining operational note: production `07:15 KST` use still requires a fresh
-sanitized prompt file via `HWISTOCK_GPT_PROMPT_PATH` or one of the wrapper's
-default prompt locations. If the prompt is missing, the wrapper intentionally
-publishes a safe-block instead of silently switching routes.
+Follow-up correction: production `07:15 KST` use must not depend on a manually
+pre-created prompt file. The wrapper now first asks the backend runtime to build
+`gpt_morning_prompt/v0` into the default prompt locations, then sends that file
+to GPT Pro. `HWISTOCK_GPT_PROMPT_PATH` remains an override for an explicitly
+prepared sanitized prompt.
 
 ## Follow-up Hardening: Logs vs Canonical Data
 
