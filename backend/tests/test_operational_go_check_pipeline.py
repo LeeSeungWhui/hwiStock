@@ -490,6 +490,10 @@ def test_unit015_account_summary_refreshes_stale_pnl_failure_cache(tmp_path: Pat
         ),
         encoding="utf-8",
     )
+    fresh_mtime = operator_console.parseKstTime("2026-06-05T09:39:30+09:00").timestamp()
+    os.utime(cache_path, (fresh_mtime, fresh_mtime))
+    old_mtime = operator_console.parseKstTime("2026-06-05T09:00:00+09:00").timestamp()
+    os.utime(cache_path, (old_mtime, old_mtime))
 
     class FakeDashboardAdapter:
         def __init__(self, *, env, transport):
@@ -538,11 +542,66 @@ def test_unit015_account_summary_refreshes_stale_pnl_failure_cache(tmp_path: Pat
     assert summary["balanceStatus"] == "pass"
     assert summary["buyableStatus"] == "warn"
     assert summary["realizedPnlStatus"] == "pass"
+    assert summary["accountRefreshAttempted"] is True
+    assert summary["dashboardSnapshotAtKst"] == "2026-06-05T09:40:00+09:00"
+    assert summary["accountAsOfKst"] == "2026-06-05T09:40:00+09:00"
 
     refreshed = json.loads(cache_path.read_text(encoding="utf-8"))
     assert refreshed["todayPnl"] == -84_200
     assert refreshed["realizedPnl"] == 12_000
     assert refreshed["credentialValuesPrinted"] is False
+
+
+def test_unit015_fresh_cash_only_cache_is_display_usable_without_provider_refresh(
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HWISTOCK_DASHBOARD_ACCOUNT_READ_ENABLED", "true")
+    monkeypatch.setenv("KIS_PAPER_ACCOUNT_NO", "12345678")
+    monkeypatch.setenv("KIS_PAPER_ACCOUNT_PRODUCT_CODE", "01")
+    cache_path = tmp_path / "account" / "dashboard-account-summary-latest.json"
+    cache_path.parent.mkdir(parents=True)
+    cache_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "dashboard_account_summary/v0",
+                "accountId": "12345678-01",
+                "cashBalance": 9_950_000,
+                "reserveBalance": 500_000,
+                "todayPnl": "손익 조회 실패",
+                "realizedPnl": "실현손익 조회 실패",
+                "openPositions": 0,
+                "status": "warn",
+                "source": "kis-live-read",
+                "rawProviderPayloadDisplayed": False,
+                "credentialValuesPrinted": False,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    fresh_mtime = operator_console.parseKstTime("2026-06-05T09:39:30+09:00").timestamp()
+    os.utime(cache_path, (fresh_mtime, fresh_mtime))
+
+    class ForbiddenDashboardAdapter:
+        def __init__(self, *, env, transport):
+            raise AssertionError("fresh cash-only dashboard cache must skip provider refresh")
+
+    monkeypatch.setattr(operator_console, "KisPaperAdapter", ForbiddenDashboardAdapter)
+
+    summary = operator_console.buildDashboardAccountSummary(
+        operator_console.parseKstTime("2026-06-05T09:40:00+09:00"),
+        dataRoot=tmp_path,
+    )
+
+    assert summary["source"] == "dashboard-account-cache"
+    assert summary["cashBalance"] == 9_950_000
+    assert summary["todayPnl"] == "손익 조회 실패"
+    assert summary["accountRefreshStatus"] == "skipped_cache_ttl"
+    assert summary["accountRefreshAttempted"] is False
+    assert summary["accountRefreshAllowedBySession"] is True
+    assert summary["dashboardSnapshotAtKst"] == "2026-06-05T09:40:00+09:00"
+    assert summary["accountAsOfKst"] == "2026-06-05T09:39:30+09:00"
 
 
 def test_unit015_weekend_dashboard_account_summary_uses_fresh_cache_without_market_session(
@@ -573,6 +632,8 @@ def test_unit015_weekend_dashboard_account_summary_uses_fresh_cache_without_mark
         ),
         encoding="utf-8",
     )
+    fresh_mtime = operator_console.parseKstTime("2026-06-06T11:29:30+09:00").timestamp()
+    os.utime(cache_path, (fresh_mtime, fresh_mtime))
 
     class ForbiddenDashboardAdapter:
         def __init__(self, *, env, transport):
@@ -590,7 +651,11 @@ def test_unit015_weekend_dashboard_account_summary_uses_fresh_cache_without_mark
     assert summary["todayPnl"] == -84_200
     assert summary["marketSessionRequired"] is False
     assert summary["accountRefreshAllowed"] is True
+    assert summary["accountRefreshAllowedBySession"] is True
+    assert summary["accountRefreshAttempted"] is False
     assert summary["accountRefreshStatus"] == "skipped_cache_ttl"
+    assert summary["dashboardSnapshotAtKst"] == "2026-06-06T11:30:00+09:00"
+    assert summary["accountAsOfKst"] == "2026-06-06T11:29:30+09:00"
     assert summary["dashboardAccountSummaryOnly"] is True
     assert summary["usableForOrderPreflight"] is False
     assert summary["orderPreflightTruthSource"] == "trading_account_truth"
@@ -661,6 +726,10 @@ def test_unit015_dashboard_account_summary_provider_failure_falls_back_to_last_c
     assert summary["todayPnl"] == -12_000
     assert summary["accountRefreshStatus"] == "provider_error_cache_fallback"
     assert summary["accountCacheStatus"] == "fallback_stale"
+    assert summary["accountRefreshAttempted"] is True
+    assert summary["accountRefreshAllowedBySession"] is True
+    assert summary["dashboardSnapshotAtKst"] == "2026-06-06T11:30:00+09:00"
+    assert summary["accountAsOfKst"] == "2026-06-05T09:00:00+09:00"
     assert summary["usableForOrderPreflight"] is False
     assert summary["errorType"] == "RuntimeError"
 
@@ -720,6 +789,77 @@ def test_unit015_account_summary_preserves_zero_pnl_from_runner_evidence(tmp_pat
     assert summary["balanceStatus"] == "pass"
     assert summary["buyableStatus"] == "warn"
     assert summary["realizedPnlStatus"] == "pass"
+    assert summary["accountRefreshStatus"] == "skipped_runner_evidence"
+    assert summary["accountCacheStatus"] == "runner_evidence"
+    assert summary["accountRefreshAttempted"] is False
+    assert summary["dashboardSnapshotAtKst"] == "2026-06-05T09:40:00+09:00"
+
+
+def test_unit015_stale_runner_evidence_falls_back_after_provider_failure(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("HWISTOCK_DASHBOARD_ACCOUNT_READ_ENABLED", "true")
+    monkeypatch.setenv("KIS_PAPER_ACCOUNT_NO", "12345678")
+    monkeypatch.setenv("KIS_PAPER_ACCOUNT_PRODUCT_CODE", "01")
+    monkeypatch.setenv("HWISTOCK_KIS_HEALTH_SYMBOL", "005930")
+    evidence_path = tmp_path / "evidence" / "2026-06-05" / "kis-paper-continuous-latest.json"
+    evidence_path.parent.mkdir(parents=True)
+    evidence_path.write_text(
+        json.dumps(
+            {
+                "timestamp_kst": "2026-06-05T09:00:00+09:00",
+                "steps": [
+                    {
+                        "step": "balance_inquire",
+                        "status": "pass",
+                        "dashboard_account_summary": {
+                            "cash_balance_krw": 7_770_000,
+                            "today_pnl_krw": None,
+                            "positions_count": 2,
+                        },
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    old_mtime = operator_console.parseKstTime("2026-06-05T09:00:00+09:00").timestamp()
+    os.utime(evidence_path, (old_mtime, old_mtime))
+
+    class FailingDashboardAdapter:
+        def __init__(self, *, env, transport):
+            self.env = env
+            self.transport = transport
+
+        def missingEnvKeys(self):
+            return []
+
+        def inquireAccountSummaryForDashboard(self, token, symbol):
+            raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(operator_console, "KisPaperAdapter", FailingDashboardAdapter)
+    monkeypatch.setattr(
+        operator_console,
+        "loadKisPaperAccessToken",
+        lambda adapter, env, now: ({"status": "pass", "token_present": True}, "fake-token", True),
+    )
+
+    summary = operator_console.buildDashboardAccountSummary(
+        operator_console.parseKstTime("2026-06-05T09:40:00+09:00"),
+        dataRoot=tmp_path,
+        dayKey="2026-06-05",
+    )
+
+    assert summary["status"] == "stale_runner_evidence_provider_unavailable"
+    assert summary["source"] == "kis-paper-runner-evidence"
+    assert summary["cashBalance"] == 7_770_000
+    assert summary["openPositions"] == 2
+    assert summary["accountRefreshStatus"] == "provider_error_runner_evidence_fallback"
+    assert summary["accountCacheStatus"] == "stale_runner_evidence_fallback"
+    assert summary["accountRefreshAttempted"] is True
+    assert summary["dashboardSnapshotAtKst"] == "2026-06-05T09:40:00+09:00"
+    assert summary["accountAsOfKst"] == "2026-06-05T09:00:00+09:00"
+    assert summary["usableForOrderPreflight"] is False
+    assert summary["errorType"] == "RuntimeError"
 
 
 def test_unit015_operator_snapshot_allows_order_enabled_paper_experiment_without_live_contradiction(tmp_path: Path, monkeypatch):

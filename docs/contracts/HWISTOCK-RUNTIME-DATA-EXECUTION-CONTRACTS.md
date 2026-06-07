@@ -161,6 +161,13 @@ decision bucket**.
   with cache throttling and last-known-cache fallback, but it must carry
   `usable_for_order_preflight=false` and must never be reused as executor order
   preflight truth.
+- Dashboard account summary freshness must distinguish the data timestamp from
+  the render timestamp. `accountAsOfKst` is the underlying account snapshot time
+  such as provider response time, dashboard cache mtime, or runner evidence
+  mtime/produced time; `dashboardSnapshotAtKst` is when the dashboard summary
+  was assembled. Stale cache or stale runner-evidence fallback must be labeled
+  through `accountCacheStatus` and `accountRefreshStatus` instead of being
+  presented as freshly read account truth.
 - Executor order preflight must use a fresh `trading_account_truth` read only
   when an order intent is actually being considered and the paper/mock order
   window and owner approval gates are open. Failure to obtain that fresh truth
