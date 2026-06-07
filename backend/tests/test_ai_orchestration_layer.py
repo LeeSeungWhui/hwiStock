@@ -108,7 +108,7 @@ def _draft_order_intent(**overrides):
 
 def _morning_watchlist(**overrides):
     payload = {
-        "schema_version": "morning_watchlist/v0",
+        "schema_version": "morning_watchlist/v1",
         "artifact_id": "art_morning_watchlist_20260604_0715",
         "route": "codex_cli_local_browser_use",
         "target_trade_date_kst": "2026-06-04",
@@ -177,14 +177,14 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         )
         self.assertEqual(
             registry["deepseek_pro_hourly"]["output_schema"],
-            "pro_hourly_market_analysis/v0",
+            "pro_hourly_market_analysis/v1",
         )
         self.assertTrue(registry["deepseek_pro_hourly"]["includes_market_regime"])
         self.assertEqual(registry["deepseek_flash_trade_document_10m"]["model_name"], "deepseek-v4-flash")
         self.assertEqual(registry["deepseek_flash_trade_document_10m"]["max_action_symbols"], 5)
         self.assertEqual(
             registry["gpt_morning_watchlist_0715"]["output_schema"],
-            "morning_watchlist/v0",
+            "morning_watchlist/v1",
         )
         self.assertEqual(registry["gpt_morning_watchlist_0715"]["approved_route"], "codex_cli_local_browser_use")
         self.assertFalse(registry["gpt_morning_watchlist_0715"]["ssh_browser_use_allowed"])
@@ -427,7 +427,7 @@ class AiOrchestrationLayerTests(unittest.TestCase):
             morning_watchlist=_morning_watchlist(),
             produced_at_kst=NOW_KST,
         )
-        self.assertEqual(doc["schema_version"], "flash_trade_document/v0")
+        self.assertEqual(doc["schema_version"], "flash_trade_document/v1")
         self.assertEqual(doc["model_name"], "deepseek-v4-flash")
         self.assertLessEqual(len(doc["actions"]), 5)
         self.assertRegex(doc["actions"][0]["action_id"], r"^act_\d{6}_\d{4}_\d{2}$")

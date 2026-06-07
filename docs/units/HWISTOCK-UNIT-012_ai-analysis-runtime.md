@@ -86,7 +86,7 @@ The current contract is:
   `15:30 KST` may support close/reconciliation/watch records only.
 - ChatGPT Pro / morning watchlist: the GPT Pro route is optional and
   fallback-capable, but the first Flash bucket requires either
-  `morning_watchlist/v0` or an explicit `NO_TRADE` safe-block. When GPT Pro is
+  `morning_watchlist/v1` or an explicit `NO_TRADE` safe-block. When GPT Pro is
   used, it runs at `07:15 KST` through **Codex CLI local browser-use** on the
   local desktop/workstation against the user's logged-in local Chrome ChatGPT
   Pro session. SSH browser-use is forbidden.
@@ -106,20 +106,21 @@ own all broker-order eligibility.
 - Support `thinking` and `reasoning_effort` config only where the provider
   accepts it.
 - Split AI jobs into distinct artifacts:
-  - `pro_hourly_market_analysis/v0`
-  - `flash_trade_document/v0`
+  - `pro_hourly_market_analysis/v1`
+  - `flash_trade_document/v1`
   - `gpt_morning_prompt/v0`
-  - `morning_watchlist/v0`
+  - `morning_watchlist/v1`
   - explicit `NO_TRADE` safe-block artifact before the first Flash bucket when
     no acceptable morning watchlist is available
   - `daily_close_report/v0`
-- `flash_trade_document/v0` is one document per Flash 10-minute decision tick.
+- `flash_trade_document/v1` is one document per Flash 10-minute decision tick.
   Its `actions` list must contain at most five symbols. For each action it must
-  provide ticker/name, one of `WAIT_BUY`, `BUY_NOW`, `HOLD`, `SELL`, or
-  `NO_TRADE`, entry zone if relevant, take-profit, stop-loss, trailing-stop
-  percent, cancel-if-not-filled window, position-size cap, source refs, KIS
-  market-data refs, confidence/risk notes, portfolio-conflict status, and
-  explicit adapter-only/no-adapter-order metadata.
+  provide ticker/name, side, one of `WAIT_BUY`, `BUY_NOW`, `SELL_NOW`,
+  `WAIT_SELL`, `HOLD`, or `NO_TRADE`, entry price limit, take-profit/target,
+  stop-loss, valid-from/valid-until window, confidence, urgency, thesis,
+  why-now, required confirmations, cancel-if conditions, source/pro/morning/KIS
+  market-data refs, portfolio-conflict status, and explicit no-direct-order
+  metadata.
 - Flash must not invent ticker candidates. Its executable action universe is the
   deterministic `compiled_watch/v0` input created from NAVER/OpenDART events,
   the mode-enabled KIS signal collector inputs, symbol mapping,
@@ -127,13 +128,13 @@ own all broker-order eligibility.
   become reject/watch records or a `NO_TRADE` safe block; they cannot become
   order intents.
 - Flash input must include at least one portfolio-consistency source:
-  - previous `flash_trade_document/v0` chain with active/expired trade-action
+  - previous `flash_trade_document/v1` chain with active/expired trade-action
     status; or
   - current portfolio/order-state snapshot with holdings, pending orders,
     active exits, cooldowns, cash/reserve state, and position locks.
   Prefer both when available.
 - The first Flash bucket for the active investment mode must include a valid
-  `morning_watchlist/v0` ref or write `NO_TRADE` with a named
+  `morning_watchlist/v1` ref or write `NO_TRADE` with a named
   `morning_watchlist_missing_or_stale` style reason.
 - Enforce source ids, redaction status, prompt/schema versions, latency/cutoff,
   and no-order boundaries.
@@ -155,15 +156,15 @@ own all broker-order eligibility.
 | ac_id | priority | criterion | observable_result |
 | --- | --- | --- | --- |
 | AC-01 | P0 | Official DeepSeek model ids are used | Service/config/tests reject `moonbridge` or deprecated aliases as default runtime models. |
-| AC-02 | P0 | Hourly Pro aggregate job exists | A top-of-hour tick writes source-grounded `pro_hourly_market_analysis/v0` or a classified safe block. |
+| AC-02 | P0 | Hourly Pro aggregate job exists | A top-of-hour tick writes source-grounded `pro_hourly_market_analysis/v1` strategy context or a classified safe block. |
 | AC-03 | P0 | Pro market-regime analysis is integrated | During market hours the Pro artifact includes market-regime/session analysis in the same file; no detached market-regime subsystem is required. |
-| AC-04 | P0 | Flash 10-minute trade document exists | During the active investment-mode decision window Flash writes `flash_trade_document/v0` every 10 minutes or safe-blocks; actions are capped at five symbols and include entry/take-profit/stop-loss/trailing/cancel windows where relevant. |
+| AC-04 | P0 | Flash 10-minute trade document exists | During the active investment-mode decision window Flash writes `flash_trade_document/v1` every 10 minutes or safe-blocks; actions are capped at five symbols and include source-grounded price/size/risk/confirmation/cancel windows where relevant. |
 | AC-05 | P0 | AI outputs are non-executable | No AI artifact can directly invoke broker/order code or bypass deterministic risk gates. |
 | AC-06 | P0 | Secrets and copyrighted bodies are excluded | AI input payload review rejects credentials, account ids, and unapproved full article bodies. |
 | AC-07 | P0 | Missing provider/key is safe | Missing key or provider failure records a safe block and does not unlock new entries. |
 | AC-08 | P0 | Flash is portfolio-aware | Flash input includes previous trade-document and/or portfolio/order-state context, and output marks conflicts instead of proposing duplicate/conflicting entries. |
 | AC-09 | P0 | Flash candidate universe is deterministic | Flash can only score/select symbols from a prebuilt `compiled_watch/v0`; off-universe tickers are rejected and cannot produce order intents. |
-| AC-10 | P0 | Morning watchlist gates the first Flash bucket | The first paper/mock `09:00 KST` Flash bucket, and future live `08:00 KST` bucket, references a valid `morning_watchlist/v0` or writes `NO_TRADE`. |
+| AC-10 | P0 | Morning watchlist gates the first Flash bucket | The first paper/mock `09:00 KST` Flash bucket, and future live `08:00 KST` bucket, references a valid `morning_watchlist/v1` or writes `NO_TRADE`. |
 | AC-11 | P0 | Paper/mock decision window closes at 15:00 | Paper/mock Flash cannot create new entry intents after `15:00 KST`, even though market-data/close context may continue to `15:30 KST`. |
 
 ## 5. Go Notes

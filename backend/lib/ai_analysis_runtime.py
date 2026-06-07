@@ -279,6 +279,95 @@ def _write_morning_watchlist_latest(
     return paths
 
 
+FORBIDDEN_MORNING_ORDER_FIELDS = {
+    "entry_price_limit",
+    "quantity",
+    "order_type",
+    "order_price",
+    "broker_order_request",
+    "order_request",
+    "submit_order",
+    "execution_route",
+}
+
+
+def _find_forbidden_morning_order_fields(value: Any, *, prefix: str = "") -> List[str]:
+    hits: List[str] = []
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            key_text = str(key)
+            path = f"{prefix}.{key_text}" if prefix else key_text
+            if key_text in FORBIDDEN_MORNING_ORDER_FIELDS:
+                hits.append(path)
+            hits.extend(_find_forbidden_morning_order_fields(item, prefix=path))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            hits.extend(_find_forbidden_morning_order_fields(item, prefix=f"{prefix}[{index}]"))
+    return hits
+
+
+def _validate_morning_watchlist_payload(
+    payload: Mapping[str, Any],
+    *,
+    requested_target: str,
+) -> List[str]:
+    errors: List[str] = []
+    schema = str(payload.get("schema_version") or payload.get("schema") or "").strip()
+    route = str(payload.get("route") or "").strip()
+    payload_target = str(
+        payload.get("target_trade_date_kst")
+        or payload.get("trading_date_kst")
+        or payload.get("trading_date")
+        or requested_target
+    ).strip()
+
+    if schema != "morning_watchlist/v1":
+        errors.append("schema_version_must_be_morning_watchlist_v1")
+    if route != "codex_cli_local_browser_use":
+        errors.append("route_must_be_codex_cli_local_browser_use")
+    if payload_target != requested_target:
+        errors.append("target_trade_date_mismatch")
+    if payload.get("forbidden_actions_acknowledged") is not True:
+        errors.append("forbidden_actions_acknowledged_required")
+    if not str(payload.get("target_trade_date_kst") or "").strip():
+        errors.append("target_trade_date_kst_required")
+    if not isinstance(payload.get("market_open_plan"), Mapping):
+        errors.append("market_open_plan_required")
+    forbidden_fields = _find_forbidden_morning_order_fields(payload)
+    if forbidden_fields:
+        errors.append("executable_order_fields_forbidden:" + ",".join(sorted(forbidden_fields)[:8]))
+
+    items = payload.get("items")
+    if not isinstance(items, list):
+        errors.append("items_must_be_list")
+        items = []
+    for index, item in enumerate(items):
+        if not isinstance(item, Mapping):
+            errors.append(f"items_{index}_must_be_object")
+            continue
+        stance = str(item.get("stance") or "").strip()
+        if stance != "eligible_for_flash_review":
+            continue
+        if not str(item.get("ticker") or "").strip():
+            errors.append(f"items_{index}_ticker_required")
+        if not str(item.get("thesis") or "").strip():
+            errors.append(f"items_{index}_thesis_required")
+        if not item.get("opening_trigger_conditions"):
+            errors.append(f"items_{index}_opening_trigger_conditions_required")
+        if not item.get("invalidation_conditions"):
+            errors.append(f"items_{index}_invalidation_conditions_required")
+        if not item.get("source_refs") and not item.get("pro_refs"):
+            errors.append(f"items_{index}_source_or_pro_refs_required")
+        try:
+            confidence = float(item.get("confidence"))
+        except (TypeError, ValueError):
+            errors.append(f"items_{index}_confidence_required")
+        else:
+            if confidence < 0 or confidence > 1:
+                errors.append(f"items_{index}_confidence_invalid")
+    return errors
+
+
 def publish_morning_watchlist_artifact(
     *,
     payload: Optional[Mapping[str, Any]] = None,
@@ -302,27 +391,20 @@ def publish_morning_watchlist_artifact(
     ).strip()
     artifact: Dict[str, Any]
     errors: List[str] = []
-    schema = str(source_payload.get("schema_version") or source_payload.get("schema") or "").strip()
-    route = str(source_payload.get("route") or "").strip()
-    payload_target = str(
-        source_payload.get("target_trade_date_kst")
-        or source_payload.get("trading_date_kst")
-        or source_payload.get("trading_date")
-        or requested_target
-    ).strip()
 
     if not source_payload:
         errors.append("missing_morning_watchlist_payload")
-    elif schema != "morning_watchlist/v0":
-        errors.append("schema_version_must_be_morning_watchlist_v0")
-    elif route and route != "codex_cli_local_browser_use":
-        errors.append("route_must_be_codex_cli_local_browser_use")
-    elif payload_target != requested_target:
-        errors.append("target_trade_date_mismatch")
+    else:
+        errors.extend(
+            _validate_morning_watchlist_payload(
+                source_payload,
+                requested_target=requested_target,
+            )
+        )
 
     if errors:
         artifact = {
-            "schema_version": "morning_watchlist/v0",
+            "schema_version": "morning_watchlist/v1",
             "artifact_type": "morning_watchlist_safe_block",
             "safe_block_id": _morning_artifact_id(requested_target, now, "safe_block"),
             "target_trade_date_kst": requested_target,
@@ -339,7 +421,7 @@ def publish_morning_watchlist_artifact(
         }
     else:
         artifact = dict(source_payload)
-        artifact["schema_version"] = "morning_watchlist/v0"
+        artifact["schema_version"] = "morning_watchlist/v1"
         artifact["artifact_type"] = "morning_watchlist"
         artifact["artifact_id"] = str(
             artifact.get("artifact_id")
@@ -412,15 +494,48 @@ def _build_pro_hourly_prompt(
                 ],
             }
         )
+    required_schema = {
+        "schema_version": "pro_hourly_market_analysis/v1",
+        "document_kind": "MARKET_STRATEGY_CONTEXT",
+        "analysis_language": "ko-KR",
+        "order_safety": "no_order",
+        "ai_direct_order_allowed": False,
+        "input_window_kst": {"start_kst": "string", "end_kst": "string", "window_seconds": 3600},
+        "data_quality": {
+            "news_event_count": 0,
+            "kis_market_snapshot_count": 0,
+            "kis_data_status": "ok|partial|expected_off_session|missing|degraded",
+            "runtime_kis_failure_evidence_present": False,
+            "missing_inputs": [],
+            "warnings": [],
+        },
+        "market_regime": {"mode": "RISK_ON|NEUTRAL|RISK_OFF|NO_TRADE", "confidence": 0.0, "why": []},
+        "theme_map": [],
+        "flash_guidance": {
+            "preferred_bias": "aggressive|selective_watch|defensive|no_trade_bias",
+            "max_aggression": "none|low|medium|high",
+            "candidate_focus": [],
+            "avoid_focus": [],
+            "must_check_before_buy": [],
+            "position_management_notes": [],
+        },
+        "no_trade_conditions": [],
+        "contradiction_notes": [],
+        "source_ref_map": [],
+        "questions_for_next_flash": [],
+        "investment_utility_status": "actionable_context|limited_context|news_only_low_utility|safe_block",
+    }
     return (
-        "JSON만 출력. 직접 주문, 수익 보장, 계좌/비밀값 언급 금지. "
-        "역할은 한국 장중 시장국면/테마/피해야 할 조건 정리다. "
-        "summary, themes, strong_conditions, avoid_conditions, risk_flags 등 사람이 읽는 모든 문자열 값은 한국어로 작성해. "
-        "schema key와 market_mode enum, order_safety 같은 기계용 키/고정값은 지정 형식 그대로 유지해. "
-        "calendar_context.kis_realtime_expected=false이면 KIS 실시간 부재는 정상 오프세션/휴장 상태로 취급하고 KIS 장애로 쓰지 마. "
-        "형식: {\"summary\":\"한문장\", \"market_mode\":\"RISK_ON|NEUTRAL|RISK_OFF|NO_TRADE\", "
-        "\"themes\":[\"테마\"], \"strong_conditions\":[\"조건\"], "
-        "\"avoid_conditions\":[\"조건\"], \"risk_flags\":[\"리스크\"], \"order_safety\":\"no_order\"}. "
+        "JSON만 출력. 설명/Markdown 금지. "
+        "너는 한국 주식 단기 paper 운용을 위한 1시간 시장 전략 분석가다. "
+        "너는 주문하지 않고, 종목 매수/매도 지시를 직접 내리지 않는다. "
+        "단순 뉴스 요약 금지. 뉴스/공시와 통합 KIS 시장 데이터를 연결해 Flash 10분 매매문서가 사용할 전략 컨텍스트를 만들어라. "
+        "사람이 읽는 자연어 문자열은 한국어로 쓰고, schema key/enum/source_ref/ticker 같은 기계값은 지정 형식 그대로 유지해. "
+        "theme_map, flash_guidance, no_trade_conditions, contradiction_notes, source_ref_map, questions_for_next_flash를 반드시 채워라. "
+        "calendar_context.kis_realtime_expected=false이면 KIS 실시간 부재는 정상 오프세션/휴장 상태로 취급하고 KIS 장애/수신 장애라고 쓰지 마. "
+        "runtime evidence에 실제 token/transport/provider failure가 있을 때만 KIS 실패라고 써라. "
+        "summary/themes/risk_flags만 내면 news_only_low_utility로 간주된다. "
+        f"필수 JSON 스키마 예시={json.dumps(required_schema, ensure_ascii=False)} "
         f"시각={produced_at_kst}. "
         f"calendar_context={json.dumps(dict(calendar_context or {}), ensure_ascii=False)} "
         f"뉴스/공시={json.dumps(titles, ensure_ascii=False)} "
@@ -437,6 +552,7 @@ def _build_flash_prompt(
     portfolio: Mapping[str, Any],
     order_state: Mapping[str, Any],
     produced_at_kst: str,
+    morning_watchlist: Optional[Mapping[str, Any]] = None,
     calendar_context: Optional[Mapping[str, Any]] = None,
 ) -> str:
     watch_summary = [
@@ -448,27 +564,64 @@ def _build_flash_prompt(
         }
         for row in compiled_watch[:5]
     ]
+    required_schema = {
+        "schema_version": "flash_trade_document/v1",
+        "document_kind": "TRADE_ACTIONS|NO_TRADE",
+        "analysis_language": "ko-KR",
+        "investment_mode": "paper|live",
+        "market_analysis_feed_mode": "integrated",
+        "execution_venue_mode": "krx_only",
+        "order_safety": "no_direct_order",
+        "ai_direct_broker_call_allowed": False,
+        "actions": [
+            {
+                "symbol": "000000",
+                "name": "string",
+                "side": "BUY|SELL|HOLD|NO_TRADE",
+                "action": "BUY_NOW|WAIT_BUY|SELL_NOW|WAIT_SELL|HOLD|NO_TRADE",
+                "quantity": 0,
+                "planned_order_cash_krw": 0,
+                "entry_price_limit": 0,
+                "target_price": 0,
+                "stop_loss_price": 0,
+                "valid_from_kst": "string",
+                "valid_until_kst": "string",
+                "confidence": 0.0,
+                "urgency": "low|medium|high",
+                "thesis": "한국어",
+                "why_now": "한국어",
+                "required_confirmations": [],
+                "cancel_if": [],
+                "source_refs": [],
+                "pro_refs": [],
+                "morning_watchlist_refs": [],
+                "market_data_refs": [],
+            }
+        ],
+        "no_trade_reasons": [],
+        "global_risk_flags": [],
+        "operator_notes": [],
+    }
     return (
-        "JSON만 출력. 직접 주문 실행 금지. 후보는 compiled_watch 안에서 최대 5개만 평가. "
-        "보유/대기 주문과 충돌하는 신규매수 금지. "
-        "summary, reason, candidate_notes.reason, risk_flags 등 사람이 읽는 모든 문자열 값은 한국어로 작성해. "
-        "schema key, symbol, action enum, 숫자 필드는 지정 형식 그대로 유지해. "
+        "JSON만 출력. 설명/Markdown 금지. "
+        "너는 hwiStock의 10분 단위 매매문서 작성자다. broker API를 호출하지 않고 주문을 제출하지 않는다. "
+        "latest Pro 전략 컨텍스트, GPT Pro morning watchlist, 지난 10분 뉴스/공시/KIS 통합시장데이터, 현재 보유/대기주문 상태를 보고 다음 10분 매매문서를 작성해라. "
+        "compiled_watch 또는 morning_watchlist universe 밖 종목 생성 금지. paper mode는 KRX-only이며 09:00~15:00 KST 신규 주문/진입만 허용. "
+        "15:00 이후 신규 BUY/SELL 금지. 보유/대기주문과 충돌하는 신규 BUY 금지. 최대 보유 5개와 총예수금 75% exposure cap을 고려. "
+        "불확실하면 WAIT_BUY 또는 NO_TRADE. source_refs/pro_refs/market_data_refs 없는 BUY_NOW 금지. target_price/stop_loss_price 없는 BUY_NOW 금지. quantity:0 BUY_NOW 금지. "
+        "각 action은 thesis, why_now, required_confirmations, cancel_if, confidence, urgency, refs를 반드시 포함해야 한다. "
+        "사람이 읽는 자연어 문자열은 한국어로 쓰고, schema key/enum/symbol 숫자 필드는 지정 형식 그대로 유지해. "
         "calendar_context.kis_realtime_expected=false이면 KIS 실시간 부재를 장애/제공자 실패로 쓰지 말고 오프세션 정상 상태로 처리해. "
-        "actions는 다음 10분 매매문서 초안이며 허용 action은 WAIT_BUY, BUY_NOW, HOLD, SELL, NO_TRADE뿐이다. "
-        "형식: {\"summary\":\"한문장\", "
-        "\"actions\":[{\"symbol\":\"000000\",\"action\":\"WAIT_BUY|BUY_NOW|HOLD|SELL|NO_TRADE\","
-        "\"entry_price_limit\":10000,\"target_price\":10500,\"stop_loss_price\":9800,"
-        "\"planned_order_cash_krw\":100000,\"quantity\":0,\"reason\":\"짧게\"}], "
-        "\"candidate_notes\":[{\"symbol\":\"000000\",\"stance\":\"watch|avoid\",\"reason\":\"짧게\"}], "
-        "\"risk_flags\":[\"리스크\"], \"order_safety\":\"no_direct_order\"}. "
+        f"필수 JSON 스키마 예시={json.dumps(required_schema, ensure_ascii=False)} "
         f"시각={produced_at_kst}. "
         f"calendar_context={json.dumps(dict(calendar_context or {}), ensure_ascii=False)} "
-        f"Pro분석={json.dumps(_compact_json_for_prompt(pro_artifact, 2000), ensure_ascii=False)} "
+        f"Pro분석={json.dumps(_compact_json_for_prompt(pro_artifact, 3500), ensure_ascii=False)} "
+        f"MorningWatchlist={json.dumps(_compact_json_for_prompt(dict(morning_watchlist or {}), 2500), ensure_ascii=False)} "
         f"최근뉴스={json.dumps(list(events)[-20:], ensure_ascii=False)} "
-        f"KIS스냅샷={json.dumps(_compact_json_for_prompt(list(kis_snapshots)[-3:], 2500), ensure_ascii=False)} "
+        f"KIS스냅샷={json.dumps(_compact_json_for_prompt(list(kis_snapshots)[-4:], 3500), ensure_ascii=False)} "
         f"후보={json.dumps(watch_summary, ensure_ascii=False)} "
-        f"포트폴리오={json.dumps(_compact_json_for_prompt(portfolio, 1200), ensure_ascii=False)} "
-        f"주문상태={json.dumps(_compact_json_for_prompt(order_state, 1200), ensure_ascii=False)}"
+        f"포트폴리오={json.dumps(_compact_json_for_prompt(portfolio, 1600), ensure_ascii=False)} "
+        f"주문상태={json.dumps(_compact_json_for_prompt(order_state, 1600), ensure_ascii=False)}"
     )
 
 
@@ -570,6 +723,13 @@ def _apply_off_session_provider_guard(
         "kis_realtime_expected": False,
         "calendar_reason": calendar_context.get("reason"),
     }
+    data_quality = artifact.get("data_quality")
+    if isinstance(data_quality, dict):
+        data_quality["kis_data_status"] = "expected_off_session"
+        data_quality["runtime_kis_failure_evidence_present"] = False
+        dq_warnings = data_quality.setdefault("warnings", [])
+        if isinstance(dq_warnings, list) and warning not in dq_warnings:
+            dq_warnings.append(warning)
 
 
 def _provider_status(provider: Mapping[str, Any]) -> str:
@@ -585,6 +745,59 @@ def _provider_status(provider: Mapping[str, Any]) -> str:
     return "provider_failed"
 
 
+def _apply_pro_provider_json(artifact: Dict[str, Any], provider_json: Mapping[str, Any]) -> None:
+    if not provider_json:
+        return
+    artifact["provider_json"] = dict(provider_json)
+    if str(provider_json.get("summary") or "").strip():
+        artifact["summary"] = str(provider_json["summary"])[:1000]
+    if provider_json.get("schema_version") == "pro_hourly_market_analysis/v1":
+        for key in (
+            "document_kind",
+            "input_window_kst",
+            "data_quality",
+            "market_regime",
+            "theme_map",
+            "flash_guidance",
+            "no_trade_conditions",
+            "contradiction_notes",
+            "source_ref_map",
+            "questions_for_next_flash",
+            "investment_utility_status",
+        ):
+            value = provider_json.get(key)
+            if isinstance(value, (dict, list)) or (isinstance(value, str) and value.strip()):
+                artifact[key] = value
+        artifact["schema_version"] = "pro_hourly_market_analysis/v1"
+        artifact["analysis_language"] = "ko-KR"
+        artifact["order_safety"] = "no_order"
+        artifact["ai_direct_order_allowed"] = False
+        return
+
+    themes = provider_json.get("themes")
+    if isinstance(themes, list):
+        artifact["themes"] = [str(item)[:80] for item in themes[:12]]
+    risk_flags = provider_json.get("risk_flags")
+    if isinstance(risk_flags, list):
+        artifact["risk_flags"] = [str(item)[:120] for item in risk_flags[:12]]
+    strong = provider_json.get("strong_conditions")
+    if isinstance(strong, list):
+        artifact["strong_conditions"] = [str(item)[:120] for item in strong[:12]]
+    avoid = provider_json.get("avoid_conditions")
+    if isinstance(avoid, list):
+        artifact["avoid_conditions"] = [str(item)[:120] for item in avoid[:12]]
+    market_mode = str(provider_json.get("market_mode") or "").strip()
+    if market_mode:
+        regime = artifact.setdefault("market_regime", {})
+        if isinstance(regime, dict):
+            regime["mode"] = market_mode[:40]
+            regime["market_mode"] = market_mode[:40]
+    artifact["investment_utility_status"] = "news_only_low_utility"
+    warnings = artifact.setdefault("warnings", [])
+    if isinstance(warnings, list) and "pro_hourly_low_utility_news_only" not in warnings:
+        warnings.append("pro_hourly_low_utility_news_only")
+
+
 def _deepseek_api_key() -> str:
     return (
         os.getenv("HWISTOCK_DEEPSEEK_API_KEY", "").strip()
@@ -598,7 +811,40 @@ def _deepseek_chat_url() -> str:
     return f"{base_url}/chat/completions"
 
 
-def _call_deepseek(prompt: str, *, model: str, timeout: int = 90) -> Dict[str, Any]:
+def _deepseek_system_prompt(job: str) -> str:
+    if job == "pro-hourly":
+        return (
+            "You produce Korean JSON strategy context for a Korean stock paper-trading analysis pipeline. "
+            "Do not submit or recommend broker orders. Do not summarize only. "
+            "Map evidence to market regime, themes, confirmations, risks, and Flash guidance."
+        )
+    if job == "flash-10m":
+        return (
+            "You produce Korean JSON trade documents for a deterministic paper-trading runner. "
+            "You do not call broker APIs. The runner will validate all actions. "
+            "Every action must be source-grounded, time-bounded, and risk-bounded."
+        )
+    return "You write compact Korean JSON market-intelligence summaries. Never recommend or place orders."
+
+
+def _deepseek_max_tokens(job: str) -> int:
+    override = str(os.getenv("HWISTOCK_AI_MAX_OUTPUT_TOKENS") or "").strip()
+    if override:
+        return int(override)
+    if job == "pro-hourly":
+        return int(os.getenv("HWISTOCK_DEEPSEEK_PRO_MAX_TOKENS", "2200"))
+    if job == "flash-10m":
+        return int(os.getenv("HWISTOCK_DEEPSEEK_FLASH_MAX_TOKENS", "2200"))
+    return int(os.getenv("HWISTOCK_DEEPSEEK_LEGACY_MAX_TOKENS", "1000"))
+
+
+def _call_deepseek(
+    prompt: str,
+    *,
+    model: str,
+    timeout: int = 90,
+    job: str = "legacy-summary",
+) -> Dict[str, Any]:
     api_key = _deepseek_api_key()
     if not api_key:
         return {
@@ -616,11 +862,11 @@ def _call_deepseek(prompt: str, *, model: str, timeout: int = 90) -> Dict[str, A
         "messages": [
             {
                 "role": "system",
-                "content": "You write compact JSON market-intelligence summaries. Never recommend or place orders.",
+                "content": _deepseek_system_prompt(job),
             },
             {"role": "user", "content": prompt},
         ],
-        "max_tokens": int(os.getenv("HWISTOCK_AI_MAX_OUTPUT_TOKENS", "1000")),
+        "max_tokens": _deepseek_max_tokens(job),
         "temperature": 0.2,
         "response_format": {"type": "json_object"},
     }
@@ -847,6 +1093,7 @@ def run_pro_hourly_once(
                     calendar_context=calendar_context,
                 ),
                 model=selected_model,
+                job="pro-hourly",
             )
             provider_json = _parse_provider_json(str(provider.get("text") or ""))
             provider_status = _provider_status(provider)
@@ -867,24 +1114,7 @@ def run_pro_hourly_once(
     artifact["model_name"] = selected_model
     artifact["provider"] = _provider_meta(provider)
     if provider_json:
-        artifact["provider_json"] = provider_json
-        if str(provider_json.get("summary") or "").strip():
-            artifact["summary"] = str(provider_json["summary"])[:1000]
-        themes = provider_json.get("themes")
-        if isinstance(themes, list):
-            artifact["themes"] = [str(item)[:80] for item in themes[:12]]
-        risk_flags = provider_json.get("risk_flags")
-        if isinstance(risk_flags, list):
-            artifact["risk_flags"] = [str(item)[:120] for item in risk_flags[:12]]
-        strong = provider_json.get("strong_conditions")
-        if isinstance(strong, list):
-            artifact["strong_conditions"] = [str(item)[:120] for item in strong[:12]]
-        avoid = provider_json.get("avoid_conditions")
-        if isinstance(avoid, list):
-            artifact["avoid_conditions"] = [str(item)[:120] for item in avoid[:12]]
-        market_mode = str(provider_json.get("market_mode") or "").strip()
-        if market_mode:
-            artifact["market_regime"]["market_mode"] = market_mode[:40]
+        _apply_pro_provider_json(artifact, provider_json)
         _apply_off_session_provider_guard(
             artifact,
             provider_json=provider_json,
@@ -893,8 +1123,26 @@ def run_pro_hourly_once(
     if provider_status not in {"ok", "blocked_no_source_inputs"}:
         artifact["validation_status"] = "safe_block"
         artifact["document_kind"] = "NO_TRADE"
+        artifact["market_regime"]["mode"] = "NO_TRADE"
         artifact["market_regime"]["market_mode"] = "NO_TRADE"
         artifact["safe_block_reason"] = provider_status
+        artifact["investment_utility_status"] = "safe_block"
+        artifact["no_trade_conditions"] = [
+            {
+                "condition": "Pro hourly provider unavailable",
+                "reason": provider_status,
+                "source_refs": artifact.get("source_refs") or [],
+                "market_data_refs": artifact.get("market_data_refs") or [],
+            }
+        ]
+    if calendar_context.get("kis_realtime_expected") is False:
+        data_quality = artifact.get("data_quality")
+        if isinstance(data_quality, dict) and not artifact.get("market_data_refs"):
+            data_quality["kis_data_status"] = "expected_off_session"
+    pro_validation = ao.validateProHourlyMarketAnalysis(artifact)
+    artifact = pro_validation["document"]
+    artifact["validation_errors"] = pro_validation["errors"]
+    artifact["validation_warnings"] = pro_validation["warnings"]
     artifact["artifact_paths"] = _write_artifact_bundle(
         artifact,
         data_root=data_root,
@@ -941,10 +1189,12 @@ def run_flash_trade_document_once(
                     portfolio=portfolio,
                     order_state=order_state,
                     produced_at_kst=now.isoformat(),
+                    morning_watchlist=morning_watchlist,
                     calendar_context=calendar_context,
                 ),
                 model=selected_model,
                 timeout=60,
+                job="flash-10m",
             )
             provider_json = _parse_provider_json(str(provider.get("text") or ""))
         except Exception as exc:  # noqa: BLE001
@@ -970,6 +1220,11 @@ def run_flash_trade_document_once(
     artifact["model_name"] = selected_model
     artifact["provider_status"] = _provider_status(provider or {}) if provider else "blocked_no_flash_provider_inputs"
     artifact["provider"] = _provider_meta(provider)
+    market_context = artifact.get("market_context")
+    if isinstance(market_context, dict):
+        market_context["market_context_open"] = bool(calendar_context.get("market_context_open"))
+        market_context["broker_order_open"] = bool(calendar_context.get("broker_order_open"))
+        market_context["kis_realtime_expected"] = bool(calendar_context.get("kis_realtime_expected"))
     if provider_json:
         artifact["provider_json"] = provider_json
         notes = provider_json.get("candidate_notes")
@@ -1047,7 +1302,7 @@ def run_analysis_once(
 
     if events:
         try:
-            provider = _call_deepseek(_build_prompt(events, produced_at_kst=produced_at), model=selected_model)
+            provider = _call_deepseek(_build_prompt(events, produced_at_kst=produced_at), model=selected_model, job="legacy-summary")
             result["provider"] = {
                 "http_status": provider.get("http_status"),
                 "finish_reason": provider.get("finish_reason"),
@@ -1111,7 +1366,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     parser.add_argument("--data-root", default=str(DEFAULT_DATA_ROOT), help="Runtime data root")
     parser.add_argument("--model", default=os.getenv("HWISTOCK_DEEPSEEK_MODEL", DEFAULT_DEEPSEEK_MODEL), help="DeepSeek model id")
-    parser.add_argument("--source-json", help="Sanitized local GPT Pro morning_watchlist/v0 JSON file to publish")
+    parser.add_argument("--source-json", help="Sanitized local GPT Pro morning_watchlist/v1 JSON file to publish")
     parser.add_argument("--target-trade-date", help="Target trade date for morning watchlist latest paths")
     parser.add_argument("--purpose", help="Override morning watchlist purpose metadata")
     args = parser.parse_args(list(argv) if argv is not None else None)

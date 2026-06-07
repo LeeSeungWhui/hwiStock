@@ -327,7 +327,7 @@ cat >"$CODEX_PROMPT" <<EOF
 
 You are a Codex CLI automation runner inside \`${REPO_ROOT}\`.
 
-Objective: perform the GPT Pro leg only, using the user's local Chrome/browser-use route, then save a strict JSON file. Do not edit repo files. Do not commit. Do not call broker APIs or order APIs.
+Objective: perform the GPT Pro leg only, using the user's local Chrome/browser-use route, then save a strict morning_watchlist/v1 JSON file. Do not edit repo files. Do not commit. Do not call broker APIs or order APIs.
 
 Hard route rule:
 - Use local Chrome/browser-use via the Chrome plugin/browser-client route available to Codex CLI.
@@ -337,18 +337,21 @@ Hard route rule:
 Input prompt to send to ChatGPT Pro:
 - Read \`${PROMPT_SOURCE}\`.
 - Send its content to ChatGPT Pro.
-- If ChatGPT Web turns the long prompt into a pasted-text/document card, add a short visible instruction: \`첨부된 pasted text 번들을 분석해서 strict JSON object 하나만 반환해. Markdown 금지. 사람이 읽는 자연어 문자열 값은 한국어로 작성하고, schema key/enum/ticker/route 같은 기계값은 지정 형식 그대로 유지해.\` and send.
+- If ChatGPT Web turns the long prompt into a pasted-text/document card, add a short visible instruction: \`첨부된 pasted text 번들을 분석해서 morning_watchlist/v1 strict JSON object 하나만 반환해. Markdown 금지. 사람이 읽는 자연어 문자열 값은 한국어로 작성하고, schema key/enum/ticker/route 같은 기계값은 지정 형식 그대로 유지해. market_open_plan, first_flash_questions, opening_trigger_conditions, invalidation_conditions, source_refs/pro_refs를 반드시 포함해.\` and send.
 - Wait until generation is complete. Do not press Stop or retry while it is still generating.
-- If the first response is not strict JSON, ask once: \`같은 객체를 strict valid minified JSON object 하나로만 다시 반환해. 인용/설명/Markdown 제거, 문자열 escape 처리. 사람이 읽는 자연어 문자열 값은 한국어로 유지하고 schema key/enum/ticker/route 같은 기계값은 그대로 둬.\`
+- If the first response is not strict JSON, ask once: \`같은 morning_watchlist/v1 객체를 strict valid minified JSON object 하나로만 다시 반환해. 인용/설명/Markdown 제거, 문자열 escape 처리. 사람이 읽는 자연어 문자열 값은 한국어로 유지하고 schema key/enum/ticker/route 같은 기계값은 그대로 둬.\`
 
 Output requirements:
 - Save the final strict JSON object only to \`${RESPONSE}\`.
 - Save any raw assistant text to \`${RAW_RESPONSE}\`.
 - The JSON must parse with Python \`json.loads\` and must contain:
-  - \`schema_version = "morning_watchlist/v0"\`
+  - \`schema_version = "morning_watchlist/v1"\`
   - \`reviewer = "chatgpt_pro"\`
   - \`route = "codex_cli_local_browser_use"\`
   - \`forbidden_actions_acknowledged = true\`
+  - \`market_open_plan\` with \`opening_bias\`, \`why\`, \`must_wait_for_market_confirmation\`, and \`first_flash_questions\`
+  - each \`eligible_for_flash_review\` item must include ticker, thesis, opening_trigger_conditions, invalidation_conditions, source_refs or pro_refs, confidence
+  - no executable order fields such as entry_price_limit, quantity, order_type
 - Keep the ChatGPT tab open as handoff.
 - Final answer should be brief and include whether the JSON file was saved and parse-valid.
 EOF
@@ -377,10 +380,22 @@ p = Path(os.environ["RESPONSE"])
 if not p.is_file():
     raise SystemExit("missing_response_json")
 obj = json.loads(p.read_text(encoding="utf-8"))
-assert obj.get("schema_version") == "morning_watchlist/v0", obj.get("schema_version")
+assert obj.get("schema_version") == "morning_watchlist/v1", obj.get("schema_version")
 assert obj.get("reviewer") == "chatgpt_pro", obj.get("reviewer")
 assert obj.get("route") == "codex_cli_local_browser_use", obj.get("route")
 assert obj.get("forbidden_actions_acknowledged") is True
+assert isinstance(obj.get("market_open_plan"), dict)
+for index, item in enumerate(obj.get("items") or []):
+    if item.get("stance") != "eligible_for_flash_review":
+        continue
+    assert item.get("ticker"), index
+    assert item.get("thesis"), index
+    assert item.get("opening_trigger_conditions"), index
+    assert item.get("invalidation_conditions"), index
+    assert item.get("source_refs") or item.get("pro_refs"), index
+    assert item.get("confidence") is not None, index
+    for forbidden in ("entry_price_limit", "quantity", "order_type"):
+        assert forbidden not in item, forbidden
 PY
 response_validate_code=$?
 set -e

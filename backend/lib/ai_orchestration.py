@@ -23,8 +23,9 @@ except ImportError:  # pragma: no cover - package-style imports
 KST = timezone(timedelta(hours=9))
 
 AI_RECOMMENDATION_SCHEMA = "ai_recommendation/v0"
-PRO_HOURLY_SCHEMA = "pro_hourly_market_analysis/v0"
-FLASH_TRADE_DOCUMENT_SCHEMA = "flash_trade_document/v0"
+PRO_HOURLY_SCHEMA = "pro_hourly_market_analysis/v1"
+FLASH_TRADE_DOCUMENT_SCHEMA = "flash_trade_document/v1"
+MORNING_WATCHLIST_SCHEMA = "morning_watchlist/v1"
 COMPILED_WATCH_SCHEMA = "compiled_watch/v0"
 NO_ORDER_DRY_RUN = "no_order_dry_run"
 DEEPSEEK_PRO_MODEL = "deepseek-v4-pro"
@@ -72,7 +73,7 @@ JOB_REGISTRY: Dict[str, Dict[str, Any]] = {
         "schedule": "07:15 KST",
         "model_role": "local_codex_cli_browser_use_chatgpt_pro",
         "input_schema": "morning_watchlist_input_bundle/v0",
-        "output_schema": "morning_watchlist/v0",
+        "output_schema": MORNING_WATCHLIST_SCHEMA,
         "approved_route": "codex_cli_local_browser_use",
         "ssh_browser_use_allowed": False,
         "artifact_or_safe_block_required_before_first_flash": True,
@@ -263,6 +264,28 @@ def getOfficialDeepSeekModels() -> Dict[str, str]:
     }
 
 
+def _dedupe_strings(values: Sequence[Any]) -> List[str]:
+    seen: Set[str] = set()
+    result: List[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        result.append(text)
+    return result
+
+
+def _window_seconds(window: Optional[Mapping[str, Any]]) -> Optional[int]:
+    if not isinstance(window, Mapping):
+        return None
+    start = _parse_kst_timestamp(window.get("start_kst"), "start_kst", [])
+    end = _parse_kst_timestamp(window.get("end_kst"), "end_kst", [])
+    if not start or not end:
+        return None
+    return max(0, int((end - start).total_seconds()))
+
+
 def buildProHourlyMarketAnalysis(
     *,
     events: Optional[Sequence[Mapping[str, Any]]] = None,
@@ -274,17 +297,24 @@ def buildProHourlyMarketAnalysis(
     produced_at = produced_at_kst or _default_now_kst()
     event_rows = [deepcopy(dict(event)) for event in (events or [])]
     kis_rows = [deepcopy(dict(row)) for row in (kis_market_snapshots or [])]
-    source_refs = [
+    source_refs = _dedupe_strings([
         str(event.get("source_event_id") or event.get("event_id") or event.get("source_id") or "").strip()
         for event in event_rows
         if str(event.get("source_event_id") or event.get("event_id") or event.get("source_id") or "").strip()
-    ]
-    market_refs = [
+    ])
+    market_refs = _dedupe_strings([
         str(row.get("artifact_id") or row.get("snapshot_id") or row.get("source_id") or "").strip()
         for row in kis_rows
         if str(row.get("artifact_id") or row.get("snapshot_id") or row.get("source_id") or "").strip()
-    ]
+    ])
     safe_block = not event_rows and not kis_rows
+    window = dict(input_window_kst or {})
+    if "window_seconds" not in window:
+        seconds = _window_seconds(window)
+        if seconds is not None:
+            window["window_seconds"] = seconds
+    kis_data_status = "ok" if kis_rows else ("missing" if event_rows else "missing")
+    regime_mode = "NO_TRADE" if safe_block else "NEUTRAL"
     return {
         "schema_version": PRO_HOURLY_SCHEMA,
         "artifact_id": f"art_pro_hourly_{_compact_timestamp(produced_at)}",
@@ -292,13 +322,13 @@ def buildProHourlyMarketAnalysis(
         "job_id": "deepseek_pro_hourly",
         "model_role": "deepseek_pro",
         "model_name": DEEPSEEK_PRO_MODEL,
-        "prompt_schema_version": "pro_hourly_prompt/v0",
+        "prompt_schema_version": "pro_hourly_prompt/v1",
         "produced_at_kst": produced_at,
-        "input_window_kst": dict(input_window_kst or {}),
+        "input_window_kst": window,
         "market_analysis_feed_mode": rp.MARKET_ANALYSIS_FEED_INTEGRATED,
         "provider_status": provider_status,
         "validation_status": "safe_block" if safe_block else "accepted",
-        "document_kind": "NO_TRADE" if safe_block else "MARKET_ANALYSIS",
+        "document_kind": "NO_TRADE" if safe_block else "MARKET_STRATEGY_CONTEXT",
         "source_refs": source_refs,
         "market_data_refs": market_refs,
         "source_event_count": len(event_rows),
@@ -307,14 +337,98 @@ def buildProHourlyMarketAnalysis(
             "news_disclosure_events": len(event_rows),
             "kis_market_snapshots": len(kis_rows),
         },
+        "data_quality": {
+            "news_event_count": len(event_rows),
+            "kis_market_snapshot_count": len(kis_rows),
+            "kis_data_status": "safe_block" if safe_block else kis_data_status,
+            "runtime_kis_failure_evidence_present": False,
+            "missing_inputs": []
+            if event_rows and kis_rows
+            else [
+                label
+                for label, missing in (
+                    ("news_disclosure_events", not event_rows),
+                    ("kis_market_snapshots", not kis_rows),
+                )
+                if missing
+            ],
+            "warnings": [],
+        },
         "missing_source_warnings": []
         if event_rows or kis_rows
         else ["no_news_disclosure_or_market_events_in_hour_window"],
         "market_regime": {
             "included_in_pro_artifact": True,
             "session_analysis": "insufficient_inputs" if safe_block else "source_and_kis_context_available",
-            "market_mode": "NO_TRADE" if safe_block else "RISK_CHECK_REQUIRED",
+            "mode": regime_mode,
+            "market_mode": regime_mode,
+            "confidence": 0.0 if safe_block else 0.35,
+            "why": [
+                {
+                    "claim": "입력 부족으로 거래 판단을 보류합니다" if safe_block else "최근 뉴스/공시와 KIS 시장 스냅샷을 함께 확인해야 합니다",
+                    "source_refs": source_refs[:5],
+                    "market_data_refs": market_refs[:5],
+                }
+            ],
         },
+        "theme_map": []
+        if safe_block
+        else [
+            {
+                "theme": "최근 1시간 입력 기반 감시",
+                "direction": "neutral",
+                "strength": 0.3,
+                "freshness": "last_1h",
+                "affected_groups": [],
+                "avoid_groups": [],
+                "why_it_matters": "Flash가 개별 후보를 보기 전에 시장 반응과 거래대금 확인이 필요합니다",
+                "source_refs": source_refs[:5],
+                "market_data_refs": market_refs[:5],
+                "market_confirmation_status": "not_confirmed" if not market_refs else "confirmed",
+                "confirmation_signals_for_flash": [
+                    "개장 후 거래대금 상위 진입",
+                    "체결강도 개선",
+                    "KRX 호가 스프레드 과도하지 않음",
+                ],
+            }
+        ],
+        "flash_guidance": {
+            "preferred_bias": "no_trade_bias" if safe_block else "selective_watch",
+            "max_aggression": "none" if safe_block else "low",
+            "candidate_focus": [],
+            "avoid_focus": [],
+            "must_check_before_buy": [
+                "KRX execution quote",
+                "거래대금/체결강도 확인",
+                "보유/대기주문 충돌 확인",
+                "75% exposure cap 확인",
+            ],
+            "position_management_notes": [],
+        },
+        "no_trade_conditions": [
+            {
+                "condition": "근거 입력 부족",
+                "reason": "뉴스/공시와 시장 데이터가 부족하면 신규 진입을 보류합니다",
+                "source_refs": source_refs[:5],
+                "market_data_refs": market_refs[:5],
+            }
+        ]
+        if safe_block
+        else [],
+        "contradiction_notes": [],
+        "source_ref_map": [
+            {
+                "claim": "최근 1시간 입력 묶음",
+                "source_refs": source_refs[:5],
+                "market_data_refs": market_refs[:5],
+                "confidence": 0.3 if source_refs or market_refs else 0.0,
+            }
+        ],
+        "questions_for_next_flash": [
+            "다음 10분에 실제 거래대금과 체결강도가 붙는가?",
+            "보유/대기주문과 신규 진입 후보가 충돌하지 않는가?",
+        ],
+        "investment_utility_status": "safe_block" if safe_block else "limited_context",
         "analysis_language": "ko-KR",
         "summary": "NO_TRADE: 뉴스/공시와 KIS 시장 데이터 입력이 없어 분석을 보류합니다" if safe_block else "근거 입력을 바탕으로 생성한 DeepSeek Pro 시간별 시장 분석입니다",
         "order_safety": "no_order",
@@ -346,7 +460,10 @@ def buildNoTradeSentinel(
         "bucket_id": bucket_id or _ten_minute_bucket_id(produced_at),
         "document_kind": "NO_TRADE",
         "no_trade_reason": str(reason or "safe_block"),
+        "no_trade_reasons": [str(reason or "safe_block")],
         "actions": [],
+        "order_safety": "no_direct_order",
+        "ai_direct_broker_call_allowed": False,
         "validation_status": "safe_block",
         "entry_unlocked": False,
         "no_broker_call": True,
@@ -457,6 +574,17 @@ def buildFlashTradeDocument(
         {"row": row, "provider": {}, "action_source": "compiled_watch_deterministic_fallback"}
         for row in watch_rows[:5]
     ]
+    pro_map = dict(pro_artifact or {})
+    pro_regime = pro_map.get("market_regime") if isinstance(pro_map.get("market_regime"), Mapping) else {}
+    pro_guidance = pro_map.get("flash_guidance") if isinstance(pro_map.get("flash_guidance"), Mapping) else {}
+    pro_low_utility = (
+        str(pro_map.get("investment_utility_status") or "").strip() == "news_only_low_utility"
+        or str(pro_map.get("validation_status") or "").strip() == "accepted_with_warnings"
+    )
+    market_context_open = bool(produced_dt and rp.isMarketContextOpen(produced_dt, investment_mode=mode))
+    broker_order_open = bool(produced_dt and rp.isOrderWindowOpen(produced_dt, investment_mode=mode))
+    bucket_end = produced_dt + timedelta(minutes=10) if produced_dt else None
+    current_holdings_count = len(held_symbols)
 
     actions: List[Dict[str, Any]] = []
     for index, action_source in enumerate(action_sources[:5], start=1):
@@ -477,6 +605,9 @@ def buildFlashTradeDocument(
         exit_plan = row.get("exit_plan") if isinstance(row.get("exit_plan"), Mapping) else {}
         provider_action_type = _normalize_flash_action_type(provider_action.get("action") or provider_action.get("stance"))
         action = provider_action_type or ("NO_TRADE" if conflict_reasons else "WAIT_BUY")
+        if pro_low_utility and action == "BUY_NOW":
+            action = "WAIT_BUY"
+            conflict_reasons.append("pro_hourly_low_utility_no_aggressive_buy")
         if conflict_reasons and action in {"WAIT_BUY", "BUY_NOW"}:
             action = "NO_TRADE"
         entry_zone = _normalize_price_list(
@@ -515,6 +646,57 @@ def buildFlashTradeDocument(
         )
         if not valid_until_kst:
             valid_until_kst = (produced_dt + timedelta(minutes=10)).isoformat() if produced_dt else produced_at
+        elif produced_dt:
+            parsed_valid_until = _parse_kst_timestamp(valid_until_kst, "valid_until_kst", [])
+            bucket_end_kst = produced_dt + timedelta(minutes=10)
+            if parsed_valid_until and parsed_valid_until > bucket_end_kst:
+                valid_until_kst = bucket_end_kst.isoformat()
+        valid_from_kst = str(provider_action.get("valid_from_kst") or produced_at)
+        confidence_raw = provider_action.get("confidence")
+        try:
+            confidence = float(confidence_raw)
+        except (TypeError, ValueError):
+            confidence = 0.35 if action_source_name == "deepseek_flash_provider" else 0.25
+        confidence = min(1.0, max(0.0, confidence))
+        urgency = str(provider_action.get("urgency") or ("medium" if action == "BUY_NOW" else "low")).strip().lower()
+        if urgency not in {"low", "medium", "high"}:
+            urgency = "low"
+        thesis = str(
+            provider_action.get("thesis")
+            or provider_action.get("reason")
+            or ("포트폴리오/주문 상태와 충돌해 신규 진입을 보류합니다" if conflict_reasons else "소스와 KIS 시장 데이터가 붙은 compiled_watch 후보입니다")
+        )
+        why_now = str(
+            provider_action.get("why_now")
+            or provider_action.get("whyNow")
+            or ("다음 10분 동안 확인 조건이 충족되는지 관찰합니다" if action in {"WAIT_BUY", "BUY_NOW"} else "현재 조건에서는 즉시 신규 진입하지 않습니다")
+        )
+        required_confirmations = [
+            str(item)
+            for item in (
+                provider_action.get("required_confirmations")
+                or provider_action.get("confirmations")
+                or [
+                    "KRX 현재가/호가 확인",
+                    "거래대금/체결강도 확인",
+                    "스프레드 과도 여부 확인",
+                ]
+            )
+            if str(item).strip()
+        ]
+        cancel_if = [
+            str(item)
+            for item in (
+                provider_action.get("cancel_if")
+                or provider_action.get("cancel_conditions")
+                or ["유효시간 내 거래대금/체결강도 확인 조건이 깨지면 취소"]
+            )
+            if str(item).strip()
+        ]
+        source_ref_values = _dedupe_strings(source_refs or list(row.get("source_ids") or []))
+        market_ref_values = _dedupe_strings(market_refs)
+        pro_ref_values = _dedupe_strings([str(dict(pro_artifact).get("artifact_id") or "")])
+        would_exceed_max_holdings = action in {"WAIT_BUY", "BUY_NOW"} and symbol not in held_symbols and current_holdings_count + 1 > rp.MAX_SIMULTANEOUS_HOLDINGS
         bucket_hhmm = produced_dt.astimezone(KST).strftime("%H%M") if produced_dt else "0000"
         actions.append(
             {
@@ -523,7 +705,7 @@ def buildFlashTradeDocument(
                 "ticker": symbol,
                 "name": str(row.get("name") or row.get("symbol_name") or symbol),
                 "action": action,
-                "side": "BUY" if action in {"WAIT_BUY", "BUY_NOW"} else ("SELL" if action == "SELL" else action),
+                "side": "BUY" if action in {"WAIT_BUY", "BUY_NOW"} else ("SELL" if action in {"SELL_NOW", "WAIT_SELL"} else action),
                 "quantity": _safe_positive_int(provider_action.get("quantity") or entry_intent.get("quantity") or row.get("quantity")),
                 "entry_zone": entry_zone,
                 "entry_price_limit": _safe_positive_int(entry_price_limit),
@@ -539,6 +721,9 @@ def buildFlashTradeDocument(
                 "cancel_if_not_filled_until": valid_until_kst,
                 "valid_until": valid_until_kst,
                 "valid_until_kst": valid_until_kst,
+                "valid_from_kst": valid_from_kst,
+                "confidence": confidence,
+                "urgency": urgency,
                 "position_size_pct": _first_non_empty(provider_action.get("position_size_pct"), entry_intent.get("position_size_pct")),
                 "planned_order_cash_krw": _safe_positive_int(
                     provider_action.get("planned_order_cash_krw")
@@ -547,10 +732,11 @@ def buildFlashTradeDocument(
                     or row.get("planned_order_cash_krw")
                 ),
                 "max_cash_deployment_ratio": rp.MAX_CASH_DEPLOYMENT_RATIO,
-                "source_refs": source_refs or list(row.get("source_ids") or []),
-                "pro_refs": [str(dict(pro_artifact).get("artifact_id") or "")],
+                "source_refs": source_ref_values,
+                "pro_refs": pro_ref_values,
                 "morning_watchlist_ref": morning_ref,
-                "market_data_refs": market_refs,
+                "morning_watchlist_refs": _dedupe_strings([morning_ref]),
+                "market_data_refs": market_ref_values,
                 "portfolio_state_refs": [portfolio_ref, order_state_ref],
                 "portfolio_conflict": {
                     "already_holding": "already_holding_symbol" in conflict_reasons,
@@ -561,11 +747,18 @@ def buildFlashTradeDocument(
                     "has_conflict": bool(conflict_reasons),
                     "reasons": conflict_reasons,
                 },
-                "reason": str(
-                    provider_action.get("reason")
-                    or provider_action.get("thesis")
-                    or ("포트폴리오/주문 상태와 충돌해 신규 진입을 보류합니다" if conflict_reasons else "소스와 KIS 시장 데이터가 붙은 compiled_watch 후보입니다")
-                ),
+                "portfolio_conflict_check": {
+                    "already_holding": "already_holding_symbol" in conflict_reasons,
+                    "pending_order_conflict": "pending_order_exists" in conflict_reasons,
+                    "would_exceed_max_holdings": would_exceed_max_holdings,
+                    "would_exceed_75pct_exposure": False,
+                },
+                "reason": thesis,
+                "thesis": thesis,
+                "why_now": why_now,
+                "required_confirmations": required_confirmations,
+                "cancel_if": cancel_if,
+                "risk_notes": [str(item) for item in provider_action.get("risk_notes") or [] if str(item).strip()],
                 "risk_flags": conflict_reasons,
                 "action_source": action_source_name,
                 "executable_intent_allowed": False,
@@ -588,12 +781,19 @@ def buildFlashTradeDocument(
         "job_id": "deepseek_flash_trade_document_10m",
         "model_role": "deepseek_flash",
         "model_name": DEEPSEEK_FLASH_MODEL,
-        "prompt_schema_version": "flash_trade_document_prompt/v0",
+        "prompt_schema_version": "flash_trade_document_prompt/v1",
         "produced_at_kst": produced_at,
         "investment_mode": mode,
         "market_analysis_feed_mode": market_feed,
         "execution_venue_mode": execution_mode,
-        "trade_window_kst": f"{order_open.strftime('%H:%M')}-{order_close.strftime('%H:%M')}",
+        "order_safety": "no_direct_order",
+        "ai_direct_broker_call_allowed": False,
+        "trade_window_kst": {
+            "start_kst": produced_at,
+            "end_kst": bucket_end.isoformat() if bucket_end else produced_at,
+            "bucket_seconds": 600,
+            "order_session": f"{order_open.strftime('%H:%M')}-{order_close.strftime('%H:%M')}",
+        },
         "input_window_kst": dict(input_window_kst or {}),
         "bucket_id": _ten_minute_bucket_id(produced_at),
         "document_kind": "TRADE_ACTIONS",
@@ -616,10 +816,32 @@ def buildFlashTradeDocument(
         "candidate_universe_symbols": [str(row.get("symbol") or row.get("ticker") or "").strip() for row in watch_rows],
         "portfolio_snapshot_ref": portfolio_ref,
         "order_state_snapshot_ref": order_state_ref,
+        "refs": {
+            "pro_hourly_report_ref": str(dict(pro_artifact).get("artifact_id") or ""),
+            "morning_watchlist_ref": morning_ref,
+            "portfolio_ref": portfolio_ref,
+            "order_state_ref": order_state_ref,
+        },
+        "market_context": {
+            "regime_mode": str(pro_regime.get("mode") or pro_regime.get("market_mode") or "NEUTRAL"),
+            "flash_bias": str(pro_guidance.get("preferred_bias") or "selective_watch"),
+            "market_context_open": market_context_open,
+            "broker_order_open": broker_order_open,
+            "kis_realtime_expected": market_context_open,
+        },
+        "portfolio_constraints": {
+            "max_holdings": rp.MAX_SIMULTANEOUS_HOLDINGS,
+            "current_holdings_count": current_holdings_count,
+            "max_cash_deployment_ratio": rp.MAX_CASH_DEPLOYMENT_RATIO,
+            "new_entries_allowed": broker_order_open and current_holdings_count < rp.MAX_SIMULTANEOUS_HOLDINGS,
+        },
         "previous_trade_document_refs": [
             str(doc.get("artifact_id") or doc.get("document_id") or "") for doc in previous_docs
         ],
         "actions": actions,
+        "no_trade_reasons": [],
+        "global_risk_flags": ["pro_hourly_low_utility"] if pro_low_utility else [],
+        "operator_notes": [],
         "analysis_language": "ko-KR",
         "max_holdings_after_trade": rp.MAX_SIMULTANEOUS_HOLDINGS,
         "max_cash_deployment_ratio": rp.MAX_CASH_DEPLOYMENT_RATIO,
@@ -629,6 +851,119 @@ def buildFlashTradeDocument(
         "no_order_submission": True,
         "ai_direct_order_allowed": False,
         "redaction_status": "sanitized",
+    }
+
+
+def validateProHourlyMarketAnalysis(
+    document: Optional[Mapping[str, Any]],
+) -> Dict[str, Any]:
+    payload = deepcopy(dict(document or {}))
+    errors: List[str] = []
+    warnings: List[str] = list(payload.get("warnings") or []) if isinstance(payload.get("warnings"), list) else []
+
+    has_v1_strategy_fields = any(
+        key in payload
+        for key in (
+            "data_quality",
+            "market_regime",
+            "theme_map",
+            "flash_guidance",
+            "no_trade_conditions",
+            "source_ref_map",
+            "investment_utility_status",
+        )
+    )
+    legacy_summary_only = (
+        payload.get("schema_version") not in {PRO_HOURLY_SCHEMA}
+        or not has_v1_strategy_fields
+    ) and any(key in payload for key in ("summary", "themes", "risk_flags"))
+
+    if legacy_summary_only:
+        warnings.append("pro_hourly_low_utility_news_only")
+        payload["schema_version"] = PRO_HOURLY_SCHEMA
+        payload["document_kind"] = "MARKET_STRATEGY_CONTEXT"
+        payload["analysis_language"] = "ko-KR"
+        payload["order_safety"] = "no_order"
+        payload["ai_direct_order_allowed"] = False
+        payload.setdefault("data_quality", {
+            "news_event_count": payload.get("source_event_count", 0),
+            "kis_market_snapshot_count": payload.get("kis_market_snapshot_count", 0),
+            "kis_data_status": "missing",
+            "runtime_kis_failure_evidence_present": False,
+            "missing_inputs": ["kis_market_strategy_context"],
+            "warnings": [],
+        })
+        payload.setdefault("market_regime", {
+            "mode": str(payload.get("market_mode") or "NO_TRADE"),
+            "market_mode": str(payload.get("market_mode") or "NO_TRADE"),
+            "confidence": 0.0,
+            "why": [],
+        })
+        payload.setdefault("theme_map", [])
+        payload.setdefault("flash_guidance", {})
+        payload.setdefault("no_trade_conditions", [])
+        payload.setdefault("contradiction_notes", [])
+        payload.setdefault("source_ref_map", [])
+        payload.setdefault("questions_for_next_flash", [])
+        payload["investment_utility_status"] = "news_only_low_utility"
+        payload["validation_status"] = "accepted_with_warnings"
+        payload["warnings"] = _dedupe_strings(warnings)
+        return {
+            "ok": True,
+            "errors": [],
+            "warnings": payload["warnings"],
+            "document": payload,
+            "validation_status": payload["validation_status"],
+        }
+
+    if payload.get("schema_version") != PRO_HOURLY_SCHEMA:
+        errors.append("schema_version_must_be_pro_hourly_market_analysis_v1")
+    if payload.get("order_safety") != "no_order":
+        errors.append("order_safety_must_be_no_order")
+    if payload.get("ai_direct_order_allowed") is not False:
+        errors.append("ai_direct_order_allowed_must_be_false")
+    if not isinstance(payload.get("data_quality"), Mapping):
+        errors.append("data_quality_required")
+
+    regime = payload.get("market_regime") if isinstance(payload.get("market_regime"), Mapping) else {}
+    mode = str(regime.get("mode") or regime.get("market_mode") or "").strip()
+    if not mode:
+        errors.append("market_regime_mode_required")
+    try:
+        confidence = float(regime.get("confidence"))
+    except (TypeError, ValueError):
+        errors.append("market_regime_confidence_required")
+    else:
+        if confidence < 0 or confidence > 1:
+            errors.append("market_regime_confidence_invalid")
+
+    theme_map = payload.get("theme_map")
+    no_trade_conditions = payload.get("no_trade_conditions")
+    if not isinstance(theme_map, list):
+        errors.append("theme_map_must_be_list")
+        theme_map = []
+    if not isinstance(no_trade_conditions, list):
+        errors.append("no_trade_conditions_must_be_list")
+        no_trade_conditions = []
+    if not theme_map and not no_trade_conditions:
+        errors.append("theme_map_or_no_trade_conditions_required")
+    if not isinstance(payload.get("flash_guidance"), Mapping):
+        errors.append("flash_guidance_required")
+    if not isinstance(payload.get("source_ref_map"), list):
+        errors.append("source_ref_map_required")
+    if not str(payload.get("investment_utility_status") or "").strip():
+        errors.append("investment_utility_status_required")
+
+    payload["warnings"] = _dedupe_strings(warnings)
+    payload["validation_status"] = "rejected" if errors else (
+        "safe_block" if payload.get("document_kind") == "NO_TRADE" else "accepted"
+    )
+    return {
+        "ok": not errors,
+        "errors": errors,
+        "warnings": payload["warnings"],
+        "document": payload,
+        "validation_status": payload["validation_status"],
     }
 
 
@@ -648,6 +983,10 @@ def validateFlashTradeDocument(
         errors.append("market_analysis_feed_mode_must_be_integrated")
     if payload.get("execution_venue_mode") not in {None, rp.EXECUTION_VENUE_KRX_ONLY}:
         errors.append("execution_venue_mode_must_be_krx_only")
+    if payload.get("order_safety") != "no_direct_order":
+        errors.append("order_safety_must_be_no_direct_order")
+    if payload.get("ai_direct_broker_call_allowed") is not False:
+        errors.append("ai_direct_broker_call_allowed_must_be_false")
     if payload.get("document_kind") != "NO_TRADE" and not payload.get("pro_hourly_report_ref"):
         errors.append("pro_hourly_report_ref_required")
     if payload.get("morning_watchlist_required") is True and not payload.get("morning_watchlist_ref"):
@@ -677,6 +1016,16 @@ def validateFlashTradeDocument(
             for item in (payload.get("candidate_universe_symbols") or [])
             if str(item or "").strip()
         }
+    produced_dt = _parse_kst_timestamp(payload.get("produced_at_kst"), "produced_at_kst", [])
+    bucket_end = produced_dt + timedelta(minutes=10) if produced_dt else None
+    mode = rp.normalizeInvestmentMode(payload.get("investment_mode"))
+    market_context = payload.get("market_context") if isinstance(payload.get("market_context"), Mapping) else {}
+    market_context_open = market_context.get("market_context_open")
+    broker_order_open = market_context.get("broker_order_open")
+    if market_context_open is None and produced_dt:
+        market_context_open = rp.isMarketContextOpen(produced_dt, investment_mode=mode)
+    if broker_order_open is None and produced_dt:
+        broker_order_open = rp.isOrderWindowOpen(produced_dt, investment_mode=mode)
     for index, action in enumerate(actions):
         if not isinstance(action, Mapping):
             errors.append(f"actions_item_{index}_must_be_object")
@@ -687,23 +1036,70 @@ def validateFlashTradeDocument(
         elif universe and symbol not in universe:
             errors.append(f"actions_item_{index}_off_universe_ticker")
         action_type = str(action.get("action") or "").strip()
-        if action_type not in {"WAIT_BUY", "BUY_NOW", "HOLD", "SELL", "NO_TRADE"}:
+        if action_type not in {"WAIT_BUY", "BUY_NOW", "HOLD", "SELL", "SELL_NOW", "WAIT_SELL", "NO_TRADE"}:
             errors.append(f"actions_item_{index}_action_invalid")
+        side = str(action.get("side") or "").strip().upper()
+        is_buy = action_type in {"WAIT_BUY", "BUY_NOW"}
+        is_sell = action_type in {"SELL", "SELL_NOW", "WAIT_SELL"} or side == "SELL"
+        valid_until = _parse_kst_timestamp(action.get("valid_until_kst"), f"actions_item_{index}_valid_until_kst", [])
+        if valid_until and bucket_end and valid_until > bucket_end:
+            errors.append(f"actions_item_{index}_valid_until_kst_must_be_within_bucket")
+        if mode == rp.PAPER_INVESTMENT_MODE and produced_dt and not rp.isOrderWindowOpen(produced_dt, investment_mode=mode):
+            if is_buy or is_sell:
+                errors.append(f"actions_item_{index}_paper_buy_sell_after_1500_forbidden")
+        if (market_context_open is False or broker_order_open is False) and action_type not in {"HOLD", "NO_TRADE"}:
+            errors.append(f"actions_item_{index}_market_or_order_closed_must_hold_or_no_trade")
+        confidence = action.get("confidence")
+        if confidence is None:
+            errors.append(f"actions_item_{index}_confidence_required")
+        else:
+            try:
+                confidence_float = float(confidence)
+            except (TypeError, ValueError):
+                errors.append(f"actions_item_{index}_confidence_invalid")
+            else:
+                if confidence_float < 0 or confidence_float > 1:
+                    errors.append(f"actions_item_{index}_confidence_invalid")
         if action_type in {"WAIT_BUY", "BUY_NOW"}:
-            if str(action.get("side") or "").strip().upper() not in {"BUY"}:
+            if side not in {"BUY"}:
                 errors.append(f"actions_item_{index}_side_buy_required")
             if action.get("valid_until_kst") in (None, ""):
                 errors.append(f"actions_item_{index}_valid_until_kst_required")
+            if _safe_positive_int(action.get("entry_price_limit")) <= 0:
+                errors.append(f"actions_item_{index}_entry_price_limit_required")
+            if _safe_positive_int(action.get("target_price")) <= 0:
+                errors.append(f"actions_item_{index}_target_price_required")
+            if _safe_positive_int(action.get("stop_loss_price")) <= 0:
+                errors.append(f"actions_item_{index}_stop_loss_price_required")
             if not action.get("source_refs"):
                 errors.append(f"actions_item_{index}_source_refs_required")
             if not action.get("pro_refs"):
                 errors.append(f"actions_item_{index}_pro_refs_required")
             if not action.get("market_data_refs"):
                 errors.append(f"actions_item_{index}_market_data_refs_required")
+            ref_kind_count = sum(
+                1
+                for key in ("source_refs", "pro_refs", "market_data_refs")
+                if action.get(key)
+            )
+            if action_type == "BUY_NOW" and ref_kind_count < 2:
+                errors.append(f"actions_item_{index}_buy_now_requires_two_ref_kinds")
+            if action_type == "BUY_NOW" and (
+                _safe_positive_int(action.get("quantity")) <= 0
+                and _safe_positive_int(action.get("planned_order_cash_krw")) <= 0
+            ):
+                errors.append(f"actions_item_{index}_buy_now_size_required")
             if not action.get("portfolio_state_refs"):
                 errors.append(f"actions_item_{index}_portfolio_state_refs_required")
             if action.get("paper_only") is not True or action.get("no_live_order") is not True:
                 errors.append(f"actions_item_{index}_paper_only_required")
+            for text_key in ("thesis", "why_now"):
+                if not str(action.get(text_key) or "").strip():
+                    errors.append(f"actions_item_{index}_{text_key}_required")
+            if not action.get("required_confirmations"):
+                errors.append(f"actions_item_{index}_required_confirmations_required")
+            if not action.get("cancel_if"):
+                errors.append(f"actions_item_{index}_cancel_if_required")
     if payload.get("document_kind") == "NO_TRADE" and actions:
         errors.append("no_trade_document_must_have_empty_actions")
     if payload.get("document_kind") == "NO_TRADE" and not payload.get("no_trade_reason"):
@@ -1332,11 +1728,14 @@ def _normalize_flash_action_type(value: Any) -> str:
         "WAIT": "WAIT_BUY",
         "WATCH": "HOLD",
         "WATCH_ONLY": "HOLD",
+        "SELL": "SELL_NOW",
+        "EXIT": "SELL_NOW",
+        "WAIT_SELL": "WAIT_SELL",
         "AVOID": "NO_TRADE",
         "REJECT": "NO_TRADE",
     }
     normalized = aliases.get(raw, raw)
-    return normalized if normalized in {"WAIT_BUY", "BUY_NOW", "HOLD", "SELL", "NO_TRADE"} else ""
+    return normalized if normalized in {"WAIT_BUY", "BUY_NOW", "HOLD", "SELL_NOW", "WAIT_SELL", "NO_TRADE"} else ""
 
 
 def _normalize_price_list(value: Any) -> List[int]:

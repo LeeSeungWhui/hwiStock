@@ -669,7 +669,7 @@ def generatePaperOrderIntentsFromFlashDocument(
     accepted: List[Dict[str, Any]] = []
     rejected: List[Dict[str, Any]] = []
 
-    if document.get("schema_version") != "flash_trade_document/v0":
+    if document.get("schema_version") not in {"flash_trade_document/v0", "flash_trade_document/v1"}:
         return {
             "schema_version": "paper_intent_pipeline_result/v0",
             "ok": False,
@@ -697,11 +697,11 @@ def generatePaperOrderIntentsFromFlashDocument(
             reasons.append("ticker_required")
         elif universe and symbol not in universe:
             reasons.append("off_universe_ticker")
-        if action_type not in {"WAIT_BUY", "BUY_NOW", "HOLD", "SELL", "NO_TRADE"}:
+        if action_type not in {"WAIT_BUY", "BUY_NOW", "HOLD", "SELL", "SELL_NOW", "WAIT_SELL", "NO_TRADE"}:
             reasons.append("action_type_invalid")
         if action_type in {"HOLD", "NO_TRADE"}:
             reasons.append("non_entry_action_watch_only")
-        if action_type == "SELL":
+        if action_type in {"SELL", "SELL_NOW", "WAIT_SELL"}:
             reasons.append("sell_exit_intent_deferred_to_unit_014_realtime_exit")
         if action_type in {"WAIT_BUY", "BUY_NOW"}:
             if not action.get("source_refs"):
