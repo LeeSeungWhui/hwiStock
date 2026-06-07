@@ -85,3 +85,32 @@ Remaining operational note: production `07:15 KST` use still requires a fresh
 sanitized prompt file via `HWISTOCK_GPT_PROMPT_PATH` or one of the wrapper's
 default prompt locations. If the prompt is missing, the wrapper intentionally
 publishes a safe-block instead of silently switching routes.
+
+## Follow-up Hardening: Logs vs Canonical Data
+
+The wrapper now separates execution logs from the canonical artifacts that
+Flash/runtime consumers read.
+
+Every run summary includes:
+
+- `run_log_dir`: the `logs/gpt-pro-morning/<date>/<run-id>/` execution
+  black-box directory.
+- `data_dir`: the data root used for backend publish.
+- `is_smoke_data_dir`: true when the data root is not the production
+  `data/` directory.
+- `canonical_artifact_paths`: expected latest paths under `data_dir` for
+  `ai`, `morning-watchlist`, and publish health.
+- `published_to_canonical_data`: true only when publish returned
+  `accepted`/`safe_block` and the canonical latest files exist.
+
+Status policy:
+
+| condition | wrapper status |
+| --- | --- |
+| GPT/Codex/browser path fails, safe-block publish succeeds | `safe_block` |
+| safe-block publish fails | `safe_block_publish_failed` with nonzero exit |
+| GPT response validates but canonical publish fails | `publish_failed` with nonzero exit |
+| GPT response validates and canonical publish succeeds | `ok` |
+
+This prevents a run from looking successful merely because a GPT response or
+debug log exists under `logs/`.

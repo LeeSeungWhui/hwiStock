@@ -8,6 +8,7 @@ umask 077
 export TZ="${TZ:-Asia/Seoul}"
 
 CODEX_BIN="${HWISTOCK_CODEX_BIN:-/home/hwi/.local/bin/codex}"
+DATA_DIR="${HWISTOCK_DATA_DIR:-${REPO_ROOT}/data}"
 LOG_ROOT="${HWISTOCK_GPT_LOG_ROOT:-logs/gpt-pro-morning}"
 RUN_STAMP="${HWISTOCK_GPT_RUN_STAMP:-$(date +%Y%m%d-%H%M%S)}"
 RUN_ID="${HWISTOCK_GPT_RUN_ID:-hwistock-gpt-pro-morning-${RUN_STAMP}}"
@@ -68,6 +69,7 @@ PREFLIGHT_BROWSER_STDERR="${RUN_DIR}/preflight-browser-stderr.log"
 SECRET_SCAN_JSON="${RUN_DIR}/prompt-secret-scan.json"
 
 export RUN_ID RUN_DIR TARGET_TRADE_DATE PURPOSE PROMPT_SOURCE START_EPOCH START_ISO
+export REPO_ROOT DATA_DIR DAY
 export RESPONSE RAW_RESPONSE SUMMARY PUBLISH_OUT PUBLISH_ERR CODEX_EVENTS CODEX_LAST CODEX_STDERR
 export PREFLIGHT_CODEX_EVENTS PREFLIGHT_CODEX_LAST PREFLIGHT_CODEX_STDERR
 export PREFLIGHT_BROWSER_PROMPT PREFLIGHT_BROWSER_EVENTS PREFLIGHT_BROWSER_LAST PREFLIGHT_BROWSER_STDERR
@@ -78,6 +80,7 @@ publish_safe_block() {
   local safe_purpose="${PURPOSE}_${reason}"
   set +e
   source ./env.sh >/dev/null 2>&1
+  export HWISTOCK_DATA_DIR="$DATA_DIR"
   python backend/service/ai_analysis_runner.py --once \
     --job publish-morning-watchlist \
     --target-trade-date "$TARGET_TRADE_DATE" \
@@ -86,6 +89,18 @@ publish_safe_block() {
   local code=$?
   set -e
   return "$code"
+}
+
+publish_safe_block_or_fail() {
+  local reason="$1"
+  set +e
+  publish_safe_block "$reason"
+  local code=$?
+  set -e
+  if [[ "$code" -ne 0 ]]; then
+    write_summary "safe_block_publish_failed" "${reason}:${code}" "$code"
+    exit "$code"
+  fi
 }
 
 write_summary() {
@@ -119,6 +134,30 @@ def maybe_json(path: str):
 
 publish = maybe_json(os.environ.get("PUBLISH_OUT", ""))
 response = maybe_json(os.environ.get("RESPONSE", ""))
+repo_root = Path(os.environ["REPO_ROOT"]).resolve()
+data_dir = Path(os.environ["DATA_DIR"]).resolve()
+default_data_dir = repo_root / "data"
+target_trade_date = os.environ["TARGET_TRADE_DATE"]
+run_day = os.environ["DAY"]
+
+expected_canonical_paths = {
+    "ai_latest": str(data_dir / "ai" / target_trade_date / "morning-watchlist-latest.json"),
+    "morning-watchlist_latest": str(data_dir / "morning-watchlist" / target_trade_date / "morning-watchlist-latest.json"),
+    "health": str(data_dir / "evidence" / run_day / "morning-watchlist-publish-health.json"),
+}
+artifact_paths = publish.get("artifact_paths") if isinstance(publish, dict) else None
+if isinstance(artifact_paths, dict):
+    canonical_paths = {
+        key: str(artifact_paths.get(key) or expected_canonical_paths[key])
+        for key in expected_canonical_paths
+    }
+else:
+    canonical_paths = dict(expected_canonical_paths)
+published_to_canonical_data = (
+    isinstance(publish, dict)
+    and publish.get("validation_status") in {"accepted", "safe_block"}
+    and all(Path(path).is_file() for path in canonical_paths.values())
+)
 summary = {
     "run_id": os.environ["RUN_ID"],
     "status": os.environ["HWISTOCK_GPT_SUMMARY_STATUS"],
@@ -130,7 +169,10 @@ summary = {
     "target_trade_date_kst": os.environ["TARGET_TRADE_DATE"],
     "purpose": os.environ["PURPOSE"],
     "prompt_source": os.environ.get("PROMPT_SOURCE") or "",
+    "data_dir": str(data_dir),
+    "is_smoke_data_dir": data_dir != default_data_dir,
     "run_dir": os.environ["RUN_DIR"],
+    "run_log_dir": os.environ["RUN_DIR"],
     "response_json": os.environ["RESPONSE"],
     "raw_response": os.environ["RAW_RESPONSE"],
     "publish_output": os.environ["PUBLISH_OUT"],
@@ -140,9 +182,16 @@ summary = {
     "codex_stderr": os.environ["CODEX_STDERR"],
     "preflight_codex_events": os.environ["PREFLIGHT_CODEX_EVENTS"],
     "preflight_browser_events": os.environ["PREFLIGHT_BROWSER_EVENTS"],
-    "artifact_id": publish.get("artifact_id") if isinstance(publish, dict) else None,
+    "artifact_id": (
+        publish.get("artifact_id") or publish.get("safe_block_id")
+        if isinstance(publish, dict)
+        else None
+    ),
+    "safe_block_id": publish.get("safe_block_id") if isinstance(publish, dict) else None,
     "validation_status": publish.get("validation_status") if isinstance(publish, dict) else None,
     "artifact_paths": publish.get("artifact_paths") if isinstance(publish, dict) else None,
+    "canonical_artifact_paths": canonical_paths,
+    "published_to_canonical_data": published_to_canonical_data,
     "route": (response or publish or {}).get("route") if isinstance((response or publish or {}), dict) else None,
     "reviewer": (response or publish or {}).get("reviewer") if isinstance((response or publish or {}), dict) else None,
     "items_count": len((response or {}).get("items") or []) if isinstance(response, dict) else 0,
@@ -167,7 +216,7 @@ run_codex_exec() {
 }
 
 if [[ ! -x "$CODEX_BIN" ]]; then
-  publish_safe_block "codex_bin_missing" || true
+  publish_safe_block_or_fail "codex_bin_missing"
   write_summary "safe_block" "codex_bin_missing:${CODEX_BIN}" 1
   exit 0
 fi
@@ -181,7 +230,7 @@ if [[ "${HWISTOCK_GPT_SKIP_PREFLIGHT:-false}" != "true" ]]; then
   preflight_codex_code=$?
   set -e
   if [[ "$preflight_codex_code" -ne 0 ]]; then
-    publish_safe_block "codex_preflight_failed" || true
+    publish_safe_block_or_fail "codex_preflight_failed"
     write_summary "safe_block" "codex_preflight_failed:${preflight_codex_code}" "$preflight_codex_code"
     exit 0
   fi
@@ -196,10 +245,11 @@ EOF
   preflight_browser_code=$?
   set -e
   if [[ "$preflight_browser_code" -ne 0 ]]; then
-    publish_safe_block "browser_preflight_failed" || true
+    publish_safe_block_or_fail "browser_preflight_failed"
     write_summary "safe_block" "browser_preflight_failed:${preflight_browser_code}" "$preflight_browser_code"
     exit 0
   fi
+  set +e
   python3 - <<'PY'
 import json
 import os
@@ -228,6 +278,13 @@ for line in events.read_text(encoding="utf-8", errors="replace").splitlines():
 if not ok:
     raise SystemExit("browser_preflight_no_backend")
 PY
+  browser_validate_code=$?
+  set -e
+  if [[ "$browser_validate_code" -ne 0 ]]; then
+    publish_safe_block_or_fail "browser_preflight_no_backend"
+    write_summary "safe_block" "browser_preflight_no_backend:${browser_validate_code}" "$browser_validate_code"
+    exit 0
+  fi
 fi
 
 if [[ "${HWISTOCK_GPT_SMOKE_ONLY:-false}" == "true" ]]; then
@@ -236,11 +293,12 @@ if [[ "${HWISTOCK_GPT_SMOKE_ONLY:-false}" == "true" ]]; then
 fi
 
 if [[ -z "$PROMPT_SOURCE" || ! -f "$PROMPT_SOURCE" ]]; then
-  publish_safe_block "prompt_missing" || true
+  publish_safe_block_or_fail "prompt_missing"
   write_summary "safe_block" "prompt_missing" 0
   exit 0
 fi
 
+set +e
 python3 - <<'PY'
 import json
 import os
@@ -256,6 +314,13 @@ Path(os.environ["SECRET_SCAN_JSON"]).write_text(json.dumps({"suspicious_assignme
 if hits:
     raise SystemExit("prompt_secret_scan_failed")
 PY
+secret_scan_code=$?
+set -e
+if [[ "$secret_scan_code" -ne 0 ]]; then
+  publish_safe_block_or_fail "prompt_secret_scan_failed"
+  write_summary "safe_block" "prompt_secret_scan_failed:${secret_scan_code}" "$secret_scan_code"
+  exit 0
+fi
 
 cat >"$CODEX_PROMPT" <<EOF
 # hwiStock GPT Pro morning watchlist runner
@@ -297,11 +362,12 @@ set -e
 export CODEX_START CODEX_END CODEX_EXIT
 
 if [[ "$CODEX_EXIT" -ne 0 ]]; then
-  publish_safe_block "codex_exec_failed" || true
+  publish_safe_block_or_fail "codex_exec_failed"
   write_summary "safe_block" "codex_exec_failed:${CODEX_EXIT}" "$CODEX_EXIT"
   exit 0
 fi
 
+set +e
 python3 - <<'PY'
 import json
 import os
@@ -316,13 +382,35 @@ assert obj.get("reviewer") == "chatgpt_pro", obj.get("reviewer")
 assert obj.get("route") == "codex_cli_local_browser_use", obj.get("route")
 assert obj.get("forbidden_actions_acknowledged") is True
 PY
+response_validate_code=$?
+set -e
+if [[ "$response_validate_code" -ne 0 ]]; then
+  publish_safe_block_or_fail "gpt_response_validation_failed"
+  write_summary "safe_block" "gpt_response_validation_failed:${response_validate_code}" "$response_validate_code"
+  exit 0
+fi
 
+set +e
 source ./env.sh >/dev/null 2>&1
-python backend/service/ai_analysis_runner.py --once \
-  --job publish-morning-watchlist \
-  --source-json "$RESPONSE" \
-  --target-trade-date "$TARGET_TRADE_DATE" \
-  --purpose "$PURPOSE" \
-  >"$PUBLISH_OUT" 2>"$PUBLISH_ERR"
+env_source_code=$?
+if [[ "$env_source_code" -eq 0 ]]; then
+  export HWISTOCK_DATA_DIR="$DATA_DIR"
+  python backend/service/ai_analysis_runner.py --once \
+    --job publish-morning-watchlist \
+    --source-json "$RESPONSE" \
+    --target-trade-date "$TARGET_TRADE_DATE" \
+    --purpose "$PURPOSE" \
+    >"$PUBLISH_OUT" 2>"$PUBLISH_ERR"
+  publish_code=$?
+else
+  publish_code="$env_source_code"
+  printf 'env.sh source failed: %s\n' "$env_source_code" >"$PUBLISH_ERR"
+fi
+set -e
+
+if [[ "$publish_code" -ne 0 ]]; then
+  write_summary "publish_failed" "publish_morning_watchlist_failed:${publish_code}" "$publish_code"
+  exit "$publish_code"
+fi
 
 write_summary "ok" "" 0
