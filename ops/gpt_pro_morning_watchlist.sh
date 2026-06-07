@@ -455,9 +455,9 @@ Hard route rule:
 Input prompt to send to ChatGPT Pro:
 - Read \`${PROMPT_SOURCE}\`.
 - Send its content to ChatGPT Pro.
-- If ChatGPT Web turns the long prompt into a pasted-text/document card, add a short visible instruction: \`첨부된 pasted text 번들을 분석해서 morning_watchlist/v1 strict JSON object 하나만 반환해. Markdown 금지. 사람이 읽는 자연어 문자열 값은 한국어로 작성하고, schema key/enum/ticker/route 같은 기계값은 지정 형식 그대로 유지해. market_open_plan, first_flash_questions, opening_trigger_conditions, invalidation_conditions, source_refs/pro_refs를 반드시 포함해.\` and send.
+- If ChatGPT Web turns the long prompt into a pasted-text/document card, add a short visible instruction: \`첨부된 pasted text 번들을 분석해서 morning_watchlist/v1 strict JSON object 하나만 반환해. Markdown 금지. top-level items 배열은 필수이고, top-level eligible_for_flash_review 키는 금지야. eligible_for_flash_review는 items[].stance 값으로만 써. 사람이 읽는 자연어 문자열 값은 한국어로 작성하고, schema key/enum/ticker/route 같은 기계값은 지정 형식 그대로 유지해. market_open_plan, first_flash_questions, opening_trigger_conditions, invalidation_conditions, source_refs/pro_refs를 반드시 포함해.\` and send.
 - Wait until generation is complete. Do not press Stop or retry while it is still generating.
-- If the first response is not strict JSON, ask once: \`같은 morning_watchlist/v1 객체를 strict valid minified JSON object 하나로만 다시 반환해. 인용/설명/Markdown 제거, 문자열 escape 처리. 사람이 읽는 자연어 문자열 값은 한국어로 유지하고 schema key/enum/ticker/route 같은 기계값은 그대로 둬.\`
+- If the first response is not strict JSON, ask once: \`같은 morning_watchlist/v1 객체를 strict valid minified JSON object 하나로만 다시 반환해. top-level items 배열 필수, top-level eligible_for_flash_review 키 금지, eligible_for_flash_review는 items[].stance 값으로만 사용. 인용/설명/Markdown 제거, 문자열 escape 처리. 사람이 읽는 자연어 문자열 값은 한국어로 유지하고 schema key/enum/ticker/route 같은 기계값은 그대로 둬.\`
 
 Output requirements:
 - Save the final strict JSON object only to \`${RESPONSE}\`.
@@ -468,7 +468,9 @@ Output requirements:
   - \`route = "codex_cli_local_browser_use"\`
   - \`forbidden_actions_acknowledged = true\`
   - \`market_open_plan\` with \`opening_bias\`, \`why\`, \`must_wait_for_market_confirmation\`, and \`first_flash_questions\`
-  - each \`eligible_for_flash_review\` item must include ticker, thesis, opening_trigger_conditions, invalidation_conditions, source_refs or pro_refs, confidence
+  - top-level \`items\` must be a JSON array, even when empty
+  - top-level \`eligible_for_flash_review\` is forbidden; \`eligible_for_flash_review\` may appear only as an \`items[].stance\` value
+  - each \`items[]\` object whose \`stance\` is \`eligible_for_flash_review\` must include ticker, thesis, opening_trigger_conditions, invalidation_conditions, source_refs or pro_refs, confidence
   - no executable order fields such as entry_price_limit, quantity, order_type
 - Keep the ChatGPT tab open as handoff.
 - Final answer should be brief and include whether the JSON file was saved and parse-valid.
@@ -523,7 +525,14 @@ assert obj.get("reviewer") == "chatgpt_pro", obj.get("reviewer")
 assert obj.get("route") == "codex_cli_local_browser_use", obj.get("route")
 assert obj.get("forbidden_actions_acknowledged") is True
 assert isinstance(obj.get("market_open_plan"), dict)
-for index, item in enumerate(obj.get("items") or []):
+if "eligible_for_flash_review" in obj:
+    raise SystemExit("top_level_eligible_for_flash_review_forbidden")
+items = obj.get("items")
+if not isinstance(items, list):
+    raise SystemExit("items_must_be_list")
+for index, item in enumerate(items):
+    if not isinstance(item, dict):
+        raise SystemExit(f"items_{index}_must_be_object")
     if item.get("stance") != "eligible_for_flash_review":
         continue
     assert item.get("ticker"), index

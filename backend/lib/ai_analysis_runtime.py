@@ -481,8 +481,10 @@ def _build_morning_watchlist_prompt_text(
         "Markdown, 설명문, 코드블록 금지. JSON 외 텍스트 금지. "
         "사람이 읽는 자연어 문자열 값은 모두 한국어로 작성하고, schema key/enum/ticker/route/source_ref/pro_ref 같은 기계값은 지정 형식 그대로 유지해. "
         "이 산출물은 주문이 아니라 09:00 첫 Flash가 검토할 감시목록이다. broker API 호출, 주문 제출, 수량/주문가/주문유형/직접 매수 지시 금지. "
-        "후보는 입력된 Pro 분석, 뉴스/공시, compiled watch 근거 밖에서 만들지 마. 근거가 부족하면 items를 비우고 no_trade_reasons를 채워라. "
-        "각 eligible_for_flash_review item은 ticker, thesis, opening_trigger_conditions, invalidation_conditions, source_refs 또는 pro_refs, confidence를 반드시 포함해. "
+        "후보는 입력된 Pro 분석, 뉴스/공시, compiled watch 근거 밖에서 만들지 마. 근거가 부족하면 top-level items를 빈 리스트([])로 두고 no_trade_reasons를 채워라. "
+        "반드시 top-level `items` 키를 리스트로 사용하고, top-level `eligible_for_flash_review` 키는 만들지 마. "
+        "`eligible_for_flash_review`는 오직 items[].stance 값으로만 사용해라. "
+        "각 items 원소 중 stance=eligible_for_flash_review인 항목은 ticker, thesis, opening_trigger_conditions, invalidation_conditions, source_refs 또는 pro_refs, confidence를 반드시 포함해. "
         "market_open_plan.opening_bias, why, must_wait_for_market_confirmation, first_flash_questions를 반드시 포함해. "
         f"필수 JSON 스키마 예시={json.dumps(required_schema, ensure_ascii=False)} "
         f"target_trade_date_kst={target_trade_date}. produced_at_kst={produced_at_kst}. "
@@ -704,6 +706,9 @@ def _validate_morning_watchlist_payload(
     forbidden_fields = _find_forbidden_morning_order_fields(payload)
     if forbidden_fields:
         errors.append("executable_order_fields_forbidden:" + ",".join(sorted(forbidden_fields)[:8]))
+
+    if "eligible_for_flash_review" in payload:
+        errors.append("top_level_eligible_for_flash_review_forbidden")
 
     items = payload.get("items")
     if not isinstance(items, list):

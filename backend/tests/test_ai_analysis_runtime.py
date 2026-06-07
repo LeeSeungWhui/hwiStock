@@ -374,6 +374,8 @@ def test_build_morning_watchlist_prompt_writes_default_prompt_paths(tmp_path: Pa
         assert "strict JSON object" in text
         assert "art_pro_hourly_20260607_2000" in text
         assert "broker API 호출, 주문 제출" in text
+        assert "top-level `items` 키를 리스트로 사용" in text
+        assert "top-level `eligible_for_flash_review` 키는 만들지 마" in text
     assert Path(result["health_path"]).is_file()
 
 
@@ -1365,6 +1367,42 @@ def test_morning_v1_requires_market_open_plan(tmp_path: Path):
     assert "market_open_plan_required" in result["validation_errors"]
 
 
+def test_morning_v1_rejects_top_level_eligible_for_flash_review_alias(tmp_path: Path):
+    result = runtime.publish_morning_watchlist_artifact(
+        payload={
+            "schema_version": "morning_watchlist/v1",
+            "artifact_id": "art_morning_watchlist_20260608_wrong_items_key",
+            "route": "codex_cli_local_browser_use",
+            "target_trade_date_kst": "2026-06-08",
+            "reviewer": "chatgpt_pro",
+            "forbidden_actions_acknowledged": True,
+            "market_open_plan": {
+                "opening_bias": "selective_watch",
+                "why": "테스트",
+                "must_wait_for_market_confirmation": True,
+                "first_flash_questions": ["거래대금 확인"],
+            },
+            "eligible_for_flash_review": [
+                {
+                    "ticker": "005930",
+                    "thesis": "잘못된 top-level 후보 배열",
+                    "opening_trigger_conditions": ["거래대금"],
+                    "invalidation_conditions": ["스프레드"],
+                    "source_refs": ["event-1"],
+                    "confidence": 0.6,
+                }
+            ],
+        },
+        data_root=tmp_path,
+        target_trade_date="2026-06-08",
+        at=datetime.fromisoformat("2026-06-08T07:29:31+09:00"),
+    )
+
+    assert result["validation_status"] == "safe_block"
+    assert "top_level_eligible_for_flash_review_forbidden" in result["validation_errors"]
+    assert "items_must_be_list" in result["validation_errors"]
+
+
 def test_morning_v1_rejects_executable_order_fields(tmp_path: Path):
     result = runtime.publish_morning_watchlist_artifact(
         payload={
@@ -1400,3 +1438,14 @@ def test_morning_v1_rejects_executable_order_fields(tmp_path: Path):
 
     assert result["validation_status"] == "safe_block"
     assert any(error.startswith("executable_order_fields_forbidden") for error in result["validation_errors"])
+
+
+def test_gpt_morning_wrapper_requires_top_level_items_validation():
+    script = Path(__file__).resolve().parents[2] / "ops" / "gpt_pro_morning_watchlist.sh"
+    text = script.read_text(encoding="utf-8")
+
+    assert "top-level items 배열은 필수" in text
+    assert "must be a JSON array, even when empty" in text
+    assert "top_level_eligible_for_flash_review_forbidden" in text
+    assert 'raise SystemExit("items_must_be_list")' in text
+    assert 'obj.get("items") or []' not in text
