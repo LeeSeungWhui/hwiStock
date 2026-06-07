@@ -104,6 +104,9 @@ Input bundle summary:
 
 Required output:
 Return one JSON object only. No Markdown prose outside JSON.
+All human-readable natural-language string values must be written in Korean.
+Schema keys, enum values, ticker symbols, route names, timestamps, and numeric
+fields must remain exactly in the specified machine-readable form.
 
 Schema:
 {

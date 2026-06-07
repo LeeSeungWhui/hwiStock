@@ -1,0 +1,22 @@
+# hwiStock ChatGPT Pro morning watchlist tick.
+# Report-only; no order routing and no broker API calls.
+
+[Unit]
+Description=hwiStock GPT Pro morning watchlist via Codex CLI local browser-use
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/data/workspace/My/hwiStock
+EnvironmentFile=-/home/hwi/.config/hwistock/gpt-pro-morning.env
+Environment=HWISTOCK_INVESTMENT_MODE=paper
+Environment=HWISTOCK_MARKET_ANALYSIS_FEED_MODE=integrated
+Environment=HWISTOCK_EXECUTION_VENUE_MODE=krx_only
+Environment=HWISTOCK_NXT_ENABLED=false
+Environment=HWISTOCK_NXT_READY_SET_APPROVED=false
+Environment=HWISTOCK_GPT_PURPOSE=morning_watchlist_0715_local_browser_use
+ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-gpt-morning-watchlist -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && exec ops/gpt_pro_morning_watchlist.sh'
+TimeoutStartSec=45min
+NoNewPrivileges=true
+

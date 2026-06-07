@@ -1,0 +1,13 @@
+# hwiStock ChatGPT Pro morning watchlist timer.
+
+[Unit]
+Description=hwiStock GPT Pro morning watchlist at 07:15 KST
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 07:15:00
+AccuracySec=30s
+Persistent=false
+Unit=hwistock-gpt-morning-watchlist.service
+
+[Install]
+WantedBy=timers.target

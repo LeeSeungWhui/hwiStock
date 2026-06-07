@@ -29,6 +29,30 @@ def _append_jsonl(path: Path, rows: list[dict]) -> None:
     path.write_text("".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows), encoding="utf-8")
 
 
+def test_provider_prompts_require_korean_natural_language_values():
+    events = [{"event_id": "event-1", "title": "삼성전자 반도체 투자 확대", "event_type": "news"}]
+    kis_snapshots = [{"artifact_id": "snap-1", "status": "ok", "input_results": []}]
+    pro_prompt = runtime._build_pro_hourly_prompt(  # noqa: SLF001
+        events,
+        kis_snapshots,
+        produced_at_kst="2026-06-08T09:00:00+09:00",
+    )
+    flash_prompt = runtime._build_flash_prompt(  # noqa: SLF001
+        pro_artifact={"artifact_id": "art_pro", "summary": "프로 분석"},
+        events=events,
+        kis_snapshots=kis_snapshots,
+        compiled_watch=[{"symbol": "005930", "name": "삼성전자"}],
+        portfolio={},
+        order_state={},
+        produced_at_kst="2026-06-08T09:10:00+09:00",
+    )
+
+    assert "사람이 읽는 모든 문자열 값은 한국어" in pro_prompt
+    assert "schema key와 market_mode enum" in pro_prompt
+    assert "사람이 읽는 모든 문자열 값은 한국어" in flash_prompt
+    assert "action enum" in flash_prompt
+
+
 def test_publish_morning_watchlist_writes_target_trade_date_latest_paths(tmp_path: Path):
     produced_at = datetime.fromisoformat("2026-06-07T11:55:00+09:00")
     result = runtime.publish_morning_watchlist_artifact(

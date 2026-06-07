@@ -367,6 +367,8 @@ def _build_prompt(events: Sequence[Mapping[str, Any]], *, produced_at_kst: str) 
     titles = [str(event.get("title") or "")[:120] for event in events if event.get("title")]
     return (
         "JSON만 출력. 설명 금지. 아래 한국 증시 뉴스 제목을 아주 짧게 요약해. "
+        "summary, themes, risk_flags 같은 사람이 읽는 모든 문자열 값은 한국어로 작성해. "
+        "schema key와 order_safety 같은 기계용 키/고정값은 지정 형식 그대로 유지해. "
         "매수/매도 추천 금지. 주문 금지. 수익 예측 금지. "
         "형식: {\"summary\":\"한문장\",\"themes\":[\"키워드1\",\"키워드2\"],"
         "\"risk_flags\":[\"위험1\"],\"order_safety\":\"no_order\"}. "
@@ -410,6 +412,8 @@ def _build_pro_hourly_prompt(
     return (
         "JSON만 출력. 직접 주문, 수익 보장, 계좌/비밀값 언급 금지. "
         "역할은 한국 장중 시장국면/테마/피해야 할 조건 정리다. "
+        "summary, themes, strong_conditions, avoid_conditions, risk_flags 등 사람이 읽는 모든 문자열 값은 한국어로 작성해. "
+        "schema key와 market_mode enum, order_safety 같은 기계용 키/고정값은 지정 형식 그대로 유지해. "
         "형식: {\"summary\":\"한문장\", \"market_mode\":\"RISK_ON|NEUTRAL|RISK_OFF|NO_TRADE\", "
         "\"themes\":[\"테마\"], \"strong_conditions\":[\"조건\"], "
         "\"avoid_conditions\":[\"조건\"], \"risk_flags\":[\"리스크\"], \"order_safety\":\"no_order\"}. "
@@ -441,6 +445,8 @@ def _build_flash_prompt(
     return (
         "JSON만 출력. 직접 주문 실행 금지. 후보는 compiled_watch 안에서 최대 5개만 평가. "
         "보유/대기 주문과 충돌하는 신규매수 금지. "
+        "summary, reason, candidate_notes.reason, risk_flags 등 사람이 읽는 모든 문자열 값은 한국어로 작성해. "
+        "schema key, symbol, action enum, 숫자 필드는 지정 형식 그대로 유지해. "
         "actions는 다음 10분 매매문서 초안이며 허용 action은 WAIT_BUY, BUY_NOW, HOLD, SELL, NO_TRADE뿐이다. "
         "형식: {\"summary\":\"한문장\", "
         "\"actions\":[{\"symbol\":\"000000\",\"action\":\"WAIT_BUY|BUY_NOW|HOLD|SELL|NO_TRADE\","

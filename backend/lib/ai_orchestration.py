@@ -315,7 +315,8 @@ def buildProHourlyMarketAnalysis(
             "session_analysis": "insufficient_inputs" if safe_block else "source_and_kis_context_available",
             "market_mode": "NO_TRADE" if safe_block else "RISK_CHECK_REQUIRED",
         },
-        "summary": "NO_TRADE: source and KIS context unavailable" if safe_block else "Pro hourly analysis artifact built from grounded inputs",
+        "analysis_language": "ko-KR",
+        "summary": "NO_TRADE: 뉴스/공시와 KIS 시장 데이터 입력이 없어 분석을 보류합니다" if safe_block else "근거 입력을 바탕으로 생성한 DeepSeek Pro 시간별 시장 분석입니다",
         "order_safety": "no_order",
         "no_broker_call": True,
         "no_order_submission": True,
@@ -563,7 +564,7 @@ def buildFlashTradeDocument(
                 "reason": str(
                     provider_action.get("reason")
                     or provider_action.get("thesis")
-                    or ("portfolio/order conflict" if conflict_reasons else "compiled watch candidate with source/KIS context")
+                    or ("포트폴리오/주문 상태와 충돌해 신규 진입을 보류합니다" if conflict_reasons else "소스와 KIS 시장 데이터가 붙은 compiled_watch 후보입니다")
                 ),
                 "risk_flags": conflict_reasons,
                 "action_source": action_source_name,
@@ -619,6 +620,7 @@ def buildFlashTradeDocument(
             str(doc.get("artifact_id") or doc.get("document_id") or "") for doc in previous_docs
         ],
         "actions": actions,
+        "analysis_language": "ko-KR",
         "max_holdings_after_trade": rp.MAX_SIMULTANEOUS_HOLDINGS,
         "max_cash_deployment_ratio": rp.MAX_CASH_DEPLOYMENT_RATIO,
         "validation_status": "pending",

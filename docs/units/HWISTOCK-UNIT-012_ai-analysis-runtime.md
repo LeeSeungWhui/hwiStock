@@ -26,8 +26,11 @@ code_paths:
     - backend/lib/market_intelligence_ingestion_runtime.py
     - backend/service/market_intelligence_ingestion.py
     - backend/tests/test_ai_orchestration_layer.py
+    - ops/gpt_pro_morning_watchlist.sh
     - ops/systemd/user/hwistock-ai-analysis.service
     - ops/systemd/user/hwistock-ai-analysis.timer
+    - ops/systemd/user/hwistock-gpt-morning-watchlist.service
+    - ops/systemd/user/hwistock-gpt-morning-watchlist.timer
   exclude:
     - "**/*.env"
     - backend/config.ini
