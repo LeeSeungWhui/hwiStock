@@ -1,13 +1,12 @@
 # hwiStock DeepSeek Flash 10-minute trade-document timer.
 
 [Unit]
-Description=hwiStock DeepSeek Flash trade document every 10 minutes
+Description=hwiStock DeepSeek Flash trade document during paper KRX decision window
 
 [Timer]
-OnBootSec=3min
-OnCalendar=*:0/10
+OnCalendar=Mon..Fri *-*-* 09..14:00/10:00
 AccuracySec=30s
-Persistent=true
+Persistent=false
 Unit=hwistock-ai-flash.service
 
 [Install]

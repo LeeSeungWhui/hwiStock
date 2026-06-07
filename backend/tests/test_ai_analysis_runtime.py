@@ -199,6 +199,15 @@ def test_systemd_services_do_not_set_ai_max_output_tokens():
             assert token not in text
 
 
+def test_flash_timer_runs_only_paper_krx_decision_window():
+    text = Path("ops/systemd/user/hwistock-ai-flash.timer").read_text(encoding="utf-8")
+
+    assert "OnCalendar=Mon..Fri *-*-* 09..14:00/10:00" in text
+    assert "OnCalendar=*:0/10" not in text
+    assert "OnBootSec=" not in text
+    assert "Persistent=false" in text
+
+
 def test_legacy_global_max_tokens_env_adds_deprecated_warning(tmp_path: Path, monkeypatch):
     _clear_max_token_envs(monkeypatch)
     monkeypatch.setenv("HWISTOCK_AI_MAX_OUTPUT_TOKENS", "3333")
