@@ -229,19 +229,130 @@ def _read_morning_watchlist(data_root: Path, *, at: datetime) -> Optional[Dict[s
     return None
 
 
+def _calendar_rows_from_env() -> Dict[str, Dict[str, Any]]:
+    path = msg.calendarPathFromEnv(os.environ)
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, Mapping):
+        return {}
+    rows: Dict[str, Dict[str, Any]] = {}
+    for key in ("days", "tradingDays", "calendar"):
+        value = payload.get(key)
+        if isinstance(value, Mapping):
+            for day, row in value.items():
+                if isinstance(row, Mapping):
+                    rows[str(day)] = dict(row)
+                elif isinstance(row, bool):
+                    rows[str(day)] = {"isTradingDay": row}
+        elif isinstance(value, list):
+            for row in value:
+                if isinstance(row, str):
+                    rows[row] = {"isTradingDay": True}
+                elif isinstance(row, Mapping):
+                    day = str(row.get("dateKst") or row.get("date") or row.get("day") or "").strip()
+                    if day:
+                        rows[day] = dict(row)
+    return rows
+
+
+def _calendar_row_is_trading_day(row: Mapping[str, Any]) -> bool:
+    return bool(row.get("isTradingDay", row.get("is_trading_day", row.get("tradingAllowed", False))))
+
+
+def _calendar_regular_close(row: Mapping[str, Any]) -> datetime.time:
+    krx = row.get("krx") if isinstance(row.get("krx"), Mapping) else {}
+    raw = (
+        row.get("krxClose")
+        or row.get("krx_close")
+        or row.get("regularClose")
+        or row.get("regular_close")
+        or krx.get("regularClose")
+        or "15:30"
+    )
+    for fmt in ("%H:%M", "%H:%M:%S"):
+        try:
+            return datetime.strptime(str(raw), fmt).time()
+        except ValueError:
+            continue
+    return datetime.strptime("15:30", "%H:%M").time()
+
+
+def _morning_prompt_input_window(
+    *,
+    target_trade_date: str,
+    at: datetime,
+) -> Dict[str, Any]:
+    end = at.astimezone(KST).replace(microsecond=0)
+    try:
+        target_day = date.fromisoformat(target_trade_date)
+    except ValueError:
+        target_day = end.date()
+    rows = _calendar_rows_from_env()
+    previous_day = target_day - timedelta(days=1)
+    previous_trading_day: Optional[date] = None
+    previous_row: Dict[str, Any] = {}
+    for _ in range(45):
+        row = rows.get(previous_day.isoformat())
+        if isinstance(row, Mapping) and _calendar_row_is_trading_day(row):
+            previous_trading_day = previous_day
+            previous_row = dict(row)
+            break
+        previous_day = previous_day - timedelta(days=1)
+
+    if previous_trading_day is None:
+        start = end - timedelta(hours=18)
+        window_source = "fallback_18h_calendar_previous_trading_day_missing"
+    else:
+        start = datetime.combine(previous_trading_day, _calendar_regular_close(previous_row), tzinfo=KST)
+        window_source = "calendar_previous_trading_close"
+        if start >= end:
+            start = end - timedelta(hours=18)
+            window_source = "fallback_18h_calendar_window_invalid"
+
+    included_dates = [day.isoformat() for day in _iter_dates(start.date(), end.date())]
+    non_trading_in_window = False
+    for day_text in included_dates:
+        row = rows.get(day_text)
+        if isinstance(row, Mapping) and not _calendar_row_is_trading_day(row):
+            non_trading_in_window = True
+            break
+    if len(included_dates) > 2 and previous_trading_day is not None:
+        non_trading_in_window = True
+
+    return {
+        "start": start,
+        "end": end,
+        "input_window_start_kst": start.isoformat(),
+        "input_window_end_kst": end.isoformat(),
+        "included_dates": included_dates,
+        "non_trading_day_carryover": bool(non_trading_in_window),
+        "previous_trading_day": previous_trading_day.isoformat() if previous_trading_day else None,
+        "window_source": window_source,
+    }
+
+
 def _read_recent_pro_hourly_artifacts(
     data_root: Path,
     *,
     at: datetime,
     target_trade_date: str,
-    limit: int = 8,
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+    limit: int = 48,
 ) -> List[Dict[str, Any]]:
     paths: List[Path] = []
-    candidate_days = {
-        at.date().isoformat(),
-        target_trade_date,
-        (at - timedelta(days=1)).date().isoformat(),
-    }
+    if start and end:
+        candidate_days = {day.isoformat() for day in _iter_dates(start.date(), end.date())}
+    else:
+        candidate_days = {
+            at.date().isoformat(),
+            target_trade_date,
+            (at - timedelta(days=1)).date().isoformat(),
+        }
     for day in sorted(candidate_days):
         directory = data_root / "ai" / day
         if not directory.is_dir():
@@ -261,6 +372,9 @@ def _read_recent_pro_hourly_artifacts(
         payload = _read_json_artifact(path)
         if not payload:
             continue
+        timestamp = _artifact_timestamp(payload)
+        if start and end and timestamp and not (start <= timestamp <= end):
+            continue
         artifact_id = str(payload.get("artifact_id") or path)
         if artifact_id in seen_ids:
             continue
@@ -278,6 +392,7 @@ def _build_morning_watchlist_prompt_text(
     kis_snapshots: Sequence[Mapping[str, Any]],
     compiled_watch: Sequence[Mapping[str, Any]],
     calendar_context: Mapping[str, Any],
+    input_window: Mapping[str, Any],
 ) -> str:
     required_schema = {
         "schema_version": "morning_watchlist/v1",
@@ -355,6 +470,7 @@ def _build_morning_watchlist_prompt_text(
         "market_open_plan.opening_bias, why, must_wait_for_market_confirmation, first_flash_questions를 반드시 포함해. "
         f"필수 JSON 스키마 예시={json.dumps(required_schema, ensure_ascii=False)} "
         f"target_trade_date_kst={target_trade_date}. produced_at_kst={produced_at_kst}. "
+        f"input_window={json.dumps(dict(input_window), ensure_ascii=False)} "
         f"calendar_context={json.dumps(dict(calendar_context), ensure_ascii=False)} "
         f"pro_hourly_artifacts={json.dumps(_compact_json_for_prompt(pro_digest, 9000), ensure_ascii=False)} "
         f"recent_events={json.dumps(_compact_json_for_prompt(event_digest, 9000), ensure_ascii=False)} "
@@ -373,14 +489,18 @@ def build_morning_watchlist_prompt(
     now = at or _now_kst()
     requested_target = str(target_trade_date or now.date().isoformat()).strip()
     gate = msg.evaluateKisCallGate(now_kst=now, call_family="gpt_morning", env=os.environ)
-    start = now - timedelta(hours=18)
-    events = _read_events_for_window(data_root, start=start, end=now, limit=240)
+    input_window = _morning_prompt_input_window(target_trade_date=requested_target, at=now)
+    start = input_window["start"]
+    end = input_window["end"]
+    events = _read_events_for_window(data_root, start=start, end=end, limit=240)
     kis_snapshots = _read_recent_kis_snapshots(data_root, at=now, limit=8)
     compiled_watch = _read_compiled_watch(data_root, at=now)
     pro_artifacts = _read_recent_pro_hourly_artifacts(
         data_root,
         at=now,
         target_trade_date=requested_target,
+        start=start,
+        end=end,
     )
     prompt_text = _build_morning_watchlist_prompt_text(
         target_trade_date=requested_target,
@@ -390,6 +510,12 @@ def build_morning_watchlist_prompt(
         kis_snapshots=kis_snapshots,
         compiled_watch=compiled_watch,
         calendar_context=gate["calendar_context"],
+        input_window={
+            "start_kst": input_window["input_window_start_kst"],
+            "end_kst": input_window["input_window_end_kst"],
+            "included_dates": input_window["included_dates"],
+            "non_trading_day_carryover": input_window["non_trading_day_carryover"],
+        },
     )
     stamp = now.strftime("%H%M%S")
     prompt_paths: Dict[str, str] = {}
@@ -418,6 +544,12 @@ def build_morning_watchlist_prompt(
         "status": "ok",
         "schema_version": "gpt_morning_prompt/v0",
         "purpose": str(purpose or "morning_watchlist_0715_local_browser_use"),
+        "input_window_start_kst": input_window["input_window_start_kst"],
+        "input_window_end_kst": input_window["input_window_end_kst"],
+        "included_dates": input_window["included_dates"],
+        "non_trading_day_carryover": input_window["non_trading_day_carryover"],
+        "previous_trading_day": input_window["previous_trading_day"],
+        "input_window_source": input_window["window_source"],
         "prompt_paths": prompt_paths,
         "input_counts": {
             "pro_hourly_artifacts": len(pro_artifacts),
@@ -435,6 +567,12 @@ def build_morning_watchlist_prompt(
         "target_trade_date_kst": requested_target,
         "generated_at_kst": now.isoformat(),
         "purpose": health["purpose"],
+        "input_window_start_kst": health["input_window_start_kst"],
+        "input_window_end_kst": health["input_window_end_kst"],
+        "included_dates": health["included_dates"],
+        "non_trading_day_carryover": health["non_trading_day_carryover"],
+        "previous_trading_day": health["previous_trading_day"],
+        "input_window_source": health["input_window_source"],
         "prompt_paths": prompt_paths,
         "health_path": str(health_path),
         "input_counts": health["input_counts"],
@@ -1165,7 +1303,8 @@ def _write_artifact_bundle(
     stamped_path = output_dir / f"{latest_name.replace('-latest', '')}-{stamp}.json"
     latest_path = output_dir / f"{latest_name}.json"
     health_path = evidence_dir / f"{latest_name}-health.json"
-    text = json.dumps(dict(payload), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    payload_to_write = _with_quality_metadata(payload)
+    text = json.dumps(payload_to_write, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     tmp_path = latest_path.with_suffix(".tmp")
     tmp_path.write_text(text, encoding="utf-8")
     tmp_path.replace(latest_path)
@@ -1175,10 +1314,13 @@ def _write_artifact_bundle(
             {
                 "event": f"{latest_name}_health",
                 "timestamp_kst": at.isoformat(),
-                "status": payload.get("validation_status") or payload.get("status"),
+                "status": payload_to_write.get("validation_status") or payload_to_write.get("status"),
                 "artifact_path": str(latest_path),
-                "schema_version": payload.get("schema_version"),
-                "model_name": payload.get("model_name"),
+                "schema_version": payload_to_write.get("schema_version"),
+                "model_name": payload_to_write.get("model_name"),
+                "quality_degraded": payload_to_write.get("quality_degraded") is True,
+                "flash_usable": payload_to_write.get("flash_usable"),
+                "warnings": payload_to_write.get("validation_warnings") or payload_to_write.get("warnings") or [],
                 "orders_enabled": False,
                 "broker_calls_enabled": False,
             },
@@ -1190,6 +1332,47 @@ def _write_artifact_bundle(
         encoding="utf-8",
     )
     return {"latest": str(latest_path), "stamped": str(stamped_path), "health": str(health_path)}
+
+
+def _dedupe_texts(values: Sequence[Any]) -> List[str]:
+    seen: set[str] = set()
+    rows: List[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        rows.append(text)
+    return rows
+
+
+def _artifact_warnings(payload: Mapping[str, Any]) -> List[str]:
+    warnings: List[Any] = []
+    for key in ("validation_warnings", "warnings"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            warnings.extend(value)
+    return _dedupe_texts(warnings)
+
+
+def _quality_degraded(payload: Mapping[str, Any]) -> bool:
+    return (
+        payload.get("validation_status") == "accepted_with_warnings"
+        or payload.get("flash_usable") is False
+        or str(payload.get("investment_utility_status") or "") in {"news_only_low_utility", "truncated_low_utility"}
+    )
+
+
+def _with_quality_metadata(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    result = dict(payload)
+    warnings = _artifact_warnings(result)
+    degraded = _quality_degraded(result)
+    result["quality_degraded"] = bool(degraded)
+    if degraded:
+        result["flash_usable"] = False
+        result["warnings"] = warnings
+        result["validation_warnings"] = warnings
+    return result
 
 
 def _latest_named_json(data_root: Path, family: str, day: str, name: str) -> Optional[Path]:
@@ -1385,6 +1568,7 @@ def run_pro_hourly_once(
     artifact = pro_validation["document"]
     artifact["validation_errors"] = pro_validation["errors"]
     artifact["validation_warnings"] = pro_validation["warnings"]
+    artifact = _with_quality_metadata(artifact)
     artifact["artifact_paths"] = _write_artifact_bundle(
         artifact,
         data_root=data_root,
@@ -1482,6 +1666,7 @@ def run_flash_trade_document_once(
     validation = ao.validateFlashTradeDocument(artifact, compiled_watch=compiled_watch)
     artifact = validation["document"]
     artifact["validation_errors"] = validation["errors"]
+    artifact = _with_quality_metadata(artifact)
     if artifact.get("validation_status") == "accepted":
         pipeline = trading_engine.generatePaperOrderIntentsFromFlashDocument(
             artifact,
@@ -1494,7 +1679,7 @@ def run_flash_trade_document_once(
     else:
         pipeline = {
             "schema_version": "paper_intent_pipeline_result/v0",
-            "ok": artifact.get("validation_status") in {"safe_block", "accepted"},
+            "ok": artifact.get("validation_status") in {"safe_block", "accepted", "accepted_with_warnings"},
             "accepted_intents": [],
             "rejected_actions": [{"reason": artifact.get("no_trade_reason") or "flash_document_not_accepted"}],
             "accepted_count": 0,
@@ -1635,10 +1820,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     else:
         result = run_analysis_once(data_root=Path(args.data_root), model=args.model)
     sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    if result.get("status") == "provider_error" or result.get("provider_status") == "provider_error":
+        return 1
+    if result.get("validation_status") == "rejected":
+        return 1
     accepted_statuses = {"ok", "blocked_no_source_events", "blocked_missing_deepseek_api_key"}
     if result.get("status") in accepted_statuses:
         return 0
-    if result.get("validation_status") in {"accepted", "safe_block"}:
+    if result.get("validation_status") in {"accepted", "accepted_with_warnings", "safe_block"}:
         return 0
     return 1
 

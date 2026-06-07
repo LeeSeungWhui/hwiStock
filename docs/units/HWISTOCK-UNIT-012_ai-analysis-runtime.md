@@ -168,6 +168,8 @@ own all broker-order eligibility.
 | AC-09 | P0 | Flash candidate universe is deterministic | Flash can only score/select symbols from a prebuilt `compiled_watch/v0`; off-universe tickers are rejected and cannot produce order intents. |
 | AC-10 | P0 | Morning watchlist gates the first Flash bucket | The first paper/mock `09:00 KST` Flash bucket, and future live `08:00 KST` bucket, references a valid `morning_watchlist/v1` or writes `NO_TRADE`. |
 | AC-10a | P0 | Flash consumes low-utility Pro defensively | If Pro is `news_only_low_utility`, `truncated_low_utility`, or `flash_usable=false`, Flash forbids `BUY_NOW` and may only emit `NO_TRADE`, `HOLD`, or confirmation-bound `WAIT_BUY`. |
+| AC-10b | P0 | GPT Pro morning input window follows the trading calendar | `gpt_morning_prompt/v0` reads events and Pro artifacts from previous trading-day KRX regular close through the current morning run; Monday and long-weekend targets include all non-trading carryover dates and record `input_window_start_kst`, `input_window_end_kst`, `included_dates`, and `non_trading_day_carryover` in prompt health. |
+| AC-12 | P0 | Degraded quality is nonfatal but visible | `accepted_with_warnings` Pro/Flash artifacts exit with process code `0`, while `rejected` or `provider_error` exits `1`; degraded artifacts and health records expose `quality_degraded=true`, `flash_usable=false`, and warnings. |
 | AC-11 | P0 | Paper/mock decision window closes at 15:00 | Paper/mock Flash cannot create new entry intents after `15:00 KST`, even though market-data/close context may continue to `15:30 KST`. |
 
 ## 5. Go Notes

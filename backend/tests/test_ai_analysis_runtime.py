@@ -56,6 +56,34 @@ def _write_calendar(path: Path, *, day: str, trading: bool) -> None:
     )
 
 
+def _write_calendar_days(path: Path, days: dict[str, dict]) -> None:
+    normalized = {}
+    for day, row in days.items():
+        payload = {
+            "dateKst": day,
+            "isTradingDay": bool(row.get("trading", row.get("isTradingDay", False))),
+            "reason": row.get("reason"),
+            "krx": {
+                "regularOpen": row.get("regularOpen", "09:00"),
+                "regularClose": row.get("regularClose", "15:30"),
+                "orderOpen": row.get("orderOpen", "09:00"),
+                "orderClose": row.get("orderClose", "15:00"),
+            },
+        }
+        normalized[day] = payload
+    path.write_text(
+        json.dumps(
+            {
+                "validUntil": "2099-12-31T23:59:59+09:00",
+                "sourceAuthority": "unit_test_calendar",
+                "days": normalized,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_provider_prompts_require_korean_natural_language_values():
     events = [{"event_id": "event-1", "title": "삼성전자 반도체 투자 확대", "event_type": "news"}]
     kis_snapshots = [{"artifact_id": "snap-1", "status": "ok", "input_results": []}]
@@ -226,6 +254,94 @@ def test_build_morning_watchlist_prompt_writes_default_prompt_paths(tmp_path: Pa
         assert "art_pro_hourly_20260607_2000" in text
         assert "broker API 호출, 주문 제출" in text
     assert Path(result["health_path"]).is_file()
+
+
+def test_gpt_morning_input_window_uses_previous_trading_close_for_monday(tmp_path: Path, monkeypatch):
+    produced_at = datetime.fromisoformat("2026-06-08T07:15:00+09:00")
+    calendar = tmp_path / "calendar.json"
+    _write_calendar_days(
+        calendar,
+        {
+            "2026-06-05": {"trading": True},
+            "2026-06-06": {"trading": False, "reason": "weekend"},
+            "2026-06-07": {"trading": False, "reason": "weekend"},
+            "2026-06-08": {"trading": True},
+        },
+    )
+    monkeypatch.setenv("HWISTOCK_CALENDAR_PATH", str(calendar))
+    _append_jsonl(
+        tmp_path / "normalized" / "2026-06-05" / "events.jsonl",
+        [
+            {"event_id": "before-close", "title": "장중 제외", "published_at_kst": "2026-06-05T15:20:00+09:00"},
+            {"event_id": "after-close", "title": "금요일 종가 이후 포함", "published_at_kst": "2026-06-05T15:40:00+09:00"},
+        ],
+    )
+    _append_jsonl(
+        tmp_path / "normalized" / "2026-06-07" / "events.jsonl",
+        [{"event_id": "weekend-news", "title": "주말 뉴스 포함", "published_at_kst": "2026-06-07T11:00:00+09:00"}],
+    )
+    _write_json(
+        tmp_path / "ai" / "2026-06-05" / "pro-hourly-152000.json",
+        {"schema_version": "pro_hourly_market_analysis/v1", "artifact_id": "pro-before", "produced_at_kst": "2026-06-05T15:20:00+09:00"},
+    )
+    _write_json(
+        tmp_path / "ai" / "2026-06-07" / "pro-hourly-200000.json",
+        {"schema_version": "pro_hourly_market_analysis/v1", "artifact_id": "pro-weekend", "produced_at_kst": "2026-06-07T20:00:00+09:00"},
+    )
+
+    result = runtime.build_morning_watchlist_prompt(
+        data_root=tmp_path,
+        target_trade_date="2026-06-08",
+        at=produced_at,
+    )
+    prompt = (tmp_path / "ai" / "2026-06-08" / "gpt-morning-prompt-latest.txt").read_text(encoding="utf-8")
+    health = json.loads(Path(result["health_path"]).read_text(encoding="utf-8"))
+
+    assert result["input_window_start_kst"] == "2026-06-05T15:30:00+09:00"
+    assert result["input_window_end_kst"] == "2026-06-08T07:15:00+09:00"
+    assert result["included_dates"] == ["2026-06-05", "2026-06-06", "2026-06-07", "2026-06-08"]
+    assert result["non_trading_day_carryover"] is True
+    assert health["input_window_start_kst"] == result["input_window_start_kst"]
+    assert health["input_window_end_kst"] == result["input_window_end_kst"]
+    assert health["included_dates"] == result["included_dates"]
+    assert health["non_trading_day_carryover"] is True
+    assert "after-close" in prompt
+    assert "weekend-news" in prompt
+    assert "before-close" not in prompt
+    assert "pro-weekend" in prompt
+    assert "pro-before" not in prompt
+
+
+def test_gpt_morning_input_window_handles_long_weekend_previous_trading_close(tmp_path: Path, monkeypatch):
+    produced_at = datetime.fromisoformat("2026-06-09T07:15:00+09:00")
+    calendar = tmp_path / "calendar.json"
+    _write_calendar_days(
+        calendar,
+        {
+            "2026-06-05": {"trading": True},
+            "2026-06-06": {"trading": False, "reason": "weekend"},
+            "2026-06-07": {"trading": False, "reason": "weekend"},
+            "2026-06-08": {"trading": False, "reason": "holiday"},
+            "2026-06-09": {"trading": True},
+        },
+    )
+    monkeypatch.setenv("HWISTOCK_CALENDAR_PATH", str(calendar))
+    _append_jsonl(
+        tmp_path / "normalized" / "2026-06-08" / "events.jsonl",
+        [{"event_id": "holiday-carryover", "title": "휴일 이월 뉴스", "published_at_kst": "2026-06-08T12:00:00+09:00"}],
+    )
+
+    result = runtime.build_morning_watchlist_prompt(
+        data_root=tmp_path,
+        target_trade_date="2026-06-09",
+        at=produced_at,
+    )
+    prompt = (tmp_path / "ai" / "2026-06-09" / "gpt-morning-prompt-latest.txt").read_text(encoding="utf-8")
+
+    assert result["input_window_start_kst"] == "2026-06-05T15:30:00+09:00"
+    assert result["included_dates"] == ["2026-06-05", "2026-06-06", "2026-06-07", "2026-06-08", "2026-06-09"]
+    assert result["non_trading_day_carryover"] is True
+    assert "holiday-carryover" in prompt
 
 
 def test_flash_runtime_uses_exact_10m_window_and_provider_actions(tmp_path: Path, monkeypatch):
@@ -492,6 +608,62 @@ def test_provider_finish_reason_length_is_not_accepted(tmp_path: Path, monkeypat
     assert result["investment_utility_status"] == "truncated_low_utility"
     assert result["flash_usable"] is False
     assert "provider_output_truncated" in result["validation_warnings"]
+
+
+def test_accepted_with_warnings_exit_zero_and_health_marks_quality_degraded(tmp_path: Path, monkeypatch):
+    now = datetime.fromisoformat("2026-06-08T09:00:00+09:00")
+    _append_jsonl(
+        tmp_path / "normalized" / "2026-06-08" / "events.jsonl",
+        [{"event_id": "event-1", "title": "삼성전자 투자 확대", "published_at_kst": "2026-06-08T08:50:00+09:00"}],
+    )
+    _write_json(
+        tmp_path / "kis-market" / "2026-06-08" / "snap.json",
+        {"schema_version": "kis_market_snapshot/v0", "artifact_id": "snap-1", "produced_at_kst": "2026-06-08T08:59:00+09:00"},
+    )
+    monkeypatch.setattr(runtime, "_now_kst", lambda: now)
+    monkeypatch.setattr(
+        runtime,
+        "_call_deepseek",
+        lambda *_args, **_kwargs: {
+            "http_status": 200,
+            "finish_reason": "length",
+            "model": "deepseek-v4-pro",
+            "text": json.dumps(_pro_v1_payload(), ensure_ascii=False),
+            "usage": {"completion_tokens": 2000},
+            "error": None,
+        },
+    )
+
+    code = runtime.main(["--once", "--job", "pro-hourly", "--data-root", str(tmp_path), "--model", "deepseek-v4-pro"])
+    artifact = json.loads((tmp_path / "ai" / "2026-06-08" / "pro-hourly-latest.json").read_text(encoding="utf-8"))
+    health = json.loads((tmp_path / "evidence" / "2026-06-08" / "pro-hourly-latest-health.json").read_text(encoding="utf-8"))
+
+    assert code == 0
+    assert artifact["validation_status"] == "accepted_with_warnings"
+    assert artifact["quality_degraded"] is True
+    assert artifact["flash_usable"] is False
+    assert "provider_output_truncated" in artifact["warnings"]
+    assert health["quality_degraded"] is True
+    assert health["flash_usable"] is False
+    assert "provider_output_truncated" in health["warnings"]
+
+
+def test_provider_error_exit_one(tmp_path: Path, monkeypatch):
+    now = datetime.fromisoformat("2026-06-08T09:00:00+09:00")
+    _append_jsonl(
+        tmp_path / "normalized" / "2026-06-08" / "events.jsonl",
+        [{"event_id": "event-1", "title": "삼성전자 투자 확대", "published_at_kst": "2026-06-08T08:50:00+09:00"}],
+    )
+    monkeypatch.setattr(runtime, "_now_kst", lambda: now)
+
+    def _raise_provider(*_args, **_kwargs):
+        raise RuntimeError("provider boom")
+
+    monkeypatch.setattr(runtime, "_call_deepseek", _raise_provider)
+
+    code = runtime.main(["--once", "--job", "pro-hourly", "--data-root", str(tmp_path), "--model", "deepseek-v4-pro"])
+
+    assert code == 1
 
 
 def test_generic_pro_summary_is_low_utility():
