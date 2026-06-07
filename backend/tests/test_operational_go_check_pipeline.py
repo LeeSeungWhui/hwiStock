@@ -545,6 +545,126 @@ def test_unit015_account_summary_refreshes_stale_pnl_failure_cache(tmp_path: Pat
     assert refreshed["credentialValuesPrinted"] is False
 
 
+def test_unit015_weekend_dashboard_account_summary_uses_fresh_cache_without_market_session(
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HWISTOCK_DASHBOARD_ACCOUNT_READ_ENABLED", "true")
+    monkeypatch.setenv("KIS_PAPER_ACCOUNT_NO", "12345678")
+    monkeypatch.setenv("KIS_PAPER_ACCOUNT_PRODUCT_CODE", "01")
+    cache_path = tmp_path / "account" / "dashboard-account-summary-latest.json"
+    cache_path.parent.mkdir(parents=True)
+    cache_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "dashboard_account_summary/v0",
+                "accountId": "12345678-01",
+                "cashBalance": 9_950_000,
+                "reserveBalance": 500_000,
+                "todayPnl": -84_200,
+                "realizedPnl": 12_000,
+                "openPositions": 0,
+                "status": "cached_pass",
+                "source": "kis-live-read",
+                "rawProviderPayloadDisplayed": False,
+                "credentialValuesPrinted": False,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    class ForbiddenDashboardAdapter:
+        def __init__(self, *, env, transport):
+            raise AssertionError("fresh dashboard cache must skip provider account read")
+
+    monkeypatch.setattr(operator_console, "KisPaperAdapter", ForbiddenDashboardAdapter)
+
+    summary = operator_console.buildDashboardAccountSummary(
+        operator_console.parseKstTime("2026-06-06T11:30:00+09:00"),
+        dataRoot=tmp_path,
+    )
+
+    assert summary["source"] == "dashboard-account-cache"
+    assert summary["cashBalance"] == 9_950_000
+    assert summary["todayPnl"] == -84_200
+    assert summary["marketSessionRequired"] is False
+    assert summary["accountRefreshAllowed"] is True
+    assert summary["accountRefreshStatus"] == "skipped_cache_ttl"
+    assert summary["dashboardAccountSummaryOnly"] is True
+    assert summary["usableForOrderPreflight"] is False
+    assert summary["orderPreflightTruthSource"] == "trading_account_truth"
+    assert summary["marketSessionGate"]["allowed"] is True
+    assert summary["marketSessionGate"]["step"] == "dashboard_account_summary_market_session_gate"
+
+
+def test_unit015_dashboard_account_summary_provider_failure_falls_back_to_last_cache(
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HWISTOCK_DASHBOARD_ACCOUNT_READ_ENABLED", "true")
+    monkeypatch.setenv("KIS_PAPER_ACCOUNT_NO", "12345678")
+    monkeypatch.setenv("KIS_PAPER_ACCOUNT_PRODUCT_CODE", "01")
+    monkeypatch.setenv("HWISTOCK_KIS_HEALTH_SYMBOL", "005930")
+    cache_path = tmp_path / "account" / "dashboard-account-summary-latest.json"
+    cache_path.parent.mkdir(parents=True)
+    cache_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "dashboard_account_summary/v0",
+                "accountId": "12345678-01",
+                "cashBalance": 8_880_000,
+                "reserveBalance": 500_000,
+                "todayPnl": -12_000,
+                "realizedPnl": 3_000,
+                "openPositions": 1,
+                "status": "cached_pass",
+                "source": "kis-live-read",
+                "rawProviderPayloadDisplayed": False,
+                "credentialValuesPrinted": False,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    old_mtime = operator_console.parseKstTime("2026-06-05T09:00:00+09:00").timestamp()
+    os.utime(cache_path, (old_mtime, old_mtime))
+
+    class FailingDashboardAdapter:
+        def __init__(self, *, env, transport):
+            self.env = env
+            self.transport = transport
+
+        def missingEnvKeys(self):
+            return []
+
+        def inquireAccountSummaryForDashboard(self, token, symbol):
+            assert token == "fake-token"
+            assert symbol == "005930"
+            raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(operator_console, "KisPaperAdapter", FailingDashboardAdapter)
+    monkeypatch.setattr(
+        operator_console,
+        "loadKisPaperAccessToken",
+        lambda adapter, env, now: ({"status": "pass", "token_present": True}, "fake-token", True),
+    )
+
+    summary = operator_console.buildDashboardAccountSummary(
+        operator_console.parseKstTime("2026-06-06T11:30:00+09:00"),
+        dataRoot=tmp_path,
+    )
+
+    assert summary["status"] == "cached_provider_unavailable"
+    assert summary["source"] == "dashboard-account-cache"
+    assert summary["cashBalance"] == 8_880_000
+    assert summary["todayPnl"] == -12_000
+    assert summary["accountRefreshStatus"] == "provider_error_cache_fallback"
+    assert summary["accountCacheStatus"] == "fallback_stale"
+    assert summary["usableForOrderPreflight"] is False
+    assert summary["errorType"] == "RuntimeError"
+
+
 def test_unit015_account_summary_preserves_zero_pnl_from_runner_evidence(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("KIS_PAPER_ACCOUNT_NO", "12345678")
     monkeypatch.setenv("KIS_PAPER_ACCOUNT_PRODUCT_CODE", "01")

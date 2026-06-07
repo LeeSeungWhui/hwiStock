@@ -156,6 +156,20 @@ decision bucket**.
   `09:00-15:00 KST`. KRX public regular-session/market-data context after
   `15:00 KST` through `15:30 KST` may produce close/watch/reconciliation
   artifacts but cannot create clean entry intents.
+- Dashboard account summary is a display-only surface. It may refresh outside
+  market sessions and on weekends/holidays through `dashboard_account_summary`
+  with cache throttling and last-known-cache fallback, but it must carry
+  `usable_for_order_preflight=false` and must never be reused as executor order
+  preflight truth.
+- Executor order preflight must use a fresh `trading_account_truth` read only
+  when an order intent is actually being considered and the paper/mock order
+  window and owner approval gates are open. Failure to obtain that fresh truth
+  blocks only the affected order attempt.
+- KIS market-data and realtime calls remain market/session gated. KIS paper
+  order submission is limited to `09:00-15:00 KST`. KIS reconciliation is not
+  identical to the order-submit window: it may run when pending, submitting,
+  ambiguous, or submitted local work requires broker evidence, subject to
+  throttling and secret-safe evidence logging.
 - Clean entry actions (`WAIT_BUY` / `BUY_NOW`) require both current portfolio
   and order-state refs. Missing, stale, unavailable, or advisory-only refs may
   produce watch/reject records, but cannot produce a clean

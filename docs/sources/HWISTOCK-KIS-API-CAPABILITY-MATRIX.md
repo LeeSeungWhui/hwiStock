@@ -105,6 +105,17 @@ balances, buyable cash, sellable quantity, cancelable-order lookup, and
 order/fill reconciliation remain outside the market-signal collector and belong
 to broker execution/account truth.
 
+## 6.1 Account, Order, And Reconciliation Call Families
+
+| call family | session rule | allowed purpose | forbidden use |
+| --- | --- | --- | --- |
+| `dashboard_account_summary` | Market-session independent; cache-throttled; allowed weekends/off-hours with last-known-cache fallback. | Read-only operator dashboard balance/PnL display with `usable_for_order_preflight=false`. | Order sizing, buy/sell preflight, risk truth, or executable account authority. |
+| `trading_account_truth` / `kis_account_truth` | Fresh read only when an actual paper/mock order intent is under preflight and the `09:00-15:00 KST` order window plus owner approval gates are open. | Executor cash, buyable, sellable, realized-PnL, and cancelable-order evidence immediately before an order attempt. | Background dashboard refresh, weekend/off-session status cosmetics, or replacing missing order-window approval. |
+| `kis_order_submit` | Paper/mock KRX submit only during `09:00-15:00 KST`. | Approved cash order submit attempt after deterministic preflight passes. | NXT/SOR submit in paper/mock, off-window submit, dashboard-triggered submit, or live-money submit without the future explicit live gate. |
+| `kis_reconciliation` | Not the same as submit window; allowed when pending/submitting/ambiguous/submitted local work requires broker evidence. | Order/fill/account reconciliation and duplicate-prevention evidence. | Unscoped polling when there is no local work to reconcile. |
+| `kis_market_data` / `kis_realtime` | Market/session gated by the cached KRX/NXT calendar and runtime mode. | Market context, quote, realtime trade/orderbook/operation feeds. | Account/order truth, dashboard account display, or off-session order authority. |
+| `news_disclosure`, `pro_hourly`, `gpt_morning` | Always allowed by the KIS session gate because they are not KIS market/account/order transports. | AI/news/disclosure analysis loops and local artifact publication. | Broker/account/order side effects. |
+
 ## 7. Calendar / Session APIs
 
 | API reference | KIS mode | broker-adapter handling | operation follow-up |

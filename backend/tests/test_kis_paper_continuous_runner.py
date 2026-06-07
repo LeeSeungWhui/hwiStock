@@ -233,9 +233,35 @@ def test_token_cache_uses_request_broker_json_adapter_without_private_request(tm
 
 def test_tick_invalidates_cached_token_once_when_account_step_rejects_it(tmp_path: Path, monkeypatch):
     _calendar(tmp_path, monkeypatch)
+    data_root = tmp_path / "data"
+    state_dir = data_root / "state"
+    state_dir.mkdir(parents=True)
+    (state_dir / "kis-paper-runner-state.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "kis_paper_runner_state/v0",
+                "consumed_intent_keys": [],
+                "consumed_trade_document_ids": [],
+                "submitting_intent_keys": [],
+                "ambiguous_intent_keys": [],
+                "ambiguous_submits": [],
+                "pending_orders": [
+                    {
+                        "idempotency_key": "pending-reconcile-1",
+                        "symbol": "005930",
+                        "submitted_at_kst": "2026-06-05T09:01:00+09:00",
+                        "broker_endpoint_called": True,
+                    }
+                ],
+                "submitted_order_history": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     env = _env()
     env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
-    env["HWISTOCK_DATA_DIR"] = str(tmp_path / "data")
+    env["HWISTOCK_DATA_DIR"] = str(data_root)
     env["HWISTOCK_KIS_TOKEN_CACHE_FILE"] = str(tmp_path / "kis-token-cache.json")
     transport = FakeTransport(invalid_balance_once=True)
     adapter = KisPaperAdapter(env=env, transport=transport)
@@ -254,12 +280,39 @@ def test_tick_invalidates_cached_token_once_when_account_step_rejects_it(tmp_pat
         at_kst="2026-06-05T09:30:00",
     )
 
+    assert payload["intent_loaded"] is False
+    assert payload["reconciliation_required"] is True
+    assert any(
+        step.get("step") == "kis_reconciliation_market_session_gate" and step.get("allowed") is True
+        for step in payload["steps"]
+    )
     balance_steps = [step for step in payload["steps"] if step.get("step") == "balance_inquire"]
     assert len(balance_steps) == 1
     assert balance_steps[0]["status"] == "pass"
     assert any(step.get("step") == "oauth_token_cache" and step.get("cache_hit") is True for step in payload["steps"])
     assert any(step.get("step") == "oauth_token_cache_invalidate" and step.get("status") == "pass" for step in payload["steps"])
     assert any(step.get("step") == "oauth_token" and step.get("cache_hit") is False for step in payload["steps"])
+
+
+def test_tick_without_intent_or_reconciliation_does_not_call_kis_account_truth(tmp_path: Path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    env = _env()
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(tmp_path / "data")
+    transport = FakeTransport()
+    adapter = KisPaperAdapter(env=env, transport=transport)
+
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=adapter,
+        at_kst="2026-06-05T09:30:00",
+    )
+
+    assert payload["status"] == "idle_no_order_intent"
+    assert payload["reconciliation_required"] is False
+    assert payload["account_truth"]["source"] == "not_required_without_order_intent"
+    assert payload["account_truth"]["broker_endpoint_called"] is False
+    assert transport.calls == []
 
 
 def test_systemd_runner_enables_paper_experiment_orders_with_session_gate():
@@ -725,6 +778,9 @@ def test_tick_preflight_uses_kis_account_truth_not_intent_cash(tmp_path, monkeyp
 def test_tick_blocks_sell_when_provider_sellable_quantity_is_insufficient(tmp_path, monkeypatch):
     _calendar(tmp_path, monkeypatch)
     env = _env()
+    env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _mark_order_grade_source(env)
+    _order_approval(tmp_path, env)
     env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
     env["HWISTOCK_DATA_DIR"] = str(tmp_path / "data")
     transport = FakeTransport(sellable_quantity="0")
@@ -798,11 +854,11 @@ def test_tick_blocks_saturday_even_with_future_calendar_valid_until(tmp_path, mo
             "paper_only": True,
         },
     )
-    assert payload["status"] == "safe_skip_market_session_gate"
+    assert payload["status"] == "warn"
     assert payload["calendar_context"]["is_trading_day"] is False
     assert payload["calendar_context"]["kis_realtime_expected"] is False
     assert any(
-        step.get("step") == "kis_account_truth_market_session_gate"
+        step.get("step") == "kis_order_submit_market_session_gate"
         and step.get("status") == "safe_skip_calendar_non_trading_day"
         for step in payload["steps"]
     )
@@ -812,6 +868,9 @@ def test_tick_blocks_saturday_even_with_future_calendar_valid_until(tmp_path, mo
 def test_tick_blocks_non_krx_or_dynamic_exposure_breach_before_order(tmp_path, monkeypatch):
     _calendar(tmp_path, monkeypatch)
     env = _env()
+    env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _mark_order_grade_source(env)
+    _order_approval(tmp_path, env)
     env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
     env["HWISTOCK_DATA_DIR"] = str(tmp_path / "data")
     transport = FakeTransport()
@@ -871,11 +930,11 @@ def test_tick_blocks_paper_order_outside_krx_regular_session(tmp_path, monkeypat
             "paper_only": True,
         },
     )
-    assert payload["status"] == "safe_skip_market_session_gate"
+    assert payload["status"] == "warn"
     assert payload["calendar_context"]["is_trading_day"] is True
     assert payload["calendar_context"]["market_context_open"] is False
     assert any(
-        step.get("step") == "kis_account_truth_market_session_gate"
+        step.get("step") == "kis_order_submit_market_session_gate"
         and step.get("status") == "safe_skip_market_context_closed"
         for step in payload["steps"]
     )

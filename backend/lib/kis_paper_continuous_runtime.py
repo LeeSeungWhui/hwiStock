@@ -432,6 +432,18 @@ def resetContinuousPaperRunnerForTests() -> None:
     _CONSUMED_INTENT_KEYS.clear()
 
 
+def _runner_state_requires_reconciliation(state: Mapping[str, Any]) -> bool:
+    for key in ("pending_orders", "ambiguous_submits", "submitted_order_history"):
+        rows = state.get(key) or []
+        if any(isinstance(row, Mapping) for row in rows):
+            return True
+    for key in ("submitting_intent_keys", "ambiguous_intent_keys", "claim_intent_keys"):
+        values = state.get(key) or []
+        if any(str(item or "").strip() for item in values):
+            return True
+    return False
+
+
 def evaluateIntentExecutionPreflight(
     intent: Optional[Mapping[str, Any]],
     *,
@@ -516,6 +528,8 @@ def evaluateIntentExecutionPreflight(
         "riskOverlay": risk,
         "accountTruth": dict(account_truth or {}),
         "broker_endpoint_called": False,
+        "dashboard_account_summary_reused_for_order": False,
+        "order_preflight_truth_source": "trading_account_truth",
     }
 
 
@@ -822,39 +836,135 @@ def runContinuousPaperTick(
         ),
     }
 
-    account_gate = msg.evaluateKisCallGate(
-        now_kst=reference_now,
-        investment_mode=config["investment_mode"],
-        call_family="kis_account_truth",
-        env=source,
-    )
-    result["calendar_context"] = account_gate["calendar_context"]
-    result["kis_account_truth_gate"] = account_gate["evidence_payload"]
-
     if not config["paper_network_enabled"]:
         result["status"] = "idle_paper_network_disabled"
         result["steps"].append({"step": "network", "status": "blocked", "reason": "HWISTOCK_KIS_PAPER_NETWORK_ENABLED_false"})
         return result
 
-    result["steps"].append(account_gate["evidence_payload"])
-    if not account_gate["allowed"]:
-        result["status"] = "safe_skip_market_session_gate"
+    reconciliation_required = _runner_state_requires_reconciliation(local_state)
+    result["reconciliation_required"] = reconciliation_required
+
+    if not intent and not reconciliation_required:
+        result["status"] = "idle_no_order_intent"
+        result["steps"].append(
+            {
+                "step": "trading_account_truth",
+                "status": "skipped_no_order_intent",
+                "reason": "fresh trading account truth is required only for an order preflight",
+                "broker_endpoint_called": False,
+                "dashboard_account_summary_reused_for_order": False,
+            }
+        )
         result["account_truth"] = {
-            "schema_version": "account_truth/v0",
-            "source": "market_session_gate",
-            "status": account_gate["evidence_payload"]["status"],
-            "reason": account_gate["reason"],
+            "schema_version": "account_truth_snapshot/v0",
+            "source": "not_required_without_order_intent",
+            "status": "skipped_no_order_intent",
             "produced_at_kst": reference_now.isoformat(),
-            "cash_balance_status": account_gate["evidence_payload"]["status"],
-            "buyable_status": account_gate["evidence_payload"]["status"],
-            "sellable_status": account_gate["evidence_payload"]["status"],
-            "realized_pnl_status": account_gate["evidence_payload"]["status"],
-            "cancelable_order_status": account_gate["evidence_payload"]["status"],
-            "holiday_lookup_status": "skipped_provider_unsupported",
             "broker_endpoint_called": False,
             "credential_values_printed": False,
         }
         return result
+
+    if intent:
+        order_gate = msg.evaluateKisCallGate(
+            now_kst=reference_now,
+            investment_mode=config["investment_mode"],
+            call_family="kis_order_submit",
+            env=source,
+        )
+        result["calendar_context"] = order_gate["calendar_context"]
+        result["kis_order_submit_gate"] = order_gate["evidence_payload"]
+        result["steps"].append(order_gate["evidence_payload"])
+        if not order_gate["allowed"]:
+            result["status"] = "warn"
+            result["executionPreflight"] = {
+                "schema_version": "paper_intent_execution_preflight/v0",
+                "ok": False,
+                "errors": ["market_session_gate_blocked_order_submit", str(order_gate["reason"])],
+                "marketSessionGate": order_gate["evidence_payload"],
+                "dashboard_account_summary_reused_for_order": False,
+                "order_preflight_truth_source": "trading_account_truth",
+                "broker_endpoint_called": False,
+            }
+            result["steps"].append(
+                {
+                    "step": "cash_order",
+                    "status": "blocked_market_session_gate",
+                    "reason": order_gate["reason"],
+                    "marketSessionGate": order_gate["evidence_payload"],
+                    "broker_endpoint_called": False,
+                }
+            )
+            return result
+
+        if not config["paper_order_enabled"]:
+            result["status"] = "ok"
+            result["steps"].append(
+                {
+                    "step": "cash_order",
+                    "status": "blocked_paper_order_disabled"
+                    if not config["paper_order_requested"]
+                    else "blocked_paper_order_approval_missing",
+                    "broker_endpoint_called": False,
+                    "reason": "HWISTOCK_KIS_PAPER_ORDER_ENABLED_false"
+                    if not config["paper_order_requested"]
+                    else config["paper_order_approval"]["reason"],
+                }
+            )
+            return result
+
+        account_gate = msg.evaluateKisCallGate(
+            now_kst=reference_now,
+            investment_mode=config["investment_mode"],
+            call_family="trading_account_truth",
+            env=source,
+        )
+        result["trading_account_truth_gate"] = account_gate["evidence_payload"]
+        result["steps"].append(account_gate["evidence_payload"])
+        if not account_gate["allowed"]:
+            result["status"] = "warn"
+            result["account_truth"] = {
+                "schema_version": "account_truth_snapshot/v0",
+                "source": "trading_account_truth_gate",
+                "status": account_gate["evidence_payload"]["status"],
+                "reason": account_gate["reason"],
+                "produced_at_kst": reference_now.isoformat(),
+                "broker_endpoint_called": False,
+                "credential_values_printed": False,
+            }
+            result["steps"].append(
+                {
+                    "step": "cash_order",
+                    "status": "blocked_trading_account_truth_gate",
+                    "reason": account_gate["reason"],
+                    "broker_endpoint_called": False,
+                }
+            )
+            return result
+
+    else:
+        reconciliation_gate = msg.evaluateKisCallGate(
+            now_kst=reference_now,
+            investment_mode=config["investment_mode"],
+            call_family="kis_reconciliation",
+            env=source,
+            reconciliation_required=True,
+        )
+        result["calendar_context"] = reconciliation_gate["calendar_context"]
+        result["kis_reconciliation_gate"] = reconciliation_gate["evidence_payload"]
+        result["steps"].append(reconciliation_gate["evidence_payload"])
+        if not reconciliation_gate["allowed"]:
+            result["status"] = "warn"
+            result["account_truth"] = {
+                "schema_version": "account_truth_snapshot/v0",
+                "source": "kis_reconciliation_gate",
+                "status": reconciliation_gate["evidence_payload"]["status"],
+                "reason": reconciliation_gate["reason"],
+                "produced_at_kst": reference_now.isoformat(),
+                "broker_endpoint_called": False,
+                "credential_values_printed": False,
+            }
+            return result
 
     adapter = adapter or KisPaperAdapter(env=source, transport=UrllibJsonTransport())
     missing = adapter.missingEnvKeys()
@@ -950,14 +1060,6 @@ def runContinuousPaperTick(
     result["account_truth"] = account_truth
 
     if intent:
-        order_gate = msg.evaluateKisCallGate(
-            now_kst=reference_now,
-            investment_mode=config["investment_mode"],
-            call_family="kis_order_submit",
-            env=source,
-        )
-        result["kis_order_submit_gate"] = order_gate["evidence_payload"]
-        result["steps"].append(order_gate["evidence_payload"])
         local_order_state = _order_state_snapshot_from_runner_state(local_state, now=now)
         preflight = evaluateIntentExecutionPreflight(
             intent,
@@ -969,29 +1071,6 @@ def runContinuousPaperTick(
         result["riskOverlay"] = preflight.get("riskOverlay")
         if not preflight["ok"]:
             result["steps"].append({"step": "cash_order", "status": "blocked_risk_overlay", "errors": preflight["errors"]})
-        elif not order_gate["allowed"]:
-            result["steps"].append(
-                {
-                    "step": "cash_order",
-                    "status": "blocked_market_session_gate",
-                    "reason": order_gate["reason"],
-                    "marketSessionGate": order_gate["evidence_payload"],
-                    "broker_endpoint_called": False,
-                }
-            )
-        elif not config["paper_order_enabled"]:
-            result["steps"].append(
-                {
-                    "step": "cash_order",
-                    "status": "blocked_paper_order_disabled"
-                    if not config["paper_order_requested"]
-                    else "blocked_paper_order_approval_missing",
-                    "broker_endpoint_called": False,
-                    "reason": "HWISTOCK_KIS_PAPER_ORDER_ENABLED_false"
-                    if not config["paper_order_requested"]
-                    else config["paper_order_approval"]["reason"],
-                }
-            )
         else:
             session_limit = evaluatePaperSessionLimits(
                 intent,

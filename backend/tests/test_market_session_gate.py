@@ -73,6 +73,47 @@ def test_weekend_kis_market_data_skips_but_pro_hourly_still_allowed(tmp_path: Pa
     assert market["evidence_payload"]["broker_endpoint_called"] is False
     assert pro["allowed"] is True
     assert pro["calendar_context"]["is_trading_day"] is False
+    assert pro["calendar_context"]["market_session_required"] is False
+
+
+def test_weekend_dashboard_account_summary_allowed_without_market_session(tmp_path: Path):
+    calendar = _write_calendar(tmp_path)
+    env = _env(calendar)
+
+    summary = gate.evaluateKisCallGate(
+        "2026-06-06T11:30:00+09:00",
+        call_family="dashboard_account_summary",
+        env=env,
+    )
+
+    assert summary["allowed"] is True
+    assert summary["calendar_context"]["is_trading_day"] is False
+    assert summary["calendar_context"]["market_session_required"] is False
+    assert summary["calendar_context"]["account_refresh_allowed"] is True
+    assert summary["evidence_payload"]["broker_endpoint_called"] is False
+
+
+def test_trading_account_truth_requires_order_window_but_reconciliation_can_be_pending(tmp_path: Path):
+    calendar = _write_calendar(tmp_path)
+    env = _env(calendar, HWISTOCK_INVESTMENT_MODE="paper")
+
+    account_truth = gate.evaluateKisCallGate(
+        "2026-06-05T15:10:00+09:00",
+        call_family="trading_account_truth",
+        env=env,
+    )
+    reconciliation = gate.evaluateKisCallGate(
+        "2026-06-05T15:10:00+09:00",
+        call_family="kis_reconciliation",
+        reconciliation_required=True,
+        env=env,
+    )
+
+    assert account_truth["allowed"] is False
+    assert account_truth["reason"] == "broker_order_window_closed"
+    assert reconciliation["allowed"] is True
+    assert reconciliation["reason"] == "reconciliation_work_pending"
+    assert reconciliation["calendar_context"]["market_session_required"] is False
 
 
 def test_paper_mode_windows_use_0900_1500_orders_and_1530_context(tmp_path: Path):

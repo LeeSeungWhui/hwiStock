@@ -24,6 +24,7 @@ from service.kis_paper_adapter import KisPaperAdapter, UrllibJsonTransport
 KST = ZoneInfo("Asia/Seoul")
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_ROOT = Path(os.getenv("HWISTOCK_DATA_DIR", str(REPO_ROOT / "data")))
+DEFAULT_DASHBOARD_ACCOUNT_CACHE_TTL_SECONDS = 60
 DEFAULT_RUNNER_SERVICE_PATHS = (
     Path.home() / ".config" / "systemd" / "user" / "hwistock-kis-paper-runner.service",
     REPO_ROOT / "ops" / "systemd" / "user" / "hwistock-kis-paper-runner.service",
@@ -205,6 +206,17 @@ def boolEnv(key: str, default: bool = False) -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
+def intEnv(key: str, default: int, *, minValue: int = 0) -> int:
+    raw = str(os.getenv(key, "")).strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(minValue, value)
+
+
 def formatAccountLabel(accountNo: str, productCode: str) -> str:
     account = str(accountNo or "").strip()
     product = str(productCode or "").strip()
@@ -226,7 +238,7 @@ def _numericOrNone(value: Any) -> Optional[int]:
 
 
 def _writeDashboardAccountSummaryCache(dataRoot: Path, payload: Dict[str, Any]) -> None:
-    cachePath = dataRoot / "account" / "dashboard-account-summary-latest.json"
+    cachePath = _dashboardAccountSummaryCachePath(dataRoot)
     cachePath.parent.mkdir(parents=True, exist_ok=True)
     safePayload = {
         **payload,
@@ -276,6 +288,13 @@ def _summaryFromPayload(
         "accountDisplayed": bool(accountNo),
         "rawProviderPayloadDisplayed": False,
         "credentialValuesPrinted": False,
+        "marketSessionRequired": False,
+        "market_session_required": False,
+        "dashboardAccountSummaryOnly": True,
+        "dashboard_account_summary_only": True,
+        "usableForOrderPreflight": False,
+        "usable_for_order_preflight": False,
+        "orderPreflightTruthSource": "trading_account_truth",
     }
 
 
@@ -285,6 +304,124 @@ def _accountSummaryHasNumericPnl(summary: Optional[Dict[str, Any]]) -> bool:
     return (
         _numericOrNone(summary.get("todayPnl")) is not None
         or _numericOrNone(summary.get("realizedPnl")) is not None
+    )
+
+
+def _dashboardAccountSummaryCachePath(dataRoot: Path) -> Path:
+    return dataRoot / "account" / "dashboard-account-summary-latest.json"
+
+
+def _dashboardAccountCacheTtlSeconds() -> int:
+    return intEnv(
+        "HWISTOCK_DASHBOARD_ACCOUNT_CACHE_TTL_SEC",
+        DEFAULT_DASHBOARD_ACCOUNT_CACHE_TTL_SECONDS,
+        minValue=0,
+    )
+
+
+def _dashboardAccountCacheMeta(dataRoot: Path, *, snapshotAt: datetime, ttlSeconds: int) -> Dict[str, Any]:
+    cachePath = _dashboardAccountSummaryCachePath(dataRoot)
+    if not cachePath.is_file():
+        return {
+            "path": str(cachePath),
+            "present": False,
+            "state": "missing",
+            "ageSec": None,
+            "ttlSec": ttlSeconds,
+            "fresh": False,
+        }
+    try:
+        mtime = datetime.fromtimestamp(cachePath.stat().st_mtime, KST)
+        ageSec = max(0, int((snapshotAt.astimezone(KST) - mtime).total_seconds()))
+    except OSError:
+        return {
+            "path": str(cachePath),
+            "present": False,
+            "state": "unreadable",
+            "ageSec": None,
+            "ttlSec": ttlSeconds,
+            "fresh": False,
+        }
+    fresh = ttlSeconds <= 0 or ageSec <= ttlSeconds
+    return {
+        "path": str(cachePath),
+        "present": True,
+        "state": "fresh" if fresh else "stale",
+        "mtimeKst": mtime.isoformat(),
+        "ageSec": ageSec,
+        "ttlSec": ttlSeconds,
+        "fresh": fresh,
+    }
+
+
+def _withDashboardAccountRuntimePolicy(
+    summary: Dict[str, Any],
+    *,
+    snapshotAt: datetime,
+    gate: Optional[Dict[str, Any]],
+    refreshStatus: str,
+    cacheMeta: Dict[str, Any],
+    cacheStatus: Optional[str] = None,
+    status: Optional[str] = None,
+) -> Dict[str, Any]:
+    payload = dict(summary)
+    if status:
+        payload["status"] = status
+    payload.update(
+        {
+            "marketSessionRequired": False,
+            "market_session_required": False,
+            "accountRefreshAllowed": True,
+            "account_refresh_allowed": True,
+            "accountRefreshStatus": refreshStatus,
+            "account_refresh_status": refreshStatus,
+            "accountCacheStatus": cacheStatus or cacheMeta.get("state") or "unknown",
+            "account_cache_status": cacheStatus or cacheMeta.get("state") or "unknown",
+            "accountCacheAgeSec": cacheMeta.get("ageSec"),
+            "account_cache_age_sec": cacheMeta.get("ageSec"),
+            "accountCacheTtlSec": cacheMeta.get("ttlSec"),
+            "account_cache_ttl_sec": cacheMeta.get("ttlSec"),
+            "accountAsOfKst": snapshotAt.astimezone(KST).isoformat(),
+            "account_as_of_kst": snapshotAt.astimezone(KST).isoformat(),
+            "dashboardAccountSummaryOnly": True,
+            "dashboard_account_summary_only": True,
+            "usableForOrderPreflight": False,
+            "usable_for_order_preflight": False,
+            "dashboardAccountSummaryReusedForOrder": False,
+            "dashboard_account_summary_reused_for_order": False,
+            "orderPreflightTruthSource": "trading_account_truth",
+            "refreshPolicy": {
+                "cacheTtlSec": cacheMeta.get("ttlSec"),
+                "displayOnly": True,
+                "fallbackToLastKnownCache": True,
+            },
+        }
+    )
+    if gate:
+        payload["marketSessionGate"] = gate.get("evidence_payload")
+        payload["calendarContext"] = gate.get("calendar_context")
+    return payload
+
+
+def _cachedDashboardAccountFallback(
+    cachedSummary: Optional[Dict[str, Any]],
+    *,
+    snapshotAt: datetime,
+    gate: Optional[Dict[str, Any]],
+    cacheMeta: Dict[str, Any],
+    refreshStatus: str,
+    status: str,
+) -> Optional[Dict[str, Any]]:
+    if not cachedSummary:
+        return None
+    return _withDashboardAccountRuntimePolicy(
+        cachedSummary,
+        snapshotAt=snapshotAt,
+        gate=gate,
+        refreshStatus=refreshStatus,
+        cacheMeta=cacheMeta,
+        cacheStatus=f"fallback_{cacheMeta.get('state') or 'unknown'}",
+        status=status,
     )
 
 
@@ -347,7 +484,7 @@ def _readDashboardAccountSummaryCache(
     productCode: str,
     reserveFloor: int,
 ) -> Optional[Dict[str, Any]]:
-    cachePath = dataRoot / "account" / "dashboard-account-summary-latest.json"
+    cachePath = _dashboardAccountSummaryCachePath(dataRoot)
     try:
         cached = json.loads(cachePath.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -372,6 +509,14 @@ def buildDashboardAccountSummary(
     runtimeRoot = dataRoot or DEFAULT_DATA_ROOT
     evidenceDayKey = dayKey or snapshotAt.astimezone(KST).date().isoformat()
     reserveFloor = int(baseRunner.LIVE_CAPITAL_BASELINE_KRW * 0.25)
+    cacheTtlSec = _dashboardAccountCacheTtlSeconds()
+    cacheMeta = _dashboardAccountCacheMeta(runtimeRoot, snapshotAt=snapshotAt, ttlSeconds=cacheTtlSec)
+    accountGate = msg.evaluateKisCallGate(
+        now_kst=snapshotAt,
+        investment_mode=os.getenv("HWISTOCK_INVESTMENT_MODE") or None,
+        call_family="dashboard_account_summary",
+        env=os.environ,
+    )
     fallback = {
         "schema_version": "dashboard_account_summary/v0",
         "accountId": formatAccountLabel(accountNo, productCode),
@@ -385,6 +530,13 @@ def buildDashboardAccountSummary(
         "rawProviderPayloadDisplayed": False,
         "credentialValuesPrinted": False,
     }
+    fallback = _withDashboardAccountRuntimePolicy(
+        fallback,
+        snapshotAt=snapshotAt,
+        gate=accountGate,
+        refreshStatus="pending",
+        cacheMeta=cacheMeta,
+    )
     evidenceSummary = _readDashboardAccountSummaryFromRunnerEvidence(
         dataRoot=runtimeRoot,
         dayKey=evidenceDayKey,
@@ -393,45 +545,94 @@ def buildDashboardAccountSummary(
         reserveFloor=reserveFloor,
     )
     if evidenceSummary and _accountSummaryHasNumericPnl(evidenceSummary):
-        return evidenceSummary
+        return _withDashboardAccountRuntimePolicy(
+            evidenceSummary,
+            snapshotAt=snapshotAt,
+            gate=accountGate,
+            refreshStatus="skipped_runner_evidence",
+            cacheMeta=cacheMeta,
+            cacheStatus="runner_evidence",
+        )
     cachedSummary = _readDashboardAccountSummaryCache(
         dataRoot=runtimeRoot,
         accountNo=accountNo,
         productCode=productCode,
         reserveFloor=reserveFloor,
     )
-    if cachedSummary and _accountSummaryHasNumericPnl(cachedSummary):
-        return cachedSummary
+    if cachedSummary and _accountSummaryHasNumericPnl(cachedSummary) and bool(cacheMeta.get("fresh")):
+        return _withDashboardAccountRuntimePolicy(
+            cachedSummary,
+            snapshotAt=snapshotAt,
+            gate=accountGate,
+            refreshStatus="skipped_cache_ttl",
+            cacheMeta=cacheMeta,
+        )
     if not boolEnv("HWISTOCK_DASHBOARD_ACCOUNT_READ_ENABLED", True):
+        cachedFallback = _cachedDashboardAccountFallback(
+            cachedSummary,
+            snapshotAt=snapshotAt,
+            gate=accountGate,
+            cacheMeta=cacheMeta,
+            refreshStatus="skipped_disabled_by_env_cache_fallback",
+            status="cached_disabled_by_env",
+        )
+        if cachedFallback:
+            return cachedFallback
         return {
             **fallback,
             "cashBalance": "잔고 조회 비활성",
             "todayPnl": "손익 조회 비활성",
             "realizedPnl": "실현손익 조회 비활성",
             "status": "disabled_by_env",
+            "accountRefreshStatus": "skipped_disabled_by_env",
+            "account_refresh_status": "skipped_disabled_by_env",
         }
 
     sampleSymbol = str(os.getenv("HWISTOCK_KIS_HEALTH_SYMBOL") or "005930").strip() or "005930"
     adapter = KisPaperAdapter(env=os.environ, transport=UrllibJsonTransport())
     missing = adapter.missingEnvKeys()
     if missing:
+        cachedFallback = _cachedDashboardAccountFallback(
+            cachedSummary,
+            snapshotAt=snapshotAt,
+            gate=accountGate,
+            cacheMeta=cacheMeta,
+            refreshStatus="blocked_missing_env_cache_fallback",
+            status="cached_missing_env",
+        )
+        if cachedFallback:
+            return cachedFallback
         return {
             **fallback,
             "cashBalance": "KIS 계좌 설정 필요",
             "todayPnl": "KIS 계좌 설정 필요",
             "realizedPnl": "KIS 계좌 설정 필요",
             "status": "blocked_missing_env",
+            "accountRefreshStatus": "blocked_missing_env",
+            "account_refresh_status": "blocked_missing_env",
         }
 
     try:
         tokenResult, token, tokenCacheManaged = loadKisPaperAccessToken(adapter, env=os.environ, now=snapshotAt)
         if not tokenResult.get("token_present") or not token:
+            cachedFallback = _cachedDashboardAccountFallback(
+                cachedSummary,
+                snapshotAt=snapshotAt,
+                gate=accountGate,
+                cacheMeta=cacheMeta,
+                refreshStatus="blocked_token_missing_cache_fallback",
+                status="cached_token_missing",
+            )
+            if cachedFallback:
+                return cachedFallback
             return {
                 **fallback,
                 "cashBalance": "KIS 토큰 발급 실패",
                 "todayPnl": "KIS 토큰 발급 실패",
                 "realizedPnl": "KIS 토큰 발급 실패",
                 "status": "blocked_token_missing",
+                "accountRefreshStatus": "blocked_token_missing",
+                "account_refresh_status": "blocked_token_missing",
             }
         accountSummary = adapter.inquireAccountSummaryForDashboard(token, sampleSymbol)
         if tokenCacheManaged:
@@ -439,6 +640,17 @@ def buildDashboardAccountSummary(
         else:
             adapter.revokeToken(token)
     except Exception as exc:  # noqa: BLE001 - dashboard must degrade without leaking provider payloads.
+        cachedFallback = _cachedDashboardAccountFallback(
+            cachedSummary,
+            snapshotAt=snapshotAt,
+            gate=accountGate,
+            cacheMeta=cacheMeta,
+            refreshStatus="provider_error_cache_fallback",
+            status="cached_provider_unavailable",
+        )
+        if cachedFallback:
+            cachedFallback["errorType"] = type(exc).__name__
+            return cachedFallback
         return {
             **fallback,
             "cashBalance": "KIS 잔고 조회 실패",
@@ -446,6 +658,8 @@ def buildDashboardAccountSummary(
             "realizedPnl": "KIS 실현손익 조회 실패",
             "status": "warn",
             "errorType": type(exc).__name__,
+            "accountRefreshStatus": "provider_error",
+            "account_refresh_status": "provider_error",
         }
 
     summary = _summaryFromPayload(
@@ -480,6 +694,14 @@ def buildDashboardAccountSummary(
         "realizedPnlStatus": accountSummary.get("realized_pnl_status"),
         "accountDisplayed": bool(accountSummary.get("account_label")),
     }
+    summary = _withDashboardAccountRuntimePolicy(
+        summary,
+        snapshotAt=snapshotAt,
+        gate=accountGate,
+        refreshStatus="refreshed_provider",
+        cacheMeta=cacheMeta,
+        cacheStatus="refreshed",
+    )
     _writeDashboardAccountSummaryCache(runtimeRoot, summary)
     return summary
 

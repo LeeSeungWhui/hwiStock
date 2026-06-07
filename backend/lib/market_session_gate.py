@@ -28,13 +28,15 @@ DEFAULT_CALENDAR_PATH = REPO_ROOT / "config" / "market-calendar" / "krx-nxt-trad
 ALWAYS_ALLOWED_CALL_FAMILIES = frozenset(
     {
         "calendar_refresh",
+        "dashboard_account_summary",
         "news_disclosure",
         "pro_hourly",
         "gpt_morning",
     }
 )
 MARKET_DATA_CALL_FAMILIES = frozenset({"kis_market_data", "kis_realtime"})
-ACCOUNT_CONTEXT_CALL_FAMILIES = frozenset({"kis_account_truth", "kis_reconciliation"})
+TRADING_ACCOUNT_TRUTH_CALL_FAMILIES = frozenset({"trading_account_truth", "kis_account_truth"})
+RECONCILIATION_CALL_FAMILIES = frozenset({"kis_reconciliation"})
 ORDER_CALL_FAMILIES = frozenset({"kis_order_submit"})
 
 
@@ -280,6 +282,7 @@ def evaluateKisCallGate(
     call_family: str = "kis_market_data",
     *,
     env: Optional[Mapping[str, str]] = None,
+    reconciliation_required: bool = False,
 ) -> Dict[str, Any]:
     source = env if env is not None else os.environ
     ref = parseKstDatetime(now_kst)
@@ -300,8 +303,14 @@ def evaluateKisCallGate(
         allowed = True
     elif normalized_family in MARKET_DATA_CALL_FAMILIES:
         allowed = market_context_open
-    elif normalized_family in ACCOUNT_CONTEXT_CALL_FAMILIES:
-        allowed = market_context_open
+    elif normalized_family in TRADING_ACCOUNT_TRUTH_CALL_FAMILIES:
+        allowed = broker_order_open
+        if calendar_ready and not broker_order_open:
+            reason = "broker_order_window_closed" if market_context_open else "market_context_closed"
+    elif normalized_family in RECONCILIATION_CALL_FAMILIES:
+        allowed = market_context_open or bool(reconciliation_required)
+        if bool(reconciliation_required):
+            reason = "reconciliation_work_pending"
     elif normalized_family in ORDER_CALL_FAMILIES:
         allowed = broker_order_open
         if calendar_ready and market_context_open and not broker_order_open:
@@ -314,8 +323,17 @@ def evaluateKisCallGate(
         reason = str(calendar.get("state") or reason)
     elif normalized_family in MARKET_DATA_CALL_FAMILIES and calendar_ready and not market_context_open:
         reason = "market_context_closed"
-    elif normalized_family in ACCOUNT_CONTEXT_CALL_FAMILIES and calendar_ready and not market_context_open:
+    elif normalized_family in TRADING_ACCOUNT_TRUTH_CALL_FAMILIES and calendar_ready and not broker_order_open:
+        reason = "broker_order_window_closed" if market_context_open else "market_context_closed"
+    elif normalized_family in RECONCILIATION_CALL_FAMILIES and not allowed and calendar_ready and not market_context_open:
         reason = "market_context_closed"
+
+    market_session_required = (
+        normalized_family in MARKET_DATA_CALL_FAMILIES
+        or normalized_family in TRADING_ACCOUNT_TRUTH_CALL_FAMILIES
+        or normalized_family in ORDER_CALL_FAMILIES
+        or (normalized_family in RECONCILIATION_CALL_FAMILIES and not bool(reconciliation_required))
+    )
 
     calendar_context = {
         "schema_version": "calendar_context/v0",
@@ -335,6 +353,12 @@ def evaluateKisCallGate(
         "route_venue": route.get("venue"),
         "kis_realtime_expected": kis_realtime_expected,
         "reason": reason,
+        "non_trading_reason": calendar.get("reason") if calendar.get("isTradingDay") is not True else None,
+        "market_session_required": market_session_required,
+        "account_refresh_allowed": normalized_family == "dashboard_account_summary",
+        "reconciliation_required": bool(reconciliation_required),
+        "market_analysis_feed_mode": policy["market_analysis_feed_mode"],
+        "execution_venue_mode": policy["execution_venue_mode"],
         "nxt_enabled": bool(route.get("nxtEnabled")),
         "paper_order_window_kst": {"open": "09:00", "close": "15:00"},
         "paper_close_context_window_kst": {"open": "15:00", "close": "15:30"},
@@ -349,6 +373,7 @@ def evaluateKisCallGate(
         "status": _evidence_status(allowed=allowed, call_family=normalized_family, reason=reason),
         "allowed": allowed,
         "reason": reason,
+        "market_session_required": market_session_required,
         "calendar_context": calendar_context,
         "calendar_path": calendar.get("path"),
         "broker_endpoint_called": False,
