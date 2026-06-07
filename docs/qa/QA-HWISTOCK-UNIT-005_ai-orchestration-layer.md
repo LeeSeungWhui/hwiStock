@@ -79,6 +79,7 @@ Out of scope:
 | QA-011 | P0 | safety | Submit AI output naming a KIS/external broker endpoint, broker demo endpoint, unapproved endpoint, or credential | Output is rejected and logged as policy violation | policy log |
 | QA-012 | P0 | schedule | Inspect AI job registry | DeepSeek Pro hourly aggregate analysis, Flash 10-minute trade-document generation, GPT Pro/morning-watchlist 07:15 via local Codex CLI browser-use, and mode-aware daily report jobs are separated; SSH browser-use is forbidden; market-regime/session analysis is inside the Pro hourly artifact for operational runtime | schema/config review |
 | QA-013 | P1 | fallback | Simulate GPT Pro late/unavailable before the first Flash bucket | A DeepSeek-derived `morning_watchlist/v0` artifact or explicit `NO_TRADE` safe-block artifact is written and fallback is logged | scheduler/log |
+| QA-013A | P0 | stale-watchlist | Simulate Monday first Flash with only a Sunday rehearsal/candidate morning watchlist | Flash keeps the correct-target artifact usable but marks it `provisional`, sets `morning_watchlist_refresh_required=true`, and records warning reasons instead of silently treating it as final | schema/runtime test |
 | QA-014 | P1 | calculation | Generate mode-aware daily report | PnL numbers come from system calculations and AI only explains/interprets them | report review |
 | QA-015 | P0 | tool-boundary | Inspect AI job config and submit output that asks to browse/call tools | First-pass AI jobs accept normalized bundles only; model tool use is disabled and tool requests are rejected | config/policy log |
 | QA-016 | P0 | config | Inspect default AI network/cost config | `AI_NETWORK_ENABLED=false`, provider flags false, and `AI_DAILY_COST_CAP_KRW=0` until explicit approval | config review |
@@ -86,7 +87,9 @@ Out of scope:
 ## 4. PASS / FAIL / BLOCKED Rules
 
 - PASS: all P0 rows pass and AI output remains recommendation-only.
-- FAIL: AI can invoke orders, bypass deterministic gates, leak sensitive data,
+- FAIL: AI can invoke orders, bypass deterministic gates, silently label a Sunday
+  rehearsal/candidate watchlist as the Monday final first-Flash prerequisite,
+  leak sensitive data,
   route to KIS/external broker, broker broker-adapter/demo, or unapproved endpoints before
   approval, or proceed with malformed/uncited output.
 - BLOCKED: no AI boundary/schema/job registry/network-default contract exists.

@@ -111,6 +111,10 @@ def _morning_watchlist(**overrides):
         "schema_version": "morning_watchlist/v0",
         "artifact_id": "art_morning_watchlist_20260604_0715",
         "route": "codex_cli_local_browser_use",
+        "target_trade_date_kst": "2026-06-04",
+        "generated_at_kst": "2026-06-04T07:15:00+09:00",
+        "purpose": "daily_preopen_final",
+        "requires_monday_refresh": False,
         "forbidden_actions_acknowledged": True,
         "items": [{"ticker": "005930", "stance": "eligible_for_flash_review"}],
     }
@@ -463,6 +467,57 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         self.assertEqual(doc["document_kind"], "NO_TRADE")
         self.assertEqual(doc["no_trade_reason"], "missing_morning_watchlist_for_first_flash_bucket")
         self.assertTrue(doc["morning_watchlist_required"])
+
+    def testQa012FirstFlashMarksSundayRehearsalAsProvisionalWithoutNoTrade(self):
+        doc = ao.buildFlashTradeDocument(
+            pro_artifact={"artifact_id": "art_pro_hourly_20260608_0900"},
+            recent_events=[{"source_event_id": KNOWN_SOURCE_IDS[0]}],
+            kis_market_snapshots=[{"artifact_id": "art_kis_snapshot_20260608_0900"}],
+            compiled_watch=[{"schema_version": "compiled_watch/v0", "symbol": "005930", "source_ids": KNOWN_SOURCE_IDS}],
+            portfolio_snapshot={"artifact_id": "art_portfolio_20260608_0900", "holdings": []},
+            order_state_snapshot={"artifact_id": "art_order_state_20260608_0900", "pending_orders": []},
+            morning_watchlist=_morning_watchlist(
+                artifact_id="art_morning_watchlist_20260608_sunday_rehearsal",
+                target_trade_date_kst="2026-06-08",
+                generated_at_kst="2026-06-07T11:33:00+09:00",
+                purpose="monday_preopen_rehearsal_late",
+                non_trading_day_carryover=True,
+                requires_monday_refresh=True,
+            ),
+            produced_at_kst="2026-06-08T09:00:00+09:00",
+        )
+        self.assertEqual(doc["document_kind"], "TRADE_ACTIONS")
+        self.assertEqual(doc["morning_watchlist_ref"], "art_morning_watchlist_20260608_sunday_rehearsal")
+        self.assertTrue(doc["morning_watchlist_required"])
+        self.assertEqual(doc["morning_watchlist_status"], "provisional")
+        self.assertTrue(doc["morning_watchlist_refresh_required"])
+        self.assertIn("monday_final_morning_watchlist_refresh_recommended", doc["morning_watchlist_warnings"])
+        self.assertIn("morning_watchlist_is_rehearsal_or_candidate", doc["morning_watchlist_warnings"])
+        self.assertIn("morning_watchlist_generated_before_trade_date", doc["morning_watchlist_warnings"])
+        self.assertEqual(doc["actions"][0]["action"], "WAIT_BUY")
+
+    def testQa012FirstFlashMarksWatchlistGeneratedBeforeTradeDateAsProvisional(self):
+        doc = ao.buildFlashTradeDocument(
+            pro_artifact={"artifact_id": "art_pro_hourly_20260608_0900"},
+            recent_events=[{"source_event_id": KNOWN_SOURCE_IDS[0]}],
+            kis_market_snapshots=[{"artifact_id": "art_kis_snapshot_20260608_0900"}],
+            compiled_watch=[{"schema_version": "compiled_watch/v0", "symbol": "005930", "source_ids": KNOWN_SOURCE_IDS}],
+            portfolio_snapshot={"artifact_id": "art_portfolio_20260608_0900", "holdings": []},
+            order_state_snapshot={"artifact_id": "art_order_state_20260608_0900", "pending_orders": []},
+            morning_watchlist=_morning_watchlist(
+                artifact_id="art_morning_watchlist_20260608_stale_sunday",
+                target_trade_date_kst="2026-06-08",
+                generated_at_kst="2026-06-07T11:33:00+09:00",
+                purpose="daily_preopen_final",
+                requires_monday_refresh=False,
+            ),
+            produced_at_kst="2026-06-08T09:00:00+09:00",
+        )
+        self.assertEqual(doc["document_kind"], "TRADE_ACTIONS")
+        self.assertEqual(doc["morning_watchlist_ref"], "art_morning_watchlist_20260608_stale_sunday")
+        self.assertEqual(doc["morning_watchlist_status"], "provisional")
+        self.assertIn("morning_watchlist_generated_before_trade_date", doc["morning_watchlist_warnings"])
+        self.assertEqual(doc["actions"][0]["action"], "WAIT_BUY")
 
     def testQa014DailyCloseReportRequiresSystemCalculatedPnL(self):
         invalid = ao.validateDailyCloseReport(

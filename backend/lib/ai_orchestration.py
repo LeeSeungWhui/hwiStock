@@ -382,23 +382,26 @@ def buildFlashTradeDocument(
         or morning.get("safe_block_id")
         or ""
     ).strip()
-    if produced_dt and rp.isFirstFlashBucket(produced_dt, investment_mode=mode) and not morning_ref:
-        sentinel = buildNoTradeSentinel(
-            job_id="deepseek_flash_trade_document_10m",
-            reason="missing_morning_watchlist_for_first_flash_bucket",
-            produced_at_kst=produced_at,
-        )
-        sentinel.update(
-            {
-                "investment_mode": mode,
-                "market_analysis_feed_mode": market_feed,
-                "execution_venue_mode": execution_mode,
-                "morning_watchlist_ref": "",
-                "morning_watchlist_required": True,
-                "max_cash_deployment_ratio": rp.MAX_CASH_DEPLOYMENT_RATIO,
-            }
-        )
-        return sentinel
+    morning_warnings: List[str] = []
+    if produced_dt and rp.isFirstFlashBucket(produced_dt, investment_mode=mode):
+        if not morning_ref:
+            sentinel = buildNoTradeSentinel(
+                job_id="deepseek_flash_trade_document_10m",
+                reason="missing_morning_watchlist_for_first_flash_bucket",
+                produced_at_kst=produced_at,
+            )
+            sentinel.update(
+                {
+                    "investment_mode": mode,
+                    "market_analysis_feed_mode": market_feed,
+                    "execution_venue_mode": execution_mode,
+                    "morning_watchlist_ref": "",
+                    "morning_watchlist_required": True,
+                    "max_cash_deployment_ratio": rp.MAX_CASH_DEPLOYMENT_RATIO,
+                }
+            )
+            return sentinel
+        morning_warnings = _first_flash_morning_watchlist_warnings(morning, produced_dt)
     watch_rows = [deepcopy(dict(row)) for row in (compiled_watch or [])]
     event_rows = [deepcopy(dict(event)) for event in (recent_events or [])]
     market_rows = [deepcopy(dict(row)) for row in (kis_market_snapshots or [])]
@@ -538,6 +541,12 @@ def buildFlashTradeDocument(
         "pro_hourly_ref": str(dict(pro_artifact).get("artifact_id") or ""),
         "morning_watchlist_ref": morning_ref,
         "morning_watchlist_required": bool(produced_dt and rp.isFirstFlashBucket(produced_dt, investment_mode=mode)),
+        "morning_watchlist_status": "provisional" if morning_warnings else ("accepted" if morning_ref else "missing"),
+        "morning_watchlist_warnings": morning_warnings,
+        "morning_watchlist_refresh_required": bool(
+            morning.get("requires_monday_refresh") is True
+            or any("refresh" in warning for warning in morning_warnings)
+        ),
         "source_refs": source_refs,
         "market_data_refs": market_refs,
         "compiled_watch_refs": [
@@ -1221,6 +1230,50 @@ def _active_symbols_from_trade_documents(documents: Sequence[Mapping[str, Any]],
                 if symbol:
                     symbols.add(symbol)
     return symbols
+
+
+def _first_flash_morning_watchlist_warnings(
+    morning_watchlist: Mapping[str, Any],
+    produced_dt: datetime,
+) -> List[str]:
+    warnings: List[str] = []
+    if morning_watchlist.get("requires_monday_refresh") is True:
+        warnings.append("monday_final_morning_watchlist_refresh_recommended")
+
+    purpose = str(morning_watchlist.get("purpose") or "").strip().lower()
+    if purpose in {
+        "monday_preopen_rehearsal",
+        "monday_preopen_rehearsal_late",
+        "monday_preopen_candidate_watchlist",
+    } or "rehearsal" in purpose:
+        warnings.append("morning_watchlist_is_rehearsal_or_candidate")
+
+    produced_day = produced_dt.astimezone(KST).date().isoformat()
+    target_day = str(
+        morning_watchlist.get("target_trade_date_kst")
+        or morning_watchlist.get("trading_date_kst")
+        or morning_watchlist.get("trading_date")
+        or ""
+    ).strip()
+    if target_day and target_day != produced_day:
+        warnings.append("morning_watchlist_target_trade_date_mismatch")
+
+    generated_raw = (
+        morning_watchlist.get("generated_at_kst")
+        or morning_watchlist.get("produced_at_kst")
+        or morning_watchlist.get("created_at_kst")
+    )
+    if generated_raw:
+        generated_errors: List[str] = []
+        generated_dt = _parse_kst_timestamp(
+            generated_raw,
+            "morning_watchlist_generated_at_kst",
+            generated_errors,
+        )
+        if generated_dt and generated_dt.astimezone(KST).date() < produced_dt.astimezone(KST).date():
+            warnings.append("morning_watchlist_generated_before_trade_date")
+
+    return sorted(set(warnings))
 
 
 def _parse_kst_timestamp(value: Any, label: str, errors: List[str]) -> Optional[datetime]:

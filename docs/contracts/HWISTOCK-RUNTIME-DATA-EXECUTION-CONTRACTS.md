@@ -135,6 +135,15 @@ decision bucket**.
   `morning_watchlist/v0` manifest or write `NO_TRADE` with a named reason. The
   first bucket is `09:00 KST` in paper/mock mode and `08:00 KST` in future live
   mode.
+- A Sunday rehearsal/candidate `morning_watchlist/v0` for the following Monday
+  is not a final Monday preopen watchlist. If the first Flash bucket sees a
+  correct-target rehearsal/candidate artifact, `requires_monday_refresh=true`,
+  or `generated_at_kst` before the target trading date, Flash must carry
+  `morning_watchlist_status=provisional`,
+  `morning_watchlist_refresh_required=true`, and named warning reasons instead
+  of silently treating the artifact as final. This provisional flag does not by
+  itself force `NO_TRADE`; deterministic Flash, intent, portfolio, order-state,
+  and broker preflight gates still decide whether any paper action may proceed.
 - Paper/mock Flash buckets that may create new entry intents are limited to
   `09:00-15:00 KST`. KRX public regular-session/market-data context after
   `15:00 KST` through `15:30 KST` may produce close/watch/reconciliation
