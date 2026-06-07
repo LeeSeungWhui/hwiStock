@@ -798,11 +798,15 @@ def test_tick_blocks_saturday_even_with_future_calendar_valid_until(tmp_path, mo
             "paper_only": True,
         },
     )
-    cash_order = [step for step in payload["steps"] if step.get("step") == "cash_order"][-1]
-    assert cash_order["status"] == "blocked_risk_overlay"
-    assert "calendar_not_ready" in cash_order["errors"]
-    assert "off_session" in cash_order["errors"]
-    assert not any("/order-cash" in call["url"] for call in transport.calls)
+    assert payload["status"] == "safe_skip_market_session_gate"
+    assert payload["calendar_context"]["is_trading_day"] is False
+    assert payload["calendar_context"]["kis_realtime_expected"] is False
+    assert any(
+        step.get("step") == "kis_account_truth_market_session_gate"
+        and step.get("status") == "safe_skip_calendar_non_trading_day"
+        for step in payload["steps"]
+    )
+    assert transport.calls == []
 
 
 def test_tick_blocks_non_krx_or_dynamic_exposure_breach_before_order(tmp_path, monkeypatch):
@@ -867,10 +871,15 @@ def test_tick_blocks_paper_order_outside_krx_regular_session(tmp_path, monkeypat
             "paper_only": True,
         },
     )
-    cash_order = [step for step in payload["steps"] if step.get("step") == "cash_order"][-1]
-    assert cash_order["status"] == "blocked_risk_overlay"
-    assert "kis_paper_order_requires_krx_regular_session" in cash_order["errors"]
-    assert not any("/order-cash" in call["url"] for call in transport.calls)
+    assert payload["status"] == "safe_skip_market_session_gate"
+    assert payload["calendar_context"]["is_trading_day"] is True
+    assert payload["calendar_context"]["market_context_open"] is False
+    assert any(
+        step.get("step") == "kis_account_truth_market_session_gate"
+        and step.get("status") == "safe_skip_market_context_closed"
+        for step in payload["steps"]
+    )
+    assert transport.calls == []
 
 
 def test_preflight_requires_paper_only_and_kis_paper_adapter(tmp_path, monkeypatch):

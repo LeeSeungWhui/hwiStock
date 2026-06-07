@@ -23,6 +23,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 try:
+    from lib import market_session_gate as msg
     from lib import runtime_policy as rp
     from lib.kis_paper_token_cache import (
         invalidateKisPaperAccessToken,
@@ -39,6 +40,7 @@ try:
         loadKisPaperCapabilityFlags,
     )
 except ImportError:  # pragma: no cover
+    from backend.lib import market_session_gate as msg
     from backend.lib import runtime_policy as rp
     from backend.lib.kis_paper_token_cache import (
         invalidateKisPaperAccessToken,
@@ -820,9 +822,38 @@ def runContinuousPaperTick(
         ),
     }
 
+    account_gate = msg.evaluateKisCallGate(
+        now_kst=reference_now,
+        investment_mode=config["investment_mode"],
+        call_family="kis_account_truth",
+        env=source,
+    )
+    result["calendar_context"] = account_gate["calendar_context"]
+    result["kis_account_truth_gate"] = account_gate["evidence_payload"]
+
     if not config["paper_network_enabled"]:
         result["status"] = "idle_paper_network_disabled"
         result["steps"].append({"step": "network", "status": "blocked", "reason": "HWISTOCK_KIS_PAPER_NETWORK_ENABLED_false"})
+        return result
+
+    result["steps"].append(account_gate["evidence_payload"])
+    if not account_gate["allowed"]:
+        result["status"] = "safe_skip_market_session_gate"
+        result["account_truth"] = {
+            "schema_version": "account_truth/v0",
+            "source": "market_session_gate",
+            "status": account_gate["evidence_payload"]["status"],
+            "reason": account_gate["reason"],
+            "produced_at_kst": reference_now.isoformat(),
+            "cash_balance_status": account_gate["evidence_payload"]["status"],
+            "buyable_status": account_gate["evidence_payload"]["status"],
+            "sellable_status": account_gate["evidence_payload"]["status"],
+            "realized_pnl_status": account_gate["evidence_payload"]["status"],
+            "cancelable_order_status": account_gate["evidence_payload"]["status"],
+            "holiday_lookup_status": "skipped_provider_unsupported",
+            "broker_endpoint_called": False,
+            "credential_values_printed": False,
+        }
         return result
 
     adapter = adapter or KisPaperAdapter(env=source, transport=UrllibJsonTransport())
@@ -904,12 +935,29 @@ def runContinuousPaperTick(
     _sleepForKisCallGap(config)
     result["steps"].append(adapter.inquireCancelableOrders(token))
     _sleepForKisCallGap(config)
-    result["steps"].append(adapter.inquireHoliday(token, date_yyyymmdd=now.strftime("%Y%m%d")))
-    _sleepForKisCallGap(config)
+    result["steps"].append(
+        {
+            "step": "holiday_inquire",
+            "status": "skipped_provider_unsupported",
+            "reason": "CTCA0903R paper/mock unsupported; local cached KRX calendar is primary",
+            "broker_endpoint_called": False,
+            "paper_read_only": True,
+            "raw_response_stored": False,
+            "credential_values_printed": False,
+        }
+    )
     account_truth = _account_truth_from_steps(result["steps"], produced_at=reference_now)
     result["account_truth"] = account_truth
 
     if intent:
+        order_gate = msg.evaluateKisCallGate(
+            now_kst=reference_now,
+            investment_mode=config["investment_mode"],
+            call_family="kis_order_submit",
+            env=source,
+        )
+        result["kis_order_submit_gate"] = order_gate["evidence_payload"]
+        result["steps"].append(order_gate["evidence_payload"])
         local_order_state = _order_state_snapshot_from_runner_state(local_state, now=now)
         preflight = evaluateIntentExecutionPreflight(
             intent,
@@ -921,6 +969,16 @@ def runContinuousPaperTick(
         result["riskOverlay"] = preflight.get("riskOverlay")
         if not preflight["ok"]:
             result["steps"].append({"step": "cash_order", "status": "blocked_risk_overlay", "errors": preflight["errors"]})
+        elif not order_gate["allowed"]:
+            result["steps"].append(
+                {
+                    "step": "cash_order",
+                    "status": "blocked_market_session_gate",
+                    "reason": order_gate["reason"],
+                    "marketSessionGate": order_gate["evidence_payload"],
+                    "broker_endpoint_called": False,
+                }
+            )
         elif not config["paper_order_enabled"]:
             result["steps"].append(
                 {
@@ -1021,6 +1079,7 @@ def runContinuousPaperTick(
         or "not_marked_consumed" in step_statuses
         or "ambiguous_submit_requires_reconciliation" in step_statuses
         or "blocked_intent_claim" in step_statuses
+        or "blocked_market_session_gate" in step_statuses
     ):
         result["status"] = "warn"
     else:

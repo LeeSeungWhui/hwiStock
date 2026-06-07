@@ -29,6 +29,32 @@ def _append_jsonl(path: Path, rows: list[dict]) -> None:
     path.write_text("".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows), encoding="utf-8")
 
 
+def _write_calendar(path: Path, *, day: str, trading: bool) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "validUntil": "2099-12-31T23:59:59+09:00",
+                "sourceAuthority": "unit_test_calendar",
+                "days": {
+                    day: {
+                        "dateKst": day,
+                        "isTradingDay": trading,
+                        "reason": "weekend" if not trading else None,
+                        "krx": {
+                            "regularOpen": "09:00",
+                            "regularClose": "15:30",
+                            "orderOpen": "09:00",
+                            "orderClose": "15:00",
+                        },
+                    }
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_provider_prompts_require_korean_natural_language_values():
     events = [{"event_id": "event-1", "title": "삼성전자 반도체 투자 확대", "event_type": "news"}]
     kis_snapshots = [{"artifact_id": "snap-1", "status": "ok", "input_results": []}]
@@ -51,6 +77,45 @@ def test_provider_prompts_require_korean_natural_language_values():
     assert "schema key와 market_mode enum" in pro_prompt
     assert "사람이 읽는 모든 문자열 값은 한국어" in flash_prompt
     assert "action enum" in flash_prompt
+
+
+def test_weekend_pro_hourly_downgrades_provider_kis_failure_claim(tmp_path: Path, monkeypatch):
+    now = datetime.fromisoformat("2026-06-06T10:00:00+09:00")
+    calendar = tmp_path / "calendar.json"
+    _write_calendar(calendar, day="2026-06-06", trading=False)
+    monkeypatch.setenv("HWISTOCK_CALENDAR_PATH", str(calendar))
+    _append_jsonl(
+        tmp_path / "normalized" / "2026-06-06" / "events.jsonl",
+        [{"event_id": "event-1", "title": "주말 점검 뉴스", "published_at_kst": "2026-06-06T09:10:00+09:00"}],
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_call_deepseek",
+        lambda *_args, **_kwargs: {
+            "http_status": 200,
+            "finish_reason": "stop",
+            "model": "deepseek-v4-pro",
+            "text": json.dumps(
+                {
+                    "summary": "KIS 실시간 데이터 미수신 장애",
+                    "market_mode": "NO_TRADE",
+                    "themes": ["점검"],
+                    "risk_flags": ["KIS realtime failure"],
+                    "order_safety": "no_order",
+                },
+                ensure_ascii=False,
+            ),
+            "usage": None,
+            "error": None,
+        },
+    )
+
+    result = runtime.run_pro_hourly_once(data_root=tmp_path, at=now, model="deepseek-v4-pro")
+
+    assert result["calendar_context"]["kis_realtime_expected"] is False
+    assert "provider_misclassified_expected_off_session_as_kis_failure" in result["warnings"]
+    assert result["summary"] == "장 운영시간 밖이라 KIS 실시간 부재는 정상 상태로 처리했습니다."
+    assert result["risk_flags"] == []
 
 
 def test_publish_morning_watchlist_writes_target_trade_date_latest_paths(tmp_path: Path):

@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import sys
 import json
+from datetime import datetime
 from pathlib import Path
 
 baseDir = os.path.dirname(os.path.dirname(__file__))
@@ -199,14 +200,39 @@ class FakeKisMarketAdapter:
         return {"step": "oauth_revoke", "status": "pass"}
 
 
-def test_unit013_kis_collector_calls_paper_read_and_builds_compiled_watch():
+def test_unit013_kis_collector_calls_paper_read_and_builds_compiled_watch(tmp_path: Path):
+    calendar = tmp_path / "calendar.json"
+    calendar.write_text(
+        json.dumps(
+            {
+                "validUntil": "2099-12-31T23:59:59+09:00",
+                "sourceAuthority": "unit_test_calendar",
+                "days": {
+                    "2026-06-05": {
+                        "dateKst": "2026-06-05",
+                        "isTradingDay": True,
+                        "krx": {
+                            "regularOpen": "09:00",
+                            "regularClose": "15:30",
+                            "orderOpen": "09:00",
+                            "orderClose": "15:00",
+                        },
+                    }
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     adapter = FakeKisMarketAdapter()
     payload = kis_collector.collectKisMarketDataOnce(
         env={
             "HWISTOCK_KIS_MARKET_READ_NETWORK_ENABLED": "true",
             "HWISTOCK_KIS_MIN_CALL_GAP_SEC": "0",
+            "HWISTOCK_CALENDAR_PATH": str(calendar),
         },
         adapter=adapter,
+        at=datetime.fromisoformat("2026-06-05T09:30:00+09:00"),
     )
     assert payload["status"] == "ok"
     assert payload["order_cancel_modify_called"] is False
@@ -217,6 +243,42 @@ def test_unit013_kis_collector_calls_paper_read_and_builds_compiled_watch():
     assert first["schema_version"] == "compiled_watch/v0"
     assert first["entry_intent"]["entry_zone"]
     assert "order-cash" not in " ".join(map(str, adapter.calls))
+
+
+def test_unit013_kis_collector_weekend_safe_skips_without_transport(tmp_path: Path):
+    calendar = tmp_path / "calendar.json"
+    calendar.write_text(
+        json.dumps(
+            {
+                "validUntil": "2099-12-31T23:59:59+09:00",
+                "days": {
+                    "2026-06-06": {
+                        "dateKst": "2026-06-06",
+                        "isTradingDay": False,
+                        "reason": "Saturday",
+                    }
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    adapter = FakeKisMarketAdapter()
+
+    payload = kis_collector.collectKisMarketDataOnce(
+        env={
+            "HWISTOCK_KIS_MARKET_READ_NETWORK_ENABLED": "true",
+            "HWISTOCK_KIS_MIN_CALL_GAP_SEC": "0",
+            "HWISTOCK_CALENDAR_PATH": str(calendar),
+        },
+        adapter=adapter,
+        at=datetime.fromisoformat("2026-06-06T09:30:00+09:00"),
+    )
+
+    assert payload["status"] == "safe_skip_market_session_gate"
+    assert payload["calendar_context"]["kis_realtime_expected"] is False
+    assert all(row["endpoint_called"] is False for row in payload["input_results"])
+    assert adapter.calls == []
 
 
 def test_unit013_flash_document_to_intent_requires_compiled_universe_and_refs():

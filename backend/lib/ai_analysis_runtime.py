@@ -24,10 +24,12 @@ if str(BACKEND_ROOT) not in sys.path:
 
 try:
     from lib import ai_orchestration as ao
+    from lib import market_session_gate as msg
     from lib import runtime_policy as rp
     from lib import trading_engine
 except ImportError:  # pragma: no cover
     from backend.lib import ai_orchestration as ao
+    from backend.lib import market_session_gate as msg
     from backend.lib import runtime_policy as rp
     from backend.lib import trading_engine
 
@@ -382,6 +384,7 @@ def _build_pro_hourly_prompt(
     kis_snapshots: Sequence[Mapping[str, Any]],
     *,
     produced_at_kst: str,
+    calendar_context: Optional[Mapping[str, Any]] = None,
 ) -> str:
     titles = [
         {
@@ -414,10 +417,12 @@ def _build_pro_hourly_prompt(
         "역할은 한국 장중 시장국면/테마/피해야 할 조건 정리다. "
         "summary, themes, strong_conditions, avoid_conditions, risk_flags 등 사람이 읽는 모든 문자열 값은 한국어로 작성해. "
         "schema key와 market_mode enum, order_safety 같은 기계용 키/고정값은 지정 형식 그대로 유지해. "
+        "calendar_context.kis_realtime_expected=false이면 KIS 실시간 부재는 정상 오프세션/휴장 상태로 취급하고 KIS 장애로 쓰지 마. "
         "형식: {\"summary\":\"한문장\", \"market_mode\":\"RISK_ON|NEUTRAL|RISK_OFF|NO_TRADE\", "
         "\"themes\":[\"테마\"], \"strong_conditions\":[\"조건\"], "
         "\"avoid_conditions\":[\"조건\"], \"risk_flags\":[\"리스크\"], \"order_safety\":\"no_order\"}. "
         f"시각={produced_at_kst}. "
+        f"calendar_context={json.dumps(dict(calendar_context or {}), ensure_ascii=False)} "
         f"뉴스/공시={json.dumps(titles, ensure_ascii=False)} "
         f"KIS요약={json.dumps(market_rows, ensure_ascii=False)}"
     )
@@ -432,6 +437,7 @@ def _build_flash_prompt(
     portfolio: Mapping[str, Any],
     order_state: Mapping[str, Any],
     produced_at_kst: str,
+    calendar_context: Optional[Mapping[str, Any]] = None,
 ) -> str:
     watch_summary = [
         {
@@ -447,6 +453,7 @@ def _build_flash_prompt(
         "보유/대기 주문과 충돌하는 신규매수 금지. "
         "summary, reason, candidate_notes.reason, risk_flags 등 사람이 읽는 모든 문자열 값은 한국어로 작성해. "
         "schema key, symbol, action enum, 숫자 필드는 지정 형식 그대로 유지해. "
+        "calendar_context.kis_realtime_expected=false이면 KIS 실시간 부재를 장애/제공자 실패로 쓰지 말고 오프세션 정상 상태로 처리해. "
         "actions는 다음 10분 매매문서 초안이며 허용 action은 WAIT_BUY, BUY_NOW, HOLD, SELL, NO_TRADE뿐이다. "
         "형식: {\"summary\":\"한문장\", "
         "\"actions\":[{\"symbol\":\"000000\",\"action\":\"WAIT_BUY|BUY_NOW|HOLD|SELL|NO_TRADE\","
@@ -455,6 +462,7 @@ def _build_flash_prompt(
         "\"candidate_notes\":[{\"symbol\":\"000000\",\"stance\":\"watch|avoid\",\"reason\":\"짧게\"}], "
         "\"risk_flags\":[\"리스크\"], \"order_safety\":\"no_direct_order\"}. "
         f"시각={produced_at_kst}. "
+        f"calendar_context={json.dumps(dict(calendar_context or {}), ensure_ascii=False)} "
         f"Pro분석={json.dumps(_compact_json_for_prompt(pro_artifact, 2000), ensure_ascii=False)} "
         f"최근뉴스={json.dumps(list(events)[-20:], ensure_ascii=False)} "
         f"KIS스냅샷={json.dumps(_compact_json_for_prompt(list(kis_snapshots)[-3:], 2500), ensure_ascii=False)} "
@@ -503,6 +511,64 @@ def _provider_meta(provider: Optional[Mapping[str, Any]]) -> Optional[Dict[str, 
         "usage": provider.get("usage"),
         "error": provider.get("error"),
         "text_present": bool(str(provider.get("text") or "").strip()),
+    }
+
+
+def _provider_claims_kis_failure(provider_json: Mapping[str, Any]) -> bool:
+    if not provider_json:
+        return False
+    rendered = json.dumps(provider_json, ensure_ascii=False).lower()
+    kis_tokens = ("kis", "한국투자", "실시간", "realtime")
+    failure_tokens = (
+        "장애",
+        "실패",
+        "오류",
+        "에러",
+        "미수신",
+        "불능",
+        "failure",
+        "failed",
+        "error",
+        "unavailable",
+    )
+    return any(token in rendered for token in kis_tokens) and any(token in rendered for token in failure_tokens)
+
+
+def _drop_kis_failure_claims(values: Any) -> Any:
+    if not isinstance(values, list):
+        return values
+    kept = []
+    for item in values:
+        text = json.dumps(item, ensure_ascii=False).lower()
+        if _provider_claims_kis_failure({"value": text}):
+            continue
+        kept.append(item)
+    return kept
+
+
+def _apply_off_session_provider_guard(
+    artifact: Dict[str, Any],
+    *,
+    provider_json: Mapping[str, Any],
+    calendar_context: Mapping[str, Any],
+) -> None:
+    if bool(calendar_context.get("kis_realtime_expected")) or not _provider_claims_kis_failure(provider_json):
+        return
+    warning = "provider_misclassified_expected_off_session_as_kis_failure"
+    warnings = artifact.setdefault("warnings", [])
+    if isinstance(warnings, list) and warning not in warnings:
+        warnings.append(warning)
+    for key in ("risk_flags", "avoid_conditions"):
+        if key in artifact:
+            artifact[key] = _drop_kis_failure_claims(artifact.get(key))
+    for key in ("summary", "provider_summary"):
+        if key in artifact and _provider_claims_kis_failure({key: artifact.get(key)}):
+            artifact[key] = "장 운영시간 밖이라 KIS 실시간 부재는 정상 상태로 처리했습니다."
+    artifact["provider_guard"] = {
+        "status": "downgraded_expected_off_session",
+        "warning": warning,
+        "kis_realtime_expected": False,
+        "calendar_reason": calendar_context.get("reason"),
     }
 
 
@@ -764,6 +830,8 @@ def run_pro_hourly_once(
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
     now = at or _now_kst()
+    gate = msg.evaluateKisCallGate(now_kst=now, call_family="pro_hourly", env=os.environ)
+    calendar_context = gate["calendar_context"]
     events, input_window = _read_events_for_hour_window(data_root, at=now)
     kis_snapshots = _read_recent_kis_snapshots(data_root, at=now)
     selected_model = model or os.getenv("HWISTOCK_DEEPSEEK_MODEL", ao.DEEPSEEK_PRO_MODEL)
@@ -772,7 +840,12 @@ def run_pro_hourly_once(
     if events or kis_snapshots:
         try:
             provider = _call_deepseek(
-                _build_pro_hourly_prompt(events, kis_snapshots, produced_at_kst=now.isoformat()),
+                _build_pro_hourly_prompt(
+                    events,
+                    kis_snapshots,
+                    produced_at_kst=now.isoformat(),
+                    calendar_context=calendar_context,
+                ),
                 model=selected_model,
             )
             provider_json = _parse_provider_json(str(provider.get("text") or ""))
@@ -789,6 +862,8 @@ def run_pro_hourly_once(
         provider_status=provider_status,
         input_window_kst=input_window,
     )
+    artifact["calendar_context"] = calendar_context
+    artifact["kis_call_gate"] = gate["evidence_payload"]
     artifact["model_name"] = selected_model
     artifact["provider"] = _provider_meta(provider)
     if provider_json:
@@ -810,6 +885,11 @@ def run_pro_hourly_once(
         market_mode = str(provider_json.get("market_mode") or "").strip()
         if market_mode:
             artifact["market_regime"]["market_mode"] = market_mode[:40]
+        _apply_off_session_provider_guard(
+            artifact,
+            provider_json=provider_json,
+            calendar_context=calendar_context,
+        )
     if provider_status not in {"ok", "blocked_no_source_inputs"}:
         artifact["validation_status"] = "safe_block"
         artifact["document_kind"] = "NO_TRADE"
@@ -832,6 +912,8 @@ def run_flash_trade_document_once(
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
     now = at or _now_kst()
+    gate = msg.evaluateKisCallGate(now_kst=now, call_family="pro_hourly", env=os.environ)
+    calendar_context = gate["calendar_context"]
     day = now.date().isoformat()
     latest_pro_path = (
         _latest_named_json(data_root, "ai", day, "pro-hourly-latest.json")
@@ -859,6 +941,7 @@ def run_flash_trade_document_once(
                     portfolio=portfolio,
                     order_state=order_state,
                     produced_at_kst=now.isoformat(),
+                    calendar_context=calendar_context,
                 ),
                 model=selected_model,
                 timeout=60,
@@ -882,6 +965,8 @@ def run_flash_trade_document_once(
         input_window_kst=flash_input_window,
         produced_at_kst=now.isoformat(),
     )
+    artifact["calendar_context"] = calendar_context
+    artifact["kis_call_gate"] = gate["evidence_payload"]
     artifact["model_name"] = selected_model
     artifact["provider_status"] = _provider_status(provider or {}) if provider else "blocked_no_flash_provider_inputs"
     artifact["provider"] = _provider_meta(provider)
@@ -892,6 +977,11 @@ def run_flash_trade_document_once(
             artifact["provider_candidate_notes"] = notes[:5]
         if str(provider_json.get("summary") or "").strip():
             artifact["provider_summary"] = str(provider_json["summary"])[:1000]
+        _apply_off_session_provider_guard(
+            artifact,
+            provider_json=provider_json,
+            calendar_context=calendar_context,
+        )
     validation = ao.validateFlashTradeDocument(artifact, compiled_watch=compiled_watch)
     artifact = validation["document"]
     artifact["validation_errors"] = validation["errors"]

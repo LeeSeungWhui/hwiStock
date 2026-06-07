@@ -17,6 +17,7 @@ from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo
 
 from service import HwiStockRunnerService as baseRunner
+from lib import market_session_gate as msg
 from lib.kis_paper_token_cache import loadKisPaperAccessToken, tokenCacheRevokeSkippedStep
 from service.kis_paper_adapter import KisPaperAdapter, UrllibJsonTransport
 
@@ -978,6 +979,12 @@ def buildAiConversationArtifactContext(
     runtimeRoot = dataRoot or DEFAULT_DATA_ROOT
     dayKey = snapshotAt.astimezone(KST).date().isoformat()
     runnerStatus = baseRunner.get_runner_status(snapshotAt.strftime("%Y-%m-%dT%H:%M:%S"))
+    marketSessionGate = msg.evaluateKisCallGate(
+        now_kst=snapshotAt,
+        investment_mode=runnerStatus.get("mode"),
+        call_family="kis_market_data",
+        env=os.environ,
+    )
     latestArtifactPaths = latestRuntimePaths(runtimeRoot, dayKey)
     artifactFreshness = buildArtifactFreshness(latestArtifactPaths, snapshotAt=snapshotAt)
     runtimeArtifacts = loadRuntimeArtifacts(latestArtifactPaths)
@@ -1020,6 +1027,8 @@ def buildAiConversationArtifactContext(
         "candidates": buildCandidateRows(runtimeArtifacts, limit=5),
         "aiThread": buildAiThreadRows(runtimeArtifacts, snapshotAt),
         "readinessTruth": readinessTruth,
+        "marketSessionGate": marketSessionGate["evidence_payload"],
+        "calendarContext": marketSessionGate["calendar_context"],
         "contextRefs": contextRefs,
         "networkCallMade": False,
         "brokerCallMade": False,
@@ -1205,6 +1214,12 @@ def buildOperatorConsoleSnapshot(
     runtimeRoot = dataRoot or DEFAULT_DATA_ROOT
     dayKey = snapshotAt.astimezone(KST).date().isoformat()
     runnerStatus = baseRunner.get_runner_status(snapshotAt.strftime("%Y-%m-%dT%H:%M:%S"))
+    marketSessionGate = msg.evaluateKisCallGate(
+        now_kst=snapshotAt,
+        investment_mode=runnerStatus.get("mode"),
+        call_family="kis_market_data",
+        env=os.environ,
+    )
     latestArtifactPaths = latestRuntimePaths(runtimeRoot, dayKey)
     artifactFreshness = buildArtifactFreshness(latestArtifactPaths, snapshotAt=snapshotAt)
     runtimeArtifacts = loadRuntimeArtifacts(latestArtifactPaths)
@@ -1275,7 +1290,9 @@ def buildOperatorConsoleSnapshot(
             "serviceHealth": "observable",
             "dataSourceHealth": "configured" if runnerStatus["marketData"]["state"] == "source_configured" else "blocked",
             "orderGate": runnerStatus["orderGate"],
+            "marketSessionGate": marketSessionGate["evidence_payload"]["status"],
         },
+        "calendarContext": marketSessionGate["calendar_context"],
         "summary": {
             "accountId": accountSummary["accountId"],
             "cashBalance": accountSummary["cashBalance"],
@@ -1313,6 +1330,7 @@ def buildOperatorConsoleSnapshot(
                 "rawProviderPayloadDisplayed": accountSummary["rawProviderPayloadDisplayed"],
                 "credentialValuesPrinted": accountSummary["credentialValuesPrinted"],
             },
+            "marketSessionGate": marketSessionGate["evidence_payload"],
             "localOnly": True,
             "publicBind": False,
         },

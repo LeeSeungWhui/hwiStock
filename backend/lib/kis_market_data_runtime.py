@@ -25,10 +25,12 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 try:
+    from lib import market_session_gate as msg
     from lib import runtime_policy as rp
     from lib.kis_paper_token_cache import loadKisPaperAccessToken, tokenCacheRevokeSkippedStep
     from service.kis_paper_adapter import KisPaperAdapter, UrllibJsonTransport
 except ImportError:  # pragma: no cover
+    from backend.lib import market_session_gate as msg
     from backend.lib import runtime_policy as rp
     from backend.lib.kis_paper_token_cache import loadKisPaperAccessToken, tokenCacheRevokeSkippedStep
     from backend.service.kis_paper_adapter import KisPaperAdapter, UrllibJsonTransport
@@ -389,10 +391,32 @@ def collectKisMarketDataOnce(
         payload["status"] = "blocked_input_scope"
         return payload
 
+    gate = msg.evaluateKisCallGate(
+        now_kst=now,
+        investment_mode=config["investment_mode"],
+        call_family="kis_market_data",
+        env=source,
+    )
+    payload["calendar_context"] = gate["calendar_context"]
+    payload["kis_call_gate"] = gate["evidence_payload"]
+    steps.append(gate["evidence_payload"])
+
     if not network_enabled:
         for input_id in validation["requested_inputs"]:
             rows.append(_blocked_input_row(input_id, "blocked_paper_read_network_disabled"))
         payload["status"] = "safe_block_paper_read_network_disabled"
+        return payload
+
+    if not gate["allowed"]:
+        row_status = str(gate["evidence_payload"].get("status") or "safe_skip_market_session_gate")
+        for input_id in validation["requested_inputs"]:
+            row = _blocked_input_row(input_id, row_status)
+            row["reason"] = gate["reason"]
+            row["calendar_context"] = gate["calendar_context"]
+            rows.append(row)
+        payload["status"] = "safe_skip_market_session_gate"
+        payload["endpoint_audit"] = _mark_audit_calls(audit, rows)
+        payload["compiled_watch"] = buildCompiledWatchFromKisSnapshot(payload, config=config, at=now)
         return payload
 
     adapter = adapter or KisPaperAdapter(env=source, transport=UrllibJsonTransport())
