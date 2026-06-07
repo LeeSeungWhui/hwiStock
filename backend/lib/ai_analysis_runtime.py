@@ -38,6 +38,17 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_ROOT = Path(os.getenv("HWISTOCK_DATA_DIR", str(REPO_ROOT / "data")))
 DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEFAULT_DEEPSEEK_MODEL = ao.DEEPSEEK_PRO_MODEL
+DEEPSEEK_MAX_TOKENS_OVERRIDE_ENV = "HWISTOCK_DEEPSEEK_MAX_TOKENS_OVERRIDE"
+DEEPSEEK_JOB_MAX_TOKENS_OVERRIDE_ENVS = {
+    "pro-hourly": "HWISTOCK_DEEPSEEK_PRO_MAX_TOKENS_OVERRIDE",
+    "flash-10m": "HWISTOCK_DEEPSEEK_FLASH_MAX_TOKENS_OVERRIDE",
+    "legacy-summary": "HWISTOCK_DEEPSEEK_LEGACY_MAX_TOKENS_OVERRIDE",
+}
+DEPRECATED_DEEPSEEK_MAX_TOKENS_ENVS = {
+    "pro-hourly": "HWISTOCK_DEEPSEEK_PRO_MAX_TOKENS",
+    "flash-10m": "HWISTOCK_DEEPSEEK_FLASH_MAX_TOKENS",
+    "legacy-summary": "HWISTOCK_DEEPSEEK_LEGACY_MAX_TOKENS",
+}
 
 
 def _now_kst() -> datetime:
@@ -1056,8 +1067,22 @@ def _provider_meta(provider: Optional[Mapping[str, Any]]) -> Optional[Dict[str, 
         "model": provider.get("model"),
         "usage": provider.get("usage"),
         "error": provider.get("error"),
+        "request": provider.get("request"),
+        "warnings": provider.get("warnings"),
         "text_present": bool(str(provider.get("text") or "").strip()),
     }
+
+
+def _apply_provider_runtime_warnings(artifact: Dict[str, Any], provider: Optional[Mapping[str, Any]]) -> None:
+    if not provider or not isinstance(provider.get("warnings"), list):
+        return
+    warnings = artifact.setdefault("warnings", [])
+    if not isinstance(warnings, list):
+        return
+    for warning in provider["warnings"]:
+        text = str(warning or "").strip()
+        if text and text not in warnings:
+            warnings.append(text)
 
 
 def _provider_claims_kis_failure(provider_json: Mapping[str, Any]) -> bool:
@@ -1283,15 +1308,41 @@ def _deepseek_system_prompt(job: str) -> str:
     return "You write compact Korean JSON market-intelligence summaries. Never recommend or place orders."
 
 
-def _deepseek_max_tokens(job: str) -> int:
-    override = str(os.getenv("HWISTOCK_AI_MAX_OUTPUT_TOKENS") or "").strip()
-    if override:
-        return int(override)
-    if job == "pro-hourly":
-        return int(os.getenv("HWISTOCK_DEEPSEEK_PRO_MAX_TOKENS", "3500"))
-    if job == "flash-10m":
-        return int(os.getenv("HWISTOCK_DEEPSEEK_FLASH_MAX_TOKENS", "2200"))
-    return int(os.getenv("HWISTOCK_DEEPSEEK_LEGACY_MAX_TOKENS", "1000"))
+def _parse_max_tokens_env(name: str) -> Optional[int]:
+    raw = str(os.getenv(name) or "").strip()
+    if not raw:
+        return None
+    value = int(raw)
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
+
+
+def _deepseek_max_tokens_override(job: str) -> tuple[Optional[int], Optional[str], List[str]]:
+    normalized_job = str(job or "legacy-summary").strip() or "legacy-summary"
+    warnings: List[str] = []
+    for name in (
+        DEEPSEEK_JOB_MAX_TOKENS_OVERRIDE_ENVS.get(normalized_job),
+        DEEPSEEK_MAX_TOKENS_OVERRIDE_ENV,
+    ):
+        if not name:
+            continue
+        value = _parse_max_tokens_env(name)
+        if value is not None:
+            return value, name, warnings
+
+    legacy_candidates = [
+        "HWISTOCK_AI_MAX_OUTPUT_TOKENS",
+        DEPRECATED_DEEPSEEK_MAX_TOKENS_ENVS.get(normalized_job),
+    ]
+    for name in legacy_candidates:
+        if not name:
+            continue
+        value = _parse_max_tokens_env(name)
+        if value is not None:
+            warnings.append(f"deprecated_max_tokens_env:{name}")
+            return value, name, warnings
+    return None, None, warnings
 
 
 def _call_deepseek(
@@ -1301,6 +1352,12 @@ def _call_deepseek(
     timeout: int = 90,
     job: str = "legacy-summary",
 ) -> Dict[str, Any]:
+    max_tokens, max_tokens_source, max_token_warnings = _deepseek_max_tokens_override(job)
+    request_meta = {
+        "max_tokens_sent": max_tokens is not None,
+        "max_tokens_source_env": max_tokens_source,
+        "deprecated_warnings": list(max_token_warnings),
+    }
     api_key = _deepseek_api_key()
     if not api_key:
         return {
@@ -1310,6 +1367,8 @@ def _call_deepseek(
             "text": "",
             "usage": None,
             "error": {"code": "missing_deepseek_api_key"},
+            "request": request_meta,
+            "warnings": list(max_token_warnings),
         }
 
     thinking_mode = os.getenv("HWISTOCK_DEEPSEEK_THINKING", "disabled").strip().lower()
@@ -1322,10 +1381,11 @@ def _call_deepseek(
             },
             {"role": "user", "content": prompt},
         ],
-        "max_tokens": _deepseek_max_tokens(job),
         "temperature": 0.2,
         "response_format": {"type": "json_object"},
     }
+    if max_tokens is not None:
+        request_body["max_tokens"] = max_tokens
     if thinking_mode in {"enabled", "disabled"}:
         request_body["thinking"] = {"type": thinking_mode}
     data = json.dumps(request_body, ensure_ascii=False).encode("utf-8")
@@ -1360,6 +1420,8 @@ def _call_deepseek(
         "text": str(message.get("content") or "") if isinstance(message, Mapping) else "",
         "usage": parsed.get("usage"),
         "error": parsed.get("error"),
+        "request": request_meta,
+        "warnings": list(max_token_warnings),
     }
 
 
@@ -1615,6 +1677,7 @@ def run_pro_hourly_once(
     artifact["kis_call_gate"] = gate["evidence_payload"]
     artifact["model_name"] = selected_model
     artifact["provider"] = _provider_meta(provider)
+    _apply_provider_runtime_warnings(artifact, provider)
     if provider_json:
         _apply_pro_provider_json(artifact, provider_json)
         _apply_off_session_provider_guard(
@@ -1724,6 +1787,7 @@ def run_flash_trade_document_once(
     artifact["model_name"] = selected_model
     artifact["provider_status"] = _provider_status(provider or {}) if provider else "blocked_no_flash_provider_inputs"
     artifact["provider"] = _provider_meta(provider)
+    _apply_provider_runtime_warnings(artifact, provider)
     market_context = artifact.get("market_context")
     if isinstance(market_context, dict):
         market_context["market_context_open"] = bool(calendar_context.get("market_context_open"))
@@ -1808,13 +1872,9 @@ def run_analysis_once(
     if events:
         try:
             provider = _call_deepseek(_build_prompt(events, produced_at_kst=produced_at), model=selected_model, job="legacy-summary")
-            result["provider"] = {
-                "http_status": provider.get("http_status"),
-                "finish_reason": provider.get("finish_reason"),
-                "model": provider.get("model"),
-                "usage": provider.get("usage"),
-                "error": provider.get("error"),
-            }
+            result["provider"] = _provider_meta(provider)
+            if isinstance(provider.get("warnings"), list):
+                result["warnings"] = [str(item) for item in provider["warnings"] if str(item or "").strip()]
             result["analysis_text"] = str(provider.get("text") or "")
             if (provider.get("error") or {}).get("code") == "missing_deepseek_api_key":
                 result["status"] = "blocked_missing_deepseek_api_key"

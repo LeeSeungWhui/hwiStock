@@ -20,6 +20,55 @@ from lib import ai_analysis_runtime as runtime  # noqa: E402
 from lib import ai_orchestration as ao  # noqa: E402
 
 
+MAX_TOKEN_ENV_NAMES = [
+    "HWISTOCK_DEEPSEEK_MAX_TOKENS_OVERRIDE",
+    "HWISTOCK_DEEPSEEK_PRO_MAX_TOKENS_OVERRIDE",
+    "HWISTOCK_DEEPSEEK_FLASH_MAX_TOKENS_OVERRIDE",
+    "HWISTOCK_DEEPSEEK_LEGACY_MAX_TOKENS_OVERRIDE",
+    "HWISTOCK_AI_MAX_OUTPUT_TOKENS",
+    "HWISTOCK_DEEPSEEK_PRO_MAX_TOKENS",
+    "HWISTOCK_DEEPSEEK_FLASH_MAX_TOKENS",
+    "HWISTOCK_DEEPSEEK_LEGACY_MAX_TOKENS",
+]
+
+
+class _FakeDeepSeekResponse:
+    status = 200
+
+    def __init__(self, content: dict | None = None):
+        self.content = content or {
+            "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(_pro_v1_payload(), ensure_ascii=False)}}],
+            "model": "deepseek-v4-pro",
+            "usage": {"completion_tokens": 10},
+        }
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def read(self):
+        return json.dumps(self.content, ensure_ascii=False).encode("utf-8")
+
+
+def _clear_max_token_envs(monkeypatch) -> None:
+    for name in MAX_TOKEN_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+
+
+def _capture_deepseek_request(monkeypatch) -> list[dict]:
+    captured: list[dict] = []
+
+    def _fake_urlopen(request, timeout):  # noqa: ARG001
+        captured.append(json.loads(request.data.decode("utf-8")))
+        return _FakeDeepSeekResponse()
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "unit-test-key")
+    monkeypatch.setattr(runtime.urllib.request, "urlopen", _fake_urlopen)
+    return captured
+
+
 def _write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
@@ -106,6 +155,69 @@ def test_provider_prompts_require_korean_natural_language_values():
     assert "pro_hourly_market_analysis/v1" in pro_prompt
     assert "다음 10분 매매문서" in flash_prompt
     assert "flash_trade_document/v1" in flash_prompt
+
+
+def test_deepseek_payload_omits_max_tokens_by_default(monkeypatch):
+    _clear_max_token_envs(monkeypatch)
+    captured = _capture_deepseek_request(monkeypatch)
+
+    provider = runtime._call_deepseek("{}", model="deepseek-v4-pro", job="pro-hourly")  # noqa: SLF001
+
+    assert captured
+    assert "max_tokens" not in captured[0]
+    assert provider["request"]["max_tokens_sent"] is False
+    assert provider["request"]["max_tokens_source_env"] is None
+
+
+def test_explicit_max_tokens_override_is_respected(monkeypatch):
+    _clear_max_token_envs(monkeypatch)
+    monkeypatch.setenv("HWISTOCK_DEEPSEEK_PRO_MAX_TOKENS_OVERRIDE", "7777")
+    captured = _capture_deepseek_request(monkeypatch)
+
+    provider = runtime._call_deepseek("{}", model="deepseek-v4-pro", job="pro-hourly")  # noqa: SLF001
+
+    assert captured[0]["max_tokens"] == 7777
+    assert provider["request"]["max_tokens_sent"] is True
+    assert provider["request"]["max_tokens_source_env"] == "HWISTOCK_DEEPSEEK_PRO_MAX_TOKENS_OVERRIDE"
+    assert provider["warnings"] == []
+
+
+def test_systemd_services_do_not_set_ai_max_output_tokens():
+    service_paths = [
+        Path("ops/systemd/user/hwistock-ai-analysis.service"),
+        Path("ops/systemd/user/hwistock-ai-flash.service"),
+    ]
+    forbidden = {
+        "HWISTOCK_AI_MAX_OUTPUT_TOKENS",
+        "HWISTOCK_DEEPSEEK_PRO_MAX_TOKENS",
+        "HWISTOCK_DEEPSEEK_FLASH_MAX_TOKENS",
+    }
+
+    for path in service_paths:
+        text = path.read_text(encoding="utf-8")
+        for token in forbidden:
+            assert token not in text
+
+
+def test_legacy_global_max_tokens_env_adds_deprecated_warning(tmp_path: Path, monkeypatch):
+    _clear_max_token_envs(monkeypatch)
+    monkeypatch.setenv("HWISTOCK_AI_MAX_OUTPUT_TOKENS", "3333")
+    captured = _capture_deepseek_request(monkeypatch)
+    now = datetime.fromisoformat("2026-06-08T09:00:00+09:00")
+    calendar = tmp_path / "calendar.json"
+    _write_calendar(calendar, day="2026-06-08", trading=True)
+    monkeypatch.setenv("HWISTOCK_CALENDAR_PATH", str(calendar))
+    _append_jsonl(
+        tmp_path / "normalized" / "2026-06-08" / "events.jsonl",
+        [{"event_id": "event-1", "title": "삼성전자 투자 확대", "published_at_kst": "2026-06-08T08:50:00+09:00"}],
+    )
+
+    result = runtime.run_pro_hourly_once(data_root=tmp_path, at=now, model="deepseek-v4-pro")
+
+    assert captured[0]["max_tokens"] == 3333
+    assert result["provider"]["request"]["max_tokens_sent"] is True
+    assert result["provider"]["request"]["max_tokens_source_env"] == "HWISTOCK_AI_MAX_OUTPUT_TOKENS"
+    assert "deprecated_max_tokens_env:HWISTOCK_AI_MAX_OUTPUT_TOKENS" in result["warnings"]
 
 
 def test_weekend_pro_hourly_downgrades_provider_kis_failure_claim(tmp_path: Path, monkeypatch):
@@ -882,6 +994,23 @@ def test_pro_output_prompt_includes_hard_caps():
     assert "data_quality.kis_data_status='ok' 금지" in prompt
 
 
+def test_prompt_schema_hard_caps_remain_present():
+    prompt = runtime._build_pro_hourly_prompt(  # noqa: SLF001
+        [{"event_id": "event-1", "title": "반도체 투자 확대", "event_type": "news"}],
+        [],
+        produced_at_kst="2026-06-08T09:00:00+09:00",
+        calendar_context={"kis_realtime_expected": True, "market_context_open": True},
+    )
+
+    assert "출력 hard cap" in prompt
+    assert "theme_map 최대 5개" in prompt
+    assert "source_ref_map 최대 5개" in prompt
+    assert "no_trade_conditions 최대 5개" in prompt
+    assert "questions_for_next_flash 최대 5개" in prompt
+    assert "source_refs는 최대 3개" in prompt
+    assert "market_data_refs는 최대 3개" in prompt
+
+
 def test_provider_refs_are_limited_per_item():
     refs = [f"event-{index}" for index in range(8)]
     market_refs = [f"snap-{index}" for index in range(8)]
@@ -956,6 +1085,15 @@ def test_truncated_pro_sets_flash_usable_false():
     assert document["flash_usable"] is False
     assert document["flash_aggression_cap"] == "no_buy_now"
     assert "provider_output_truncated" in result["warnings"]
+
+
+def test_finish_reason_length_still_marks_truncated_low_utility():
+    result = ao.validateProHourlyMarketAnalysis(_pro_v1_payload(provider={"finish_reason": "length"}))
+
+    assert result["document"]["investment_utility_status"] == "truncated_low_utility"
+    assert result["document"]["flash_usable"] is False
+    assert result["document"]["flash_aggression_cap"] == "no_buy_now"
+    assert result["document"]["validation_status"] == "accepted_with_warnings"
 
 
 def test_clustered_source_prompt_limits_raw_event_count():

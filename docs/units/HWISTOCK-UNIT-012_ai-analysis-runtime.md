@@ -159,6 +159,7 @@ own all broker-order eligibility.
 | AC-01 | P0 | Official DeepSeek model ids are used | Service/config/tests reject `moonbridge` or deprecated aliases as default runtime models. |
 | AC-02 | P0 | Hourly Pro aggregate job exists | A top-of-hour tick writes source-grounded `pro_hourly_market_analysis/v1` strategy context or a classified safe block. |
 | AC-02a | P0 | Pro quality gate blocks low-utility context | `finish_reason=length`, generic summaries/themes/source claims, empty off-session no-trade conditions, or off-session `market_confirmation_status=confirmed` cannot remain plain `accepted`; they are downgraded to `accepted_with_warnings` with `flash_usable=false` and low-utility status. |
+| AC-02b | P0 | DeepSeek output is not truncated by default token caps | Pro/Flash DeepSeek requests omit `max_tokens` by default and rely on provider defaults. hwiStock controls output size through schema/prompt hard caps and validation, not through low hard token truncation. Manual max-token env overrides are emergency-only and must surface a warning when legacy env names are used. |
 | AC-03 | P0 | Pro market-regime analysis is integrated | During market hours the Pro artifact includes market-regime/session analysis in the same file; no detached market-regime subsystem is required. |
 | AC-04 | P0 | Flash 10-minute trade document exists | During the active investment-mode decision window Flash writes `flash_trade_document/v1` every 10 minutes or safe-blocks; actions are capped at five symbols and include source-grounded price/size/risk/confirmation/cancel windows where relevant. |
 | AC-05 | P0 | AI outputs are non-executable | No AI artifact can directly invoke broker/order code or bypass deterministic risk gates. |
@@ -184,6 +185,12 @@ This unit should make the runtime match the profile:
 - separate schedule/command paths for Pro and Flash;
 - `market_analysis_feed_mode=integrated` and
   `execution_venue_mode=krx_only` in Flash/runtime artifacts;
+- default DeepSeek request payloads do not send `max_tokens`; output size is
+  controlled by schema caps (`theme_map`, `source_ref_map`,
+  `no_trade_conditions`, `questions_for_next_flash`, and per-item refs) plus
+  quality validation. `HWISTOCK_DEEPSEEK_*_MAX_TOKENS_OVERRIDE` is a manual
+  emergency override only, while legacy max-token env names must warn in the
+  artifact if used;
 - `07:15 KST` morning watchlist path and first-Flash dependency;
 - paper/mock `09:00-15:00 KST` decision window versus `15:30 KST`
   market-data/close context;
