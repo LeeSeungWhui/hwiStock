@@ -157,6 +157,11 @@ investment-mode docs variable is `HWISTOCK_INVESTMENT_MODE=paper|live`; existing
 KIS-specific env/config names may map into that canonical mode during migration,
 but Ready-Set reasoning must separate investment mode from
 `HWISTOCK_OPERATION_MODE` such as `paper_experiment`.
+The installed user-systemd runtime reads this canonical switch from
+`/home/hwi/.config/hwistock/runtime-mode.env` and normalizes it through
+`ops/systemd/load_runtime_mode_env.sh`; service units must not reintroduce
+per-service hardcoded `HWISTOCK_INVESTMENT_MODE=paper` exports. In paper/mock
+mode the loader forcibly pins executable routing to `krx_only` and NXT disabled.
 
 1. `news_disclosure_collector` runs 24 hours and collects only permitted/free
    public sources. Initial recommended sources are OpenDART disclosures, NAVER

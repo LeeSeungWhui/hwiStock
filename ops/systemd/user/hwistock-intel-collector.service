@@ -10,10 +10,6 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=/data/workspace/My/hwiStock
 EnvironmentFile=-/home/hwi/.config/hwistock/hwistock.env
-Environment=HWISTOCK_INVESTMENT_MODE=paper
-Environment=HWISTOCK_MARKET_ANALYSIS_FEED_MODE=integrated
-Environment=HWISTOCK_EXECUTION_VENUE_MODE=krx_only
-Environment=HWISTOCK_NXT_ENABLED=false
-Environment=HWISTOCK_NXT_READY_SET_APPROVED=false
-ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-intel-collector -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && export HWISTOCK_INVESTMENT_MODE=paper HWISTOCK_MARKET_ANALYSIS_FEED_MODE=integrated HWISTOCK_EXECUTION_VENUE_MODE=krx_only HWISTOCK_NXT_ENABLED=false HWISTOCK_NXT_READY_SET_APPROVED=false && python backend/service/market_intelligence_ingestion.py --once'
+EnvironmentFile=-/home/hwi/.config/hwistock/runtime-mode.env
+ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-intel-collector -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && source ops/systemd/load_runtime_mode_env.sh && python backend/service/market_intelligence_ingestion.py --once'
 NoNewPrivileges=true

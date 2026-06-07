@@ -10,14 +10,10 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=/data/workspace/My/hwiStock
 EnvironmentFile=-/home/hwi/.config/hwistock/deepseek.env
+EnvironmentFile=-/home/hwi/.config/hwistock/runtime-mode.env
 Environment=HWISTOCK_DEEPSEEK_MODEL=deepseek-v4-flash
-Environment=HWISTOCK_INVESTMENT_MODE=paper
-Environment=HWISTOCK_MARKET_ANALYSIS_FEED_MODE=integrated
-Environment=HWISTOCK_EXECUTION_VENUE_MODE=krx_only
-Environment=HWISTOCK_NXT_ENABLED=false
-Environment=HWISTOCK_NXT_READY_SET_APPROVED=false
 Environment=HWISTOCK_AI_EVENT_LIMIT=20
 Environment=HWISTOCK_AI_MAX_OUTPUT_TOKENS=2000
 Environment=HWISTOCK_AI_REASONING_EFFORT=low
-ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-ai-flash -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && export HWISTOCK_INVESTMENT_MODE=paper HWISTOCK_MARKET_ANALYSIS_FEED_MODE=integrated HWISTOCK_EXECUTION_VENUE_MODE=krx_only HWISTOCK_NXT_ENABLED=false HWISTOCK_NXT_READY_SET_APPROVED=false && python backend/service/ai_analysis_runner.py --once --job flash-10m --model "${HWISTOCK_DEEPSEEK_MODEL:-deepseek-v4-flash}"'
+ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-ai-flash -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && source ops/systemd/load_runtime_mode_env.sh && python backend/service/ai_analysis_runner.py --once --job flash-10m --model "${HWISTOCK_DEEPSEEK_MODEL:-deepseek-v4-flash}"'
 NoNewPrivileges=true

@@ -166,6 +166,11 @@ Terminology for the current docs:
 - `HWISTOCK_INVESTMENT_MODE=paper|live` is the canonical docs-level investment
   mode. It is separate from operation-stage values such as
   `HWISTOCK_OPERATION_MODE=paper_experiment`.
+- Installed user-systemd services load the canonical local switch from
+  `/home/hwi/.config/hwistock/runtime-mode.env` and normalize it through
+  `ops/systemd/load_runtime_mode_env.sh`. Paper/mock mode forcibly resolves to
+  `krx_only` with NXT disabled; switching the investment branch starts from
+  `HWISTOCK_INVESTMENT_MODE=paper|live`, not from per-service hardcoded exports.
 - `live_money_trading_ready = not_applicable` and
   `production_quality_ready = partial_non_blocking` do not block the current
   KIS paper/mock experiment.

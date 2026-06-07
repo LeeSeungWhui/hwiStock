@@ -265,22 +265,17 @@ def test_tick_invalidates_cached_token_once_when_account_step_rejects_it(tmp_pat
 def test_systemd_runner_enables_paper_experiment_orders_with_session_gate():
     service_path = Path(__file__).resolve().parents[2] / "ops" / "systemd" / "user" / "hwistock-kis-paper-runner.service"
     service_text = service_path.read_text(encoding="utf-8")
-    assert "Environment=HWISTOCK_OPERATION_MODE=paper_experiment" in service_text
-    assert "Environment=HWISTOCK_INVESTMENT_MODE=paper" in service_text
-    assert "Environment=HWISTOCK_KIS_INVESTMENT_MODE=paper" in service_text
-    assert "Environment=HWISTOCK_MARKET_ANALYSIS_FEED_MODE=integrated" in service_text
-    assert "Environment=HWISTOCK_EXECUTION_VENUE_MODE=krx_only" in service_text
-    assert "Environment=HWISTOCK_NXT_ENABLED=false" in service_text
-    assert "Environment=HWISTOCK_NXT_READY_SET_APPROVED=false" in service_text
-    assert "export HWISTOCK_OPERATION_MODE=paper_experiment" in service_text
-    assert "HWISTOCK_EXECUTION_VENUE_MODE=krx_only" in service_text
+    assert "EnvironmentFile=-/home/hwi/.config/hwistock/runtime-mode.env" in service_text
+    assert "source ops/systemd/load_runtime_mode_env.sh" in service_text
+    assert 'HWISTOCK_OPERATION_MODE="${HWISTOCK_OPERATION_MODE:-paper_experiment}"' in service_text
     assert "--allow-paper-orders" in service_text
     assert "Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=true" in service_text
     assert "Environment=HWISTOCK_MAX_DAILY_PAPER_ORDERS=20" in service_text
     assert "Environment=HWISTOCK_MAX_PAPER_NOTIONAL_KRW=2000000" in service_text
+    assert "export HWISTOCK_INVESTMENT_MODE=paper" not in service_text
 
 
-def test_systemd_ai_and_market_ticks_pin_paper_integrated_krx_policy():
+def test_systemd_ai_and_market_ticks_use_shared_runtime_mode_policy():
     root = Path(__file__).resolve().parents[2] / "ops" / "systemd" / "user"
     for filename in [
         "hwistock-intel-collector.service",
@@ -289,14 +284,9 @@ def test_systemd_ai_and_market_ticks_pin_paper_integrated_krx_policy():
         "hwistock-ai-flash.service",
     ]:
         service_text = (root / filename).read_text(encoding="utf-8")
-        assert "Environment=HWISTOCK_INVESTMENT_MODE=paper" in service_text
-        assert "Environment=HWISTOCK_MARKET_ANALYSIS_FEED_MODE=integrated" in service_text
-        assert "Environment=HWISTOCK_EXECUTION_VENUE_MODE=krx_only" in service_text
-        assert "Environment=HWISTOCK_NXT_ENABLED=false" in service_text
-        assert "Environment=HWISTOCK_NXT_READY_SET_APPROVED=false" in service_text
-        assert "export HWISTOCK_INVESTMENT_MODE=paper" in service_text
-        assert "HWISTOCK_MARKET_ANALYSIS_FEED_MODE=integrated" in service_text
-        assert "HWISTOCK_EXECUTION_VENUE_MODE=krx_only" in service_text
+        assert "EnvironmentFile=-/home/hwi/.config/hwistock/runtime-mode.env" in service_text
+        assert "source ops/systemd/load_runtime_mode_env.sh" in service_text
+        assert "export HWISTOCK_INVESTMENT_MODE=paper" not in service_text
 
 
 def test_systemd_units_are_lf_delimited_and_structured():
