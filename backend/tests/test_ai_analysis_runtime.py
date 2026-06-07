@@ -272,8 +272,8 @@ def test_gpt_morning_input_window_uses_previous_trading_close_for_monday(tmp_pat
     _append_jsonl(
         tmp_path / "normalized" / "2026-06-05" / "events.jsonl",
         [
-            {"event_id": "before-close", "title": "장중 제외", "published_at_kst": "2026-06-05T15:20:00+09:00"},
-            {"event_id": "after-close", "title": "금요일 종가 이후 포함", "published_at_kst": "2026-06-05T15:40:00+09:00"},
+            {"event_id": "before-close", "title": "장중 제외", "published_at_kst": "2026-06-05T14:50:00+09:00"},
+            {"event_id": "after-close", "title": "금요일 투자 close 이후 포함", "published_at_kst": "2026-06-05T15:10:00+09:00"},
         ],
     )
     _append_jsonl(
@@ -282,7 +282,7 @@ def test_gpt_morning_input_window_uses_previous_trading_close_for_monday(tmp_pat
     )
     _write_json(
         tmp_path / "ai" / "2026-06-05" / "pro-hourly-152000.json",
-        {"schema_version": "pro_hourly_market_analysis/v1", "artifact_id": "pro-before", "produced_at_kst": "2026-06-05T15:20:00+09:00"},
+        {"schema_version": "pro_hourly_market_analysis/v1", "artifact_id": "pro-before", "produced_at_kst": "2026-06-05T14:50:00+09:00"},
     )
     _write_json(
         tmp_path / "ai" / "2026-06-07" / "pro-hourly-200000.json",
@@ -297,7 +297,7 @@ def test_gpt_morning_input_window_uses_previous_trading_close_for_monday(tmp_pat
     prompt = (tmp_path / "ai" / "2026-06-08" / "gpt-morning-prompt-latest.txt").read_text(encoding="utf-8")
     health = json.loads(Path(result["health_path"]).read_text(encoding="utf-8"))
 
-    assert result["input_window_start_kst"] == "2026-06-05T15:30:00+09:00"
+    assert result["input_window_start_kst"] == "2026-06-05T15:00:00+09:00"
     assert result["input_window_end_kst"] == "2026-06-08T07:15:00+09:00"
     assert result["included_dates"] == ["2026-06-05", "2026-06-06", "2026-06-07", "2026-06-08"]
     assert result["non_trading_day_carryover"] is True
@@ -338,7 +338,7 @@ def test_gpt_morning_input_window_handles_long_weekend_previous_trading_close(tm
     )
     prompt = (tmp_path / "ai" / "2026-06-09" / "gpt-morning-prompt-latest.txt").read_text(encoding="utf-8")
 
-    assert result["input_window_start_kst"] == "2026-06-05T15:30:00+09:00"
+    assert result["input_window_start_kst"] == "2026-06-05T15:00:00+09:00"
     assert result["included_dates"] == ["2026-06-05", "2026-06-06", "2026-06-07", "2026-06-08", "2026-06-09"]
     assert result["non_trading_day_carryover"] is True
     assert "holiday-carryover" in prompt
@@ -736,6 +736,39 @@ def test_off_session_market_confirmation_confirmed_is_invalid():
     assert "off_session_market_confirmation_confirmed" in result["warnings"]
 
 
+def test_off_session_kis_data_status_not_ok():
+    payload = _pro_v1_payload(
+        calendar_context={"kis_realtime_expected": False, "market_context_open": False},
+        data_quality={
+            "news_event_count": 3,
+            "kis_market_snapshot_count": 2,
+            "kis_artifact_count": 2,
+            "kis_realtime_snapshot_count": 0,
+            "kis_safe_skip_count": 2,
+            "valid_market_confirmation_count": 0,
+            "kis_data_status": "ok",
+            "market_confirmation_status": "confirmed",
+            "runtime_kis_failure_evidence_present": False,
+            "missing_inputs": [],
+            "warnings": [],
+        },
+        no_trade_conditions=[
+            {
+                "condition": "개장 후 KRX 거래대금/체결강도 확인 전 BUY_NOW 금지",
+                "reason": "오프세션",
+            }
+        ],
+    )
+
+    result = ao.validateProHourlyMarketAnalysis(payload)
+    data_quality = result["document"]["data_quality"]
+
+    assert data_quality["kis_data_status"] in {"expected_off_session_no_realtime", "off_session_context_only"}
+    assert data_quality["kis_data_status"] != "ok"
+    assert data_quality["market_confirmation_status"] != "confirmed"
+    assert result["document"]["theme_map"][0]["market_confirmation_status"] == "awaiting_next_open"
+
+
 def test_off_session_requires_no_trade_condition():
     payload = _pro_v1_payload(
         calendar_context={"kis_realtime_expected": False, "market_context_open": False},
@@ -760,6 +793,169 @@ def test_off_session_requires_no_trade_condition():
 
     assert result["document"]["no_trade_conditions"][0]["condition"] == "개장 후 KRX 거래대금/체결강도 확인 전 BUY_NOW 금지"
     assert result["document"]["validation_status"] == "accepted_with_warnings"
+
+
+def test_weekend_pro_hourly_uses_derived_weekend_reason(tmp_path: Path, monkeypatch):
+    now = datetime.fromisoformat("2026-06-07T22:00:00+09:00")
+    calendar = tmp_path / "calendar.json"
+    _write_calendar(calendar, day="2026-06-08", trading=True)
+    monkeypatch.setenv("HWISTOCK_CALENDAR_PATH", str(calendar))
+    _append_jsonl(
+        tmp_path / "normalized" / "2026-06-07" / "events.jsonl",
+        [{"event_id": "event-1", "title": "주말 carryover 점검", "published_at_kst": "2026-06-07T21:30:00+09:00"}],
+    )
+    _write_json(
+        tmp_path / "kis-market" / "2026-06-07" / "safe-skip.json",
+        {
+            "schema_version": "kis_market_snapshot/v0",
+            "artifact_id": "snap-safe-skip",
+            "status": "safe_skip_market_session_gate",
+            "produced_at_kst": "2026-06-07T21:59:00+09:00",
+            "input_results": [
+                {
+                    "input_id": "market_operation",
+                    "status": "safe_skip_calendar_day_missing",
+                    "row_count": 0,
+                    "endpoint_called": False,
+                }
+            ],
+        },
+    )
+    provider_payload = _pro_v1_payload(
+        data_quality={
+            "news_event_count": 1,
+            "kis_market_snapshot_count": 1,
+            "kis_data_status": "ok",
+            "market_confirmation_status": "confirmed",
+            "runtime_kis_failure_evidence_present": False,
+            "missing_inputs": [],
+            "warnings": [],
+        },
+        no_trade_conditions=[
+            {
+                "condition": "개장 후 KRX 거래대금/체결강도 확인 전 BUY_NOW 금지",
+                "reason": "주말 carryover",
+                "source_refs": ["event-1"],
+                "market_data_refs": ["snap-safe-skip"],
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_call_deepseek",
+        lambda *_args, **_kwargs: {
+            "http_status": 200,
+            "finish_reason": "stop",
+            "model": "deepseek-v4-pro",
+            "text": json.dumps(provider_payload, ensure_ascii=False),
+            "usage": None,
+            "error": None,
+        },
+    )
+
+    result = runtime.run_pro_hourly_once(data_root=tmp_path, at=now, model="deepseek-v4-pro")
+
+    assert result["calendar_context"]["calendar_status"] == "derived_weekend_non_trading"
+    assert result["calendar_context"]["reason"] == "weekend_non_trading_day"
+    assert result["calendar_context"]["raw_calendar_status"] == "calendar_day_missing"
+    assert result["kis_call_gate"]["calendar_context"]["reason"] == "calendar_day_missing"
+    assert result["data_quality"]["kis_data_status"] == "expected_off_session_no_realtime"
+    assert result["data_quality"]["kis_safe_skip_count"] == 1
+    assert result["data_quality"]["valid_market_confirmation_count"] == 0
+
+
+def test_pro_output_prompt_includes_hard_caps():
+    prompt = runtime._build_pro_hourly_prompt(  # noqa: SLF001
+        [{"event_id": "event-1", "title": "반도체 투자 확대", "event_type": "news"}],
+        [{"artifact_id": "snap-1", "status": "safe_skip_market_session_gate", "input_results": []}],
+        produced_at_kst="2026-06-07T22:00:00+09:00",
+        calendar_context={"kis_realtime_expected": False, "market_context_open": False},
+    )
+
+    assert "theme_map 최대 5개" in prompt
+    assert "source_ref_map 최대 5개" in prompt
+    assert "no_trade_conditions 최대 5개" in prompt
+    assert "questions_for_next_flash 최대 5개" in prompt
+    assert "source_refs는 최대 3개" in prompt
+    assert "market_data_refs는 최대 3개" in prompt
+    assert "market_regime.why claim은 최대 2개" in prompt
+    assert "data_quality.kis_data_status='ok' 금지" in prompt
+
+
+def test_provider_refs_are_limited_per_item():
+    refs = [f"event-{index}" for index in range(8)]
+    market_refs = [f"snap-{index}" for index in range(8)]
+    payload = _pro_v1_payload(
+        market_regime={
+            "mode": "NEUTRAL",
+            "confidence": 0.52,
+            "why": [
+                {"claim": f"판단 근거 {index}", "source_refs": refs, "market_data_refs": market_refs}
+                for index in range(4)
+            ],
+        },
+        theme_map=[
+            {
+                "theme": f"테마 {index}",
+                "direction": "positive_watch",
+                "strength": 0.5,
+                "freshness": "last_1h",
+                "affected_groups": ["종목군"],
+                "avoid_groups": [],
+                "why_it_matters": f"테마 {index} 확인 필요",
+                "source_refs": refs,
+                "market_data_refs": market_refs,
+                "market_confirmation_status": "confirmed",
+            }
+            for index in range(7)
+        ],
+        no_trade_conditions=[
+            {
+                "condition": f"조건 {index}",
+                "reason": "확인 필요",
+                "source_refs": refs,
+                "market_data_refs": market_refs,
+            }
+            for index in range(7)
+        ],
+        source_ref_map=[
+            {
+                "claim": f"테마 {index} 판단 근거",
+                "source_refs": refs,
+                "market_data_refs": market_refs,
+                "confidence": 0.6,
+            }
+            for index in range(7)
+        ],
+        questions_for_next_flash=[f"질문 {index}" for index in range(7)],
+    )
+
+    result = ao.validateProHourlyMarketAnalysis(payload)
+    document = result["document"]
+
+    assert len(document["theme_map"]) == 5
+    assert len(document["source_ref_map"]) == 5
+    assert len(document["no_trade_conditions"]) == 5
+    assert len(document["questions_for_next_flash"]) == 5
+    assert len(document["theme_map"][0]["source_refs"]) == 3
+    assert len(document["theme_map"][0]["market_data_refs"]) == 3
+    assert len(document["source_ref_map"][0]["source_refs"]) == 3
+    assert len(document["no_trade_conditions"][0]["market_data_refs"]) == 3
+    assert len(document["market_regime"]["why"]) == 2
+    assert len(document["market_regime"]["why"][0]["source_refs"]) == 3
+
+
+def test_truncated_pro_sets_flash_usable_false():
+    payload = _pro_v1_payload(provider={"finish_reason": "length"})
+
+    result = ao.validateProHourlyMarketAnalysis(payload)
+    document = result["document"]
+
+    assert document["validation_status"] == "accepted_with_warnings"
+    assert document["investment_utility_status"] == "truncated_low_utility"
+    assert document["flash_usable"] is False
+    assert document["flash_aggression_cap"] == "no_buy_now"
+    assert "provider_output_truncated" in result["warnings"]
 
 
 def test_clustered_source_prompt_limits_raw_event_count():

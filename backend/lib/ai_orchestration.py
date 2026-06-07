@@ -310,6 +310,15 @@ GENERIC_NEXT_FLASH_QUESTIONS = (
     "보유/대기주문과 신규 진입 후보가 충돌하지 않는가",
 )
 
+PRO_OUTPUT_LIMITS = {
+    "theme_map": 5,
+    "source_ref_map": 5,
+    "no_trade_conditions": 5,
+    "questions_for_next_flash": 5,
+    "refs_per_item": 3,
+    "why_claims": 2,
+}
+
 
 def _contains_any_fragment(value: Any, fragments: Sequence[str]) -> bool:
     text = str(value or "").strip().lower()
@@ -341,6 +350,121 @@ def _append_default_off_session_no_trade_condition(payload: Dict[str, Any]) -> N
             "market_data_refs": [],
         }
     )
+
+
+def _limited_list(value: Any, limit: int) -> List[Any]:
+    return list(value[:limit]) if isinstance(value, list) else []
+
+
+def _limited_deduped_strings(value: Any, limit: int) -> List[str]:
+    return _dedupe_strings(value if isinstance(value, list) else [])[:limit]
+
+
+def _limit_ref_fields(row: Dict[str, Any], *, limit: int) -> None:
+    for key in ("source_refs", "market_data_refs"):
+        if key in row:
+            row[key] = _limited_deduped_strings(row.get(key), limit)
+
+
+def normalizeProHourlyOutputCaps(document: Mapping[str, Any]) -> Dict[str, Any]:
+    payload = deepcopy(dict(document or {}))
+    refs_limit = int(PRO_OUTPUT_LIMITS["refs_per_item"])
+    theme_map = _limited_list(payload.get("theme_map"), int(PRO_OUTPUT_LIMITS["theme_map"]))
+    normalized_themes: List[Any] = []
+    for theme in theme_map:
+        if isinstance(theme, Mapping):
+            row = dict(theme)
+            _limit_ref_fields(row, limit=refs_limit)
+            normalized_themes.append(row)
+        else:
+            normalized_themes.append(theme)
+    if isinstance(payload.get("theme_map"), list):
+        payload["theme_map"] = normalized_themes
+
+    source_ref_map = _limited_list(payload.get("source_ref_map"), int(PRO_OUTPUT_LIMITS["source_ref_map"]))
+    normalized_source_refs: List[Any] = []
+    for item in source_ref_map:
+        if isinstance(item, Mapping):
+            row = dict(item)
+            _limit_ref_fields(row, limit=refs_limit)
+            normalized_source_refs.append(row)
+        else:
+            normalized_source_refs.append(item)
+    if isinstance(payload.get("source_ref_map"), list):
+        payload["source_ref_map"] = normalized_source_refs
+
+    no_trade_conditions = _limited_list(
+        payload.get("no_trade_conditions"),
+        int(PRO_OUTPUT_LIMITS["no_trade_conditions"]),
+    )
+    normalized_no_trade: List[Any] = []
+    for item in no_trade_conditions:
+        if isinstance(item, Mapping):
+            row = dict(item)
+            _limit_ref_fields(row, limit=refs_limit)
+            normalized_no_trade.append(row)
+        else:
+            normalized_no_trade.append(item)
+    if isinstance(payload.get("no_trade_conditions"), list):
+        payload["no_trade_conditions"] = normalized_no_trade
+
+    if isinstance(payload.get("questions_for_next_flash"), list):
+        payload["questions_for_next_flash"] = _limited_deduped_strings(
+            payload.get("questions_for_next_flash"),
+            int(PRO_OUTPUT_LIMITS["questions_for_next_flash"]),
+        )
+
+    regime = payload.get("market_regime")
+    if isinstance(regime, Mapping):
+        regime_row = dict(regime)
+        why = _limited_list(regime_row.get("why"), int(PRO_OUTPUT_LIMITS["why_claims"]))
+        normalized_why: List[Any] = []
+        for item in why:
+            if isinstance(item, Mapping):
+                row = dict(item)
+                _limit_ref_fields(row, limit=refs_limit)
+                normalized_why.append(row)
+            else:
+                normalized_why.append(item)
+        if isinstance(regime_row.get("why"), list):
+            regime_row["why"] = normalized_why
+        payload["market_regime"] = regime_row
+
+    guidance = payload.get("flash_guidance")
+    if isinstance(guidance, Mapping):
+        guidance_row = dict(guidance)
+        for key in ("candidate_focus", "avoid_focus", "must_check_before_buy", "position_management_notes"):
+            if isinstance(guidance_row.get(key), list):
+                guidance_row[key] = _limited_deduped_strings(guidance_row.get(key), 8)
+        payload["flash_guidance"] = guidance_row
+    return payload
+
+
+def _normalize_off_session_data_quality(payload: Dict[str, Any]) -> None:
+    if not _is_off_session_pro_context(payload):
+        return
+    data_quality = payload.get("data_quality")
+    if not isinstance(data_quality, dict):
+        data_quality = {}
+        payload["data_quality"] = data_quality
+    if data_quality.get("kis_data_status") == "ok" or data_quality.get("kis_data_status") in {
+        None,
+        "",
+        "partial",
+        "missing",
+        "degraded",
+        "expected_off_session",
+    }:
+        data_quality["kis_data_status"] = "expected_off_session_no_realtime"
+    data_quality.setdefault("kis_artifact_count", int(data_quality.get("kis_market_snapshot_count") or 0))
+    data_quality.setdefault("kis_realtime_snapshot_count", 0)
+    data_quality.setdefault("kis_safe_skip_count", 0)
+    data_quality.setdefault("valid_market_confirmation_count", 0)
+    if data_quality.get("market_confirmation_status") == "confirmed" or not data_quality.get("market_confirmation_status"):
+        data_quality["market_confirmation_status"] = "not_confirmed"
+    dq_warnings = data_quality.setdefault("warnings", [])
+    if isinstance(dq_warnings, list) and "off_session_no_realtime_expected" not in dq_warnings:
+        dq_warnings.append("off_session_no_realtime_expected")
 
 
 def _apply_low_utility_pro_status(
@@ -440,11 +564,43 @@ def _semantic_pro_quality_warnings(payload: Dict[str, Any]) -> List[str]:
         if not payload.get("no_trade_conditions"):
             warnings.append("off_session_no_trade_conditions_required")
             _append_default_off_session_no_trade_condition(payload)
-        data_quality = payload.get("data_quality") if isinstance(payload.get("data_quality"), dict) else {}
-        if data_quality and data_quality.get("kis_data_status") in {"missing", "degraded"}:
-            data_quality["kis_data_status"] = "expected_off_session_no_realtime"
+        _normalize_off_session_data_quality(payload)
 
     return _dedupe_strings(warnings)
+
+
+def _kis_snapshot_counts(kis_rows: Sequence[Mapping[str, Any]]) -> Dict[str, int]:
+    safe_skip_count = 0
+    realtime_snapshot_count = 0
+    valid_market_confirmation_count = 0
+    success_statuses = {"ok", "accepted", "success", "completed"}
+    for snapshot in kis_rows:
+        snapshot_status = str(snapshot.get("status") or "")
+        input_results = snapshot.get("input_results") if isinstance(snapshot.get("input_results"), list) else []
+        if not input_results and snapshot_status.startswith("safe_skip"):
+            safe_skip_count += 1
+        for item in input_results:
+            if not isinstance(item, Mapping):
+                continue
+            status = str(item.get("status") or "")
+            input_id = str(item.get("input_id") or item.get("step") or "")
+            try:
+                row_count = int(item.get("row_count") or 0)
+            except (TypeError, ValueError):
+                row_count = 0
+            if status.startswith("safe_skip") or status.startswith("skipped"):
+                safe_skip_count += 1
+            valid = bool(item.get("endpoint_called") is True and row_count > 0 and status in success_statuses)
+            if valid:
+                valid_market_confirmation_count += 1
+                if "realtime" in input_id or "_ws" in input_id or "market_operation" in input_id:
+                    realtime_snapshot_count += 1
+    return {
+        "kis_artifact_count": len(kis_rows),
+        "kis_realtime_snapshot_count": realtime_snapshot_count,
+        "kis_safe_skip_count": safe_skip_count,
+        "valid_market_confirmation_count": valid_market_confirmation_count,
+    }
 
 
 def buildProHourlyMarketAnalysis(
@@ -475,6 +631,7 @@ def buildProHourlyMarketAnalysis(
         if seconds is not None:
             window["window_seconds"] = seconds
     kis_data_status = "ok" if kis_rows else ("missing" if event_rows else "missing")
+    kis_counts = _kis_snapshot_counts(kis_rows)
     regime_mode = "NO_TRADE" if safe_block else "NEUTRAL"
     return {
         "schema_version": PRO_HOURLY_SCHEMA,
@@ -501,7 +658,9 @@ def buildProHourlyMarketAnalysis(
         "data_quality": {
             "news_event_count": len(event_rows),
             "kis_market_snapshot_count": len(kis_rows),
+            **kis_counts,
             "kis_data_status": "safe_block" if safe_block else kis_data_status,
+            "market_confirmation_status": "confirmed" if kis_counts["valid_market_confirmation_count"] else "not_confirmed",
             "runtime_kis_failure_evidence_present": False,
             "missing_inputs": []
             if event_rows and kis_rows
@@ -1018,7 +1177,7 @@ def buildFlashTradeDocument(
 def validateProHourlyMarketAnalysis(
     document: Optional[Mapping[str, Any]],
 ) -> Dict[str, Any]:
-    payload = deepcopy(dict(document or {}))
+    payload = normalizeProHourlyOutputCaps(document)
     errors: List[str] = []
     warnings: List[str] = list(payload.get("warnings") or []) if isinstance(payload.get("warnings"), list) else []
 
@@ -1114,6 +1273,8 @@ def validateProHourlyMarketAnalysis(
         errors.append("source_ref_map_required")
     if not str(payload.get("investment_utility_status") or "").strip():
         errors.append("investment_utility_status_required")
+
+    _normalize_off_session_data_quality(payload)
 
     provider = payload.get("provider") if isinstance(payload.get("provider"), Mapping) else {}
     if provider.get("finish_reason") == "length":

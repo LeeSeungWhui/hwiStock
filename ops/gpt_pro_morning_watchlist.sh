@@ -35,16 +35,9 @@ fi
 
 PURPOSE="${HWISTOCK_GPT_PURPOSE:-morning_watchlist_0715_local_browser_use}"
 PROMPT_SOURCE="${HWISTOCK_GPT_PROMPT_PATH:-}"
-if [[ -z "$PROMPT_SOURCE" ]]; then
-  for candidate in \
-    "data/ai/${TARGET_TRADE_DATE}/gpt-morning-prompt-latest.txt" \
-    "data/prompts/${TARGET_TRADE_DATE}/gpt-morning-watchlist-latest.txt"
-  do
-    if [[ -f "$candidate" ]]; then
-      PROMPT_SOURCE="$candidate"
-      break
-    fi
-  done
+PROMPT_SOURCE_EXPLICIT=false
+if [[ -n "$PROMPT_SOURCE" ]]; then
+  PROMPT_SOURCE_EXPLICIT=true
 fi
 
 START_EPOCH="$(date +%s)"
@@ -225,8 +218,12 @@ run_codex_exec() {
 }
 
 build_prompt_if_missing() {
-  if [[ -n "$PROMPT_SOURCE" && -f "$PROMPT_SOURCE" ]]; then
-    return 0
+  if [[ "$PROMPT_SOURCE_EXPLICIT" == "true" ]]; then
+    if [[ -n "$PROMPT_SOURCE" && -f "$PROMPT_SOURCE" ]]; then
+      return 0
+    fi
+    printf 'explicit prompt source missing: %s\n' "$PROMPT_SOURCE" >"$PROMPT_BUILD_ERR"
+    return 2
   fi
 
   set +e
@@ -274,16 +271,14 @@ if [[ ! -x "$CODEX_BIN" ]]; then
   exit 0
 fi
 
-if [[ -z "$PROMPT_SOURCE" || ! -f "$PROMPT_SOURCE" ]]; then
-  set +e
-  build_prompt_if_missing
-  prompt_build_code=$?
-  set -e
-  if [[ "$prompt_build_code" -ne 0 ]]; then
-    publish_safe_block_or_fail "prompt_build_failed"
-    write_summary "safe_block" "prompt_build_failed:${prompt_build_code}" "$prompt_build_code"
-    exit 0
-  fi
+set +e
+build_prompt_if_missing
+prompt_build_code=$?
+set -e
+if [[ "$prompt_build_code" -ne 0 ]]; then
+  publish_safe_block_or_fail "prompt_build_failed"
+  write_summary "safe_block" "prompt_build_failed:${prompt_build_code}" "$prompt_build_code"
+  exit 0
 fi
 
 if [[ "${HWISTOCK_GPT_SKIP_PREFLIGHT:-false}" != "true" ]]; then

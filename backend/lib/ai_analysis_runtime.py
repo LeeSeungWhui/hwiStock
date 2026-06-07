@@ -266,19 +266,24 @@ def _calendar_row_is_trading_day(row: Mapping[str, Any]) -> bool:
 def _calendar_regular_close(row: Mapping[str, Any]) -> datetime.time:
     krx = row.get("krx") if isinstance(row.get("krx"), Mapping) else {}
     raw = (
-        row.get("krxClose")
+        row.get("orderClose")
+        or row.get("order_close")
+        or row.get("krxOrderClose")
+        or row.get("krx_order_close")
+        or krx.get("orderClose")
+        or row.get("krxClose")
         or row.get("krx_close")
         or row.get("regularClose")
         or row.get("regular_close")
         or krx.get("regularClose")
-        or "15:30"
+        or "15:00"
     )
     for fmt in ("%H:%M", "%H:%M:%S"):
         try:
             return datetime.strptime(str(raw), fmt).time()
         except ValueError:
             continue
-    return datetime.strptime("15:30", "%H:%M").time()
+    return datetime.strptime("15:00", "%H:%M").time()
 
 
 def _morning_prompt_input_window(
@@ -879,7 +884,12 @@ def _build_pro_hourly_prompt(
         "data_quality": {
             "news_event_count": 0,
             "kis_market_snapshot_count": 0,
-            "kis_data_status": "ok|partial|expected_off_session|missing|degraded",
+            "kis_artifact_count": 0,
+            "kis_realtime_snapshot_count": 0,
+            "kis_safe_skip_count": 0,
+            "valid_market_confirmation_count": 0,
+            "kis_data_status": "ok|partial|expected_off_session_no_realtime|off_session_context_only|missing|degraded",
+            "market_confirmation_status": "confirmed|not_confirmed|awaiting_next_open|not_available",
             "runtime_kis_failure_evidence_present": False,
             "missing_inputs": [],
             "warnings": [],
@@ -908,8 +918,13 @@ def _build_pro_hourly_prompt(
         "사람이 읽는 자연어 문자열은 한국어로 쓰고, schema key/enum/source_ref/ticker 같은 기계값은 지정 형식 그대로 유지해. "
         "theme_map, flash_guidance, no_trade_conditions, contradiction_notes, source_ref_map, questions_for_next_flash를 반드시 채워라. "
         "calendar_context.kis_realtime_expected=false이면 KIS 실시간 부재는 정상 오프세션/휴장 상태로 취급하고 KIS 장애/수신 장애라고 쓰지 마. "
+        "calendar_context.kis_realtime_expected=false 또는 market_context_open=false이면 data_quality.kis_data_status='ok' 금지; expected_off_session_no_realtime 또는 off_session_context_only를 써라. "
+        "data_quality에는 kis_artifact_count, kis_realtime_snapshot_count, kis_safe_skip_count, valid_market_confirmation_count, market_confirmation_status를 반드시 분리해서 넣어라. "
         "runtime evidence에 실제 token/transport/provider failure가 있을 때만 KIS 실패라고 써라. "
         "summary/themes/risk_flags만 내면 news_only_low_utility로 간주된다. "
+        "출력 hard cap: theme_map 최대 5개, source_ref_map 최대 5개, no_trade_conditions 최대 5개, questions_for_next_flash 최대 5개. "
+        "각 theme/source_ref/no_trade item의 source_refs는 최대 3개, market_data_refs는 최대 3개. market_regime.why claim은 최대 2개. "
+        "긴 설명 금지. 대표 ref만 넣고 provider JSON을 compact하게 유지해라. "
         "top_news_clusters는 압축된 입력이다. source_ref_map claim은 '최근 1시간 입력 묶음' 같은 비분석 문장을 쓰지 말고, 테마/종목군/확인조건을 연결한 판단 문장으로 써라. "
         "오프세션/휴장으로 calendar_context.kis_realtime_expected=false이면 market_confirmation_status=confirmed 금지; not_available, awaiting_next_open, carryover_only 중 하나를 써라. "
         "오프세션/휴장에서는 no_trade_conditions에 '개장 후 KRX 거래대금/체결강도 확인 전 BUY_NOW 금지'를 반드시 포함해라. "
@@ -1103,7 +1118,7 @@ def _apply_off_session_provider_guard(
     }
     data_quality = artifact.get("data_quality")
     if isinstance(data_quality, dict):
-        data_quality["kis_data_status"] = "expected_off_session"
+        data_quality["kis_data_status"] = "expected_off_session_no_realtime"
         data_quality["runtime_kis_failure_evidence_present"] = False
         dq_warnings = data_quality.setdefault("warnings", [])
         if isinstance(dq_warnings, list) and warning not in dq_warnings:
@@ -1128,10 +1143,11 @@ def _provider_status(provider: Mapping[str, Any]) -> str:
 def _apply_pro_provider_json(artifact: Dict[str, Any], provider_json: Mapping[str, Any]) -> None:
     if not provider_json:
         return
-    artifact["provider_json"] = dict(provider_json)
-    if str(provider_json.get("summary") or "").strip():
-        artifact["summary"] = str(provider_json["summary"])[:1000]
-    if provider_json.get("schema_version") == "pro_hourly_market_analysis/v1":
+    normalized_provider = ao.normalizeProHourlyOutputCaps(provider_json)
+    artifact["provider_json"] = dict(normalized_provider)
+    if str(normalized_provider.get("summary") or "").strip():
+        artifact["summary"] = str(normalized_provider["summary"])[:1000]
+    if normalized_provider.get("schema_version") == "pro_hourly_market_analysis/v1":
         for key in (
             "document_kind",
             "input_window_kst",
@@ -1145,7 +1161,7 @@ def _apply_pro_provider_json(artifact: Dict[str, Any], provider_json: Mapping[st
             "questions_for_next_flash",
             "investment_utility_status",
         ):
-            value = provider_json.get(key)
+            value = normalized_provider.get(key)
             if isinstance(value, (dict, list)) or (isinstance(value, str) and value.strip()):
                 artifact[key] = value
         artifact["schema_version"] = "pro_hourly_market_analysis/v1"
@@ -1154,19 +1170,19 @@ def _apply_pro_provider_json(artifact: Dict[str, Any], provider_json: Mapping[st
         artifact["ai_direct_order_allowed"] = False
         return
 
-    themes = provider_json.get("themes")
+    themes = normalized_provider.get("themes")
     if isinstance(themes, list):
         artifact["themes"] = [str(item)[:80] for item in themes[:12]]
-    risk_flags = provider_json.get("risk_flags")
+    risk_flags = normalized_provider.get("risk_flags")
     if isinstance(risk_flags, list):
         artifact["risk_flags"] = [str(item)[:120] for item in risk_flags[:12]]
-    strong = provider_json.get("strong_conditions")
+    strong = normalized_provider.get("strong_conditions")
     if isinstance(strong, list):
         artifact["strong_conditions"] = [str(item)[:120] for item in strong[:12]]
-    avoid = provider_json.get("avoid_conditions")
+    avoid = normalized_provider.get("avoid_conditions")
     if isinstance(avoid, list):
         artifact["avoid_conditions"] = [str(item)[:120] for item in avoid[:12]]
-    market_mode = str(provider_json.get("market_mode") or "").strip()
+    market_mode = str(normalized_provider.get("market_mode") or "").strip()
     if market_mode:
         regime = artifact.setdefault("market_regime", {})
         if isinstance(regime, dict):
@@ -1176,6 +1192,66 @@ def _apply_pro_provider_json(artifact: Dict[str, Any], provider_json: Mapping[st
     warnings = artifact.setdefault("warnings", [])
     if isinstance(warnings, list) and "pro_hourly_low_utility_news_only" not in warnings:
         warnings.append("pro_hourly_low_utility_news_only")
+
+
+def _is_pro_hourly_off_session(calendar_context: Mapping[str, Any]) -> bool:
+    return (
+        calendar_context.get("kis_realtime_expected") is False
+        or calendar_context.get("market_context_open") is False
+        or calendar_context.get("is_trading_day") is False
+    )
+
+
+def _pro_hourly_calendar_context(calendar_context: Mapping[str, Any], at: datetime) -> Dict[str, Any]:
+    result = dict(calendar_context or {})
+    at_kst = at.astimezone(KST)
+    if at_kst.weekday() >= 5 and _is_pro_hourly_off_session(result):
+        if "raw_calendar_status" not in result and result.get("calendar_status"):
+            result["raw_calendar_status"] = result.get("calendar_status")
+        raw_reason = result.get("calendar_reason") or result.get("reason")
+        if "raw_calendar_reason" not in result and raw_reason:
+            result["raw_calendar_reason"] = raw_reason
+        result["calendar_status"] = "derived_weekend_non_trading"
+        result["calendar_reason"] = "weekend_non_trading_day"
+        result["reason"] = "weekend_non_trading_day"
+        result["non_trading_reason"] = "weekend_non_trading_day"
+        result["is_trading_day"] = False
+        result["market_context_open"] = False
+        result["broker_order_open"] = False
+        result["kis_realtime_expected"] = False
+        result["route_venue"] = result.get("route_venue") or "idle"
+    return result
+
+
+def _merge_pro_kis_data_quality_counts(
+    artifact: Dict[str, Any],
+    *,
+    kis_snapshots: Sequence[Mapping[str, Any]],
+    calendar_context: Mapping[str, Any],
+) -> None:
+    data_quality = artifact.setdefault("data_quality", {})
+    if not isinstance(data_quality, dict):
+        data_quality = {}
+        artifact["data_quality"] = data_quality
+    counts = ao._kis_snapshot_counts([dict(row) for row in kis_snapshots])  # noqa: SLF001
+    data_quality["kis_market_snapshot_count"] = len(kis_snapshots)
+    for key, value in counts.items():
+        data_quality[key] = value
+    if _is_pro_hourly_off_session(calendar_context):
+        if str(data_quality.get("kis_data_status") or "").strip() in {
+            "",
+            "ok",
+            "partial",
+            "missing",
+            "degraded",
+            "expected_off_session",
+        }:
+            data_quality["kis_data_status"] = "expected_off_session_no_realtime"
+        if data_quality.get("valid_market_confirmation_count", 0) <= 0:
+            data_quality["market_confirmation_status"] = "not_confirmed"
+        dq_warnings = data_quality.setdefault("warnings", [])
+        if isinstance(dq_warnings, list) and "off_session_no_realtime_expected" not in dq_warnings:
+            dq_warnings.append("off_session_no_realtime_expected")
 
 
 def _deepseek_api_key() -> str:
@@ -1502,7 +1578,8 @@ def run_pro_hourly_once(
 ) -> Dict[str, Any]:
     now = at or _now_kst()
     gate = msg.evaluateKisCallGate(now_kst=now, call_family="pro_hourly", env=os.environ)
-    calendar_context = gate["calendar_context"]
+    raw_calendar_context = gate["calendar_context"]
+    calendar_context = _pro_hourly_calendar_context(raw_calendar_context, now)
     events, input_window = _read_events_for_hour_window(data_root, at=now)
     kis_snapshots = _read_recent_kis_snapshots(data_root, at=now)
     selected_model = model or os.getenv("HWISTOCK_DEEPSEEK_MODEL", ao.DEEPSEEK_PRO_MODEL)
@@ -1545,6 +1622,11 @@ def run_pro_hourly_once(
             provider_json=provider_json,
             calendar_context=calendar_context,
         )
+    _merge_pro_kis_data_quality_counts(
+        artifact,
+        kis_snapshots=kis_snapshots,
+        calendar_context=calendar_context,
+    )
     if provider_status not in {"ok", "blocked_no_source_inputs", "provider_output_truncated"}:
         artifact["validation_status"] = "safe_block"
         artifact["document_kind"] = "NO_TRADE"
@@ -1560,10 +1642,6 @@ def run_pro_hourly_once(
                 "market_data_refs": artifact.get("market_data_refs") or [],
             }
         ]
-    if calendar_context.get("kis_realtime_expected") is False:
-        data_quality = artifact.get("data_quality")
-        if isinstance(data_quality, dict) and not artifact.get("market_data_refs"):
-            data_quality["kis_data_status"] = "expected_off_session"
     pro_validation = ao.validateProHourlyMarketAnalysis(artifact)
     artifact = pro_validation["document"]
     artifact["validation_errors"] = pro_validation["errors"]
