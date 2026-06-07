@@ -69,6 +69,8 @@ PREFLIGHT_BROWSER_EVENTS="${RUN_DIR}/preflight-browser-events.jsonl"
 PREFLIGHT_BROWSER_LAST="${RUN_DIR}/preflight-browser-last-message.md"
 PREFLIGHT_BROWSER_STDERR="${RUN_DIR}/preflight-browser-stderr.log"
 SECRET_SCAN_JSON="${RUN_DIR}/prompt-secret-scan.json"
+FAILURE_JSON="${RUN_DIR}/failure.json"
+RESPONSE_VALIDATE_ERR="${RUN_DIR}/response-validate.err.log"
 
 export RUN_ID RUN_DIR TARGET_TRADE_DATE PURPOSE PROMPT_SOURCE START_EPOCH START_ISO
 export REPO_ROOT DATA_DIR DAY
@@ -76,7 +78,7 @@ export RESPONSE RAW_RESPONSE SUMMARY PUBLISH_OUT PUBLISH_ERR CODEX_EVENTS CODEX_
 export PROMPT_BUILD_OUT PROMPT_BUILD_ERR
 export PREFLIGHT_CODEX_EVENTS PREFLIGHT_CODEX_LAST PREFLIGHT_CODEX_STDERR
 export PREFLIGHT_BROWSER_PROMPT PREFLIGHT_BROWSER_EVENTS PREFLIGHT_BROWSER_LAST PREFLIGHT_BROWSER_STDERR
-export SECRET_SCAN_JSON
+export SECRET_SCAN_JSON FAILURE_JSON RESPONSE_VALIDATE_ERR
 
 publish_safe_block() {
   local reason="$1"
@@ -178,6 +180,8 @@ summary = {
     "run_log_dir": os.environ["RUN_DIR"],
     "response_json": os.environ["RESPONSE"],
     "raw_response": os.environ["RAW_RESPONSE"],
+    "failure_output": os.environ.get("FAILURE_JSON"),
+    "response_validate_stderr": os.environ.get("RESPONSE_VALIDATE_ERR"),
     "publish_output": os.environ["PUBLISH_OUT"],
     "publish_stderr": os.environ["PUBLISH_ERR"],
     "prompt_build_output": os.environ["PROMPT_BUILD_OUT"],
@@ -296,28 +300,77 @@ if [[ "${HWISTOCK_GPT_SKIP_PREFLIGHT:-false}" != "true" ]]; then
     exit 0
   fi
 
-  cat >"$PREFLIGHT_BROWSER_PROMPT" <<'EOF'
-Use the mcp__node_repl_http js tool exactly once. In that tool, import `/home/hwi/.codex/plugins/cache/openai-bundled/chrome/26.519.81530/scripts/browser-client.mjs`, call `setupBrowserRuntime({ globals: globalThis })`, then run `agent.browsers.list()`. Return only JSON with `{ "ok": true, "browser_count": <number> }` if it works, or `{ "ok": false, "error": <string> }` if it fails. Do not open pages, do not browse, do not edit files. Then answer with exactly DONE.
-EOF
-  set +e
-  run_codex_exec "$PREFLIGHT_BROWSER_PROMPT" \
-    "$PREFLIGHT_BROWSER_EVENTS" "$PREFLIGHT_BROWSER_LAST" "$PREFLIGHT_BROWSER_STDERR" \
-    "${HWISTOCK_GPT_PREFLIGHT_BROWSER_TIMEOUT_SECONDS:-180}"
-  preflight_browser_code=$?
-  set -e
-  if [[ "$preflight_browser_code" -ne 0 ]]; then
-    publish_safe_block_or_fail "browser_preflight_failed"
-    write_summary "safe_block" "browser_preflight_failed:${preflight_browser_code}" "$preflight_browser_code"
-    exit 0
+  browser_preflight_ok="false"
+  browser_preflight_reason="browser_preflight_no_backend"
+  browser_preflight_detail="browser_preflight_no_backend"
+  browser_attempts="${HWISTOCK_GPT_PREFLIGHT_BROWSER_ATTEMPTS:-3}"
+  if ! [[ "$browser_attempts" =~ ^[0-9]+$ ]] || [[ "$browser_attempts" -lt 1 ]]; then
+    browser_attempts=1
   fi
-  set +e
-  python3 - <<'PY'
+
+  for ((browser_attempt = 1; browser_attempt <= browser_attempts; browser_attempt++)); do
+    PREFLIGHT_BROWSER_PROMPT="${RUN_DIR}/preflight-browser-prompt-attempt-${browser_attempt}.md"
+    PREFLIGHT_BROWSER_EVENTS="${RUN_DIR}/preflight-browser-events-attempt-${browser_attempt}.jsonl"
+    PREFLIGHT_BROWSER_LAST="${RUN_DIR}/preflight-browser-last-message-attempt-${browser_attempt}.md"
+    PREFLIGHT_BROWSER_STDERR="${RUN_DIR}/preflight-browser-stderr-attempt-${browser_attempt}.log"
+    export PREFLIGHT_BROWSER_PROMPT PREFLIGHT_BROWSER_EVENTS PREFLIGHT_BROWSER_LAST PREFLIGHT_BROWSER_STDERR
+
+    cat >"$PREFLIGHT_BROWSER_PROMPT" <<'EOF'
+Use the mcp__node_repl_http js tool exactly once with timeout_ms set to at least 30000.
+
+In that tool, run JavaScript equivalent to this logic:
+- import `file:///home/hwi/.codex/plugins/cache/openai-bundled/chrome/26.519.81530/scripts/browser-client.mjs`
+- call `setupBrowserRuntime({ globals: globalThis })`
+- run `agent.browsers.list()` with a 20000ms Promise.race timeout
+- write only JSON text with `nodeRepl.write(JSON.stringify({ ok: true, browser_count: <number> }))` when at least the browser list call completes, or `{ "ok": false, "error": <string> }` on failure.
+
+Do not open pages, do not browse, do not edit files.
+After the tool call, answer with exactly DONE.
+EOF
+    set +e
+    run_codex_exec "$PREFLIGHT_BROWSER_PROMPT" \
+      "$PREFLIGHT_BROWSER_EVENTS" "$PREFLIGHT_BROWSER_LAST" "$PREFLIGHT_BROWSER_STDERR" \
+      "${HWISTOCK_GPT_PREFLIGHT_BROWSER_TIMEOUT_SECONDS:-240}"
+    preflight_browser_code=$?
+    set -e
+    if [[ "$preflight_browser_code" -ne 0 ]]; then
+      browser_preflight_reason="browser_preflight_failed"
+      browser_preflight_detail="browser_preflight_failed:${preflight_browser_code}:attempt_${browser_attempt}_of_${browser_attempts}"
+      sleep "${HWISTOCK_GPT_PREFLIGHT_BROWSER_RETRY_SLEEP_SECONDS:-2}"
+      continue
+    fi
+
+    set +e
+    python3 - <<'PY'
 import json
 import os
+import re
 from pathlib import Path
 
 events = Path(os.environ["PREFLIGHT_BROWSER_EVENTS"])
 ok = False
+
+def load_json_candidates(text: str):
+    stripped = text.strip()
+    if not stripped:
+        return []
+    candidates = [stripped]
+    candidates.extend(match.group(1).strip() for match in re.finditer(r"```(?:json)?\s*(.*?)```", text, re.S | re.I))
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(text[index:])
+        except Exception:
+            continue
+        yield payload
+    for candidate in candidates:
+        try:
+            yield json.loads(candidate)
+        except Exception:
+            continue
+
 for line in events.read_text(encoding="utf-8", errors="replace").splitlines():
     try:
         item = (json.loads(line).get("item") or {})
@@ -330,20 +383,28 @@ for line in events.read_text(encoding="utf-8", errors="replace").splitlines():
         text = content.get("text") if isinstance(content, dict) else None
         if not text:
             continue
-        try:
-            payload = json.loads(text)
-        except Exception:
-            continue
-        if payload.get("ok") is True and int(payload.get("browser_count") or 0) > 0:
-            ok = True
+        for payload in load_json_candidates(text):
+            if isinstance(payload, dict) and payload.get("ok") is True and int(payload.get("browser_count") or 0) > 0:
+                ok = True
 if not ok:
     raise SystemExit("browser_preflight_no_backend")
 PY
-  browser_validate_code=$?
-  set -e
-  if [[ "$browser_validate_code" -ne 0 ]]; then
-    publish_safe_block_or_fail "browser_preflight_no_backend"
-    write_summary "safe_block" "browser_preflight_no_backend:${browser_validate_code}" "$browser_validate_code"
+    browser_validate_code=$?
+    set -e
+    if [[ "$browser_validate_code" -eq 0 ]]; then
+      browser_preflight_ok="true"
+      browser_preflight_reason=""
+      browser_preflight_detail=""
+      break
+    fi
+    browser_preflight_reason="browser_preflight_no_backend"
+    browser_preflight_detail="browser_preflight_no_backend:${browser_validate_code}:attempt_${browser_attempt}_of_${browser_attempts}"
+    sleep "${HWISTOCK_GPT_PREFLIGHT_BROWSER_RETRY_SLEEP_SECONDS:-2}"
+  done
+
+  if [[ "$browser_preflight_ok" != "true" ]]; then
+    publish_safe_block_or_fail "$browser_preflight_reason"
+    write_summary "safe_block" "$browser_preflight_detail" 1
     exit 0
   fi
 fi
@@ -393,7 +454,8 @@ Objective: perform the GPT Pro leg only, using the user's local Chrome/browser-u
 Hard route rule:
 - Use local Chrome/browser-use via the Chrome plugin/browser-client route available to Codex CLI.
 - Do NOT use ssh-browser-use, SSH reverse socket routes, remote Chrome, CDP fallback, headless Playwright, or DeepSeek.
-- If the selected route cannot reach ChatGPT Pro, write a JSON failure summary to \`${RUN_DIR}/failure.json\` and stop.
+- If the selected route cannot reach ChatGPT Pro, write a JSON failure summary to \`${FAILURE_JSON}\` and stop.
+- When using the node_repl_http js/browser-client route, set tool timeout_ms to at least 30000 and use explicit JS-side waits/timeouts for browser discovery/navigation. Do not rely on the default 10000ms tool timeout for browser operations.
 
 Input prompt to send to ChatGPT Pro:
 - Read \`${PROMPT_SOURCE}\`.
@@ -417,22 +479,42 @@ Output requirements:
 - Final answer should be brief and include whether the JSON file was saved and parse-valid.
 EOF
 
-set +e
-CODEX_START="$(date +%s)"
-run_codex_exec "$CODEX_PROMPT" "$CODEX_EVENTS" "$CODEX_LAST" "$CODEX_STDERR" "${HWISTOCK_GPT_CODEX_TIMEOUT_SECONDS:-1800}"
-CODEX_EXIT=$?
-CODEX_END="$(date +%s)"
-set -e
-export CODEX_START CODEX_END CODEX_EXIT
-
-if [[ "$CODEX_EXIT" -ne 0 ]]; then
-  publish_safe_block_or_fail "codex_exec_failed"
-  write_summary "safe_block" "codex_exec_failed:${CODEX_EXIT}" "$CODEX_EXIT"
-  exit 0
+gpt_codex_attempts="${HWISTOCK_GPT_CODEX_ATTEMPTS:-3}"
+if ! [[ "$gpt_codex_attempts" =~ ^[0-9]+$ ]] || [[ "$gpt_codex_attempts" -lt 1 ]]; then
+  gpt_codex_attempts=1
 fi
+gpt_response_ok="false"
+gpt_failure_reason="gpt_response_validation_failed"
+gpt_failure_detail="gpt_response_validation_failed"
+CODEX_EXIT=0
+CODEX_START=""
+CODEX_END=""
 
-set +e
-python3 - <<'PY'
+for ((gpt_attempt = 1; gpt_attempt <= gpt_codex_attempts; gpt_attempt++)); do
+  CODEX_EVENTS="${RUN_DIR}/codex-events-attempt-${gpt_attempt}.jsonl"
+  CODEX_LAST="${RUN_DIR}/codex-last-message-attempt-${gpt_attempt}.md"
+  CODEX_STDERR="${RUN_DIR}/codex-stderr-attempt-${gpt_attempt}.log"
+  RESPONSE_VALIDATE_ERR="${RUN_DIR}/response-validate-attempt-${gpt_attempt}.err.log"
+  export CODEX_EVENTS CODEX_LAST CODEX_STDERR RESPONSE_VALIDATE_ERR
+  rm -f "$RESPONSE" "$RAW_RESPONSE" "$FAILURE_JSON" "$RESPONSE_VALIDATE_ERR"
+
+  set +e
+  CODEX_START="$(date +%s)"
+  run_codex_exec "$CODEX_PROMPT" "$CODEX_EVENTS" "$CODEX_LAST" "$CODEX_STDERR" "${HWISTOCK_GPT_CODEX_TIMEOUT_SECONDS:-1800}"
+  CODEX_EXIT=$?
+  CODEX_END="$(date +%s)"
+  set -e
+  export CODEX_START CODEX_END CODEX_EXIT
+
+  if [[ "$CODEX_EXIT" -ne 0 ]]; then
+    gpt_failure_reason="codex_exec_failed"
+    gpt_failure_detail="codex_exec_failed:${CODEX_EXIT}:attempt_${gpt_attempt}_of_${gpt_codex_attempts}"
+    sleep "${HWISTOCK_GPT_CODEX_RETRY_SLEEP_SECONDS:-3}"
+    continue
+  fi
+
+  set +e
+  python3 - 2>"$RESPONSE_VALIDATE_ERR" <<'PY'
 import json
 import os
 from pathlib import Path
@@ -458,11 +540,22 @@ for index, item in enumerate(obj.get("items") or []):
     for forbidden in ("entry_price_limit", "quantity", "order_type"):
         assert forbidden not in item, forbidden
 PY
-response_validate_code=$?
-set -e
-if [[ "$response_validate_code" -ne 0 ]]; then
-  publish_safe_block_or_fail "gpt_response_validation_failed"
-  write_summary "safe_block" "gpt_response_validation_failed:${response_validate_code}" "$response_validate_code"
+  response_validate_code=$?
+  set -e
+  if [[ "$response_validate_code" -eq 0 ]]; then
+    gpt_response_ok="true"
+    gpt_failure_reason=""
+    gpt_failure_detail=""
+    break
+  fi
+  gpt_failure_reason="gpt_response_validation_failed"
+  gpt_failure_detail="gpt_response_validation_failed:${response_validate_code}:attempt_${gpt_attempt}_of_${gpt_codex_attempts}"
+  sleep "${HWISTOCK_GPT_CODEX_RETRY_SLEEP_SECONDS:-3}"
+done
+
+if [[ "$gpt_response_ok" != "true" ]]; then
+  publish_safe_block_or_fail "$gpt_failure_reason"
+  write_summary "safe_block" "$gpt_failure_detail" 1
   exit 0
 fi
 
