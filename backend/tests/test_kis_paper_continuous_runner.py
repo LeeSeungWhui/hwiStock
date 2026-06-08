@@ -1229,6 +1229,55 @@ def test_runner_sell_preflight_accepts_balance_position_sellable_fallback(tmp_pa
     assert overlay["sellable_helper_status"] == "skipped_provider_unsupported"
     assert overlay["fallback_used"] is True
     assert "sellable_helper_unavailable_using_balance_position" in overlay["sellable_truth_warnings"]
+    account_truth = preflight["accountTruth"]
+    assert account_truth["raw_sellable_status"] == "skipped_provider_unsupported"
+    assert account_truth["sellable_truth_status"] == "provider_unsupported_with_balance_fallback"
+    assert account_truth["sellable_truth_source"] == "kis_balance_output1"
+    assert account_truth["sellable_truth_accepted"] is True
+    assert account_truth["sellable_fallback_used"] is True
+    assert account_truth["normalized_sellable_quantity"] == 7
+    assert account_truth["requested_quantity"] == 2
+
+
+def test_runner_sell_preflight_accepts_balance_position_fallback_when_sellable_status_none(tmp_path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    monkeypatch.setenv("HWISTOCK_MARKET_DATA_SOURCE", "kis_market_mode_aware")
+    status = base_runner.get_runner_status("2026-06-05T09:30:00")
+
+    preflight = continuous.evaluateIntentExecutionPreflight(
+        {
+            "schema_version": "paper_order_intent/v0",
+            "intent_id": "intent-sell-none-fallback-1",
+            "idempotency_key": "intent-sell-none-fallback-1",
+            "symbol": "005930",
+            "side": "sell",
+            "quantity": 2,
+            "venue_route": "KRX",
+            "broker_adapter": "kis_paper",
+            "planned_order_cash_krw": 0,
+            "paper_only": True,
+        },
+        order_state_snapshot={"pending_orders": [], "active_exits": [], "consumed_intent_keys": []},
+        status=status,
+        account_truth={
+            "source": "kis_paper_read_steps",
+            "balance_status": "pass",
+            "sellable_status": "none",
+            "sellable_quantity": None,
+            "positions": [
+                {"symbol": "005930", "quantity": 7, "sellable_quantity": 7, "source": "kis_balance_output1"}
+            ],
+        },
+    )
+
+    assert preflight["ok"] is True
+    account_truth = preflight["accountTruth"]
+    assert account_truth["raw_sellable_status"] == "none"
+    assert account_truth["sellable_truth_status"] == "pass_balance_position_fallback"
+    assert account_truth["sellable_truth_source"] == "kis_balance_output1"
+    assert account_truth["sellable_truth_accepted"] is True
+    assert account_truth["sellable_fallback_used"] is True
+    assert account_truth["normalized_sellable_quantity"] == 7
 
 
 def test_runner_sell_preflight_blocks_active_sell_duplicate_with_balance_fallback(tmp_path, monkeypatch):
@@ -1616,6 +1665,17 @@ def test_tick_sell_exit_uses_balance_position_sellable_fallback(tmp_path, monkey
     assert overlay["sellable_truth_source"] == "kis_balance_output1"
     assert overlay["sellable_quantity"] == 5
     assert overlay["fallback_used"] is True
+    assert payload["account_truth"]["raw_sellable_status"] == "skipped_provider_unsupported"
+    assert payload["account_truth"]["sellable_truth_status"] == "provider_unsupported_with_balance_fallback"
+    assert payload["account_truth"]["sellable_truth_source"] == "kis_balance_output1"
+    assert payload["account_truth"]["sellable_truth_accepted"] is True
+    assert payload["account_truth"]["sellable_fallback_used"] is True
+    assert payload["account_truth"]["normalized_sellable_quantity"] == 5
+    normalization_step = [step for step in payload["steps"] if step.get("step") == "sellable_truth_normalization"][-1]
+    assert normalization_step["status"] == "pass"
+    assert normalization_step["sellable_truth_status"] == "provider_unsupported_with_balance_fallback"
+    assert normalization_step["sellable_quantity"] == 5
+    assert normalization_step["fallback_used"] is True
     assert any(step.get("step") == "cash_order" and step.get("status") == "pass" for step in payload["steps"])
     assert any("/order-cash" in call["url"] for call in transport.calls)
 

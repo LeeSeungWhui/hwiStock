@@ -376,6 +376,55 @@ def normalizeSellableTruth(
     }
 
 
+def enrichAccountTruthWithSellableTruth(
+    account_truth: Optional[Mapping[str, Any]],
+    intent: Optional[Mapping[str, Any]],
+) -> Dict[str, Any]:
+    account = dict(account_truth or {})
+    payload = dict(intent or {})
+    if str(payload.get("side") or "buy").strip().lower() != "sell":
+        return account
+    truth = normalizeSellableTruth(payload, account)
+    raw_status = account.get("raw_sellable_status", account.get("sellable_status"))
+    raw_quantity = account.get("raw_sellable_quantity", account.get("sellable_quantity"))
+    account.update(
+        {
+            "raw_sellable_status": raw_status,
+            "raw_sellable_quantity": raw_quantity,
+            "sellable_truth_status": truth.get("sellable_truth_status"),
+            "sellable_truth_source": truth.get("sellable_truth_source"),
+            "sellable_truth_accepted": truth.get("sellable_truth_accepted"),
+            "sellable_truth_warnings": list(truth.get("sellable_truth_warnings") or []),
+            "sellable_fallback_used": bool(truth.get("fallback_used")),
+            "normalized_sellable_quantity": int(truth.get("sellable_quantity") or 0),
+            "requested_quantity": _coerce_nonnegative_int(payload.get("quantity"), 0),
+        }
+    )
+    return account
+
+
+def _sellable_truth_normalization_step(intent: Mapping[str, Any], account_truth: Mapping[str, Any]) -> Dict[str, Any]:
+    return {
+        "step": "sellable_truth_normalization",
+        "status": "pass" if account_truth.get("sellable_truth_accepted") is True else "blocked",
+        "symbol": str(intent.get("symbol") or intent.get("ticker") or "").strip(),
+        "side": str(intent.get("side") or "").strip().lower(),
+        "raw_sellable_status": account_truth.get("raw_sellable_status"),
+        "raw_sellable_quantity": account_truth.get("raw_sellable_quantity"),
+        "sellable_status": account_truth.get("sellable_status"),
+        "sellable_quantity": account_truth.get("normalized_sellable_quantity"),
+        "requested_quantity": account_truth.get("requested_quantity"),
+        "sellable_truth_status": account_truth.get("sellable_truth_status"),
+        "sellable_truth_source": account_truth.get("sellable_truth_source"),
+        "sellable_truth_accepted": account_truth.get("sellable_truth_accepted"),
+        "sellable_truth_warnings": list(account_truth.get("sellable_truth_warnings") or []),
+        "fallback_used": bool(account_truth.get("sellable_fallback_used")),
+        "broker_endpoint_called": False,
+        "raw_response_stored": False,
+        "credential_values_printed": False,
+    }
+
+
 def evaluatePaperRiskOverlay(
     intent: Optional[Mapping[str, Any]],
     *,
@@ -631,7 +680,8 @@ def evaluateIntentExecutionPreflight(
             for row in (order_state.get("pending_orders") or [])
             if isinstance(row, Mapping) and str(row.get("side") or "buy").lower() == "buy"
         )
-    risk = evaluatePaperRiskOverlay(risk_payload, status=status, account_truth=account_truth)
+    normalized_account_truth = enrichAccountTruthWithSellableTruth(account_truth, risk_payload)
+    risk = evaluatePaperRiskOverlay(risk_payload, status=status, account_truth=normalized_account_truth)
     errors.extend(risk.get("errors") or [])
     idempotency_key = str(payload.get("idempotency_key") or payload.get("intent_id") or "").strip()
     if not idempotency_key:
@@ -648,7 +698,7 @@ def evaluateIntentExecutionPreflight(
         "idempotency_key": idempotency_key,
         "symbol": symbol,
         "riskOverlay": risk,
-        "accountTruth": dict(account_truth or {}),
+        "accountTruth": normalized_account_truth,
         "broker_endpoint_called": False,
         "dashboard_account_summary_reused_for_order": False,
         "order_preflight_truth_source": "trading_account_truth",
@@ -1324,6 +1374,10 @@ def runContinuousPaperTick(
         }
     )
     account_truth = _account_truth_from_steps(result["steps"], produced_at=reference_now)
+    if intent:
+        account_truth = enrichAccountTruthWithSellableTruth(account_truth, intent)
+        if str((intent or {}).get("side") or "buy").strip().lower() == "sell":
+            result["steps"].append(_sellable_truth_normalization_step(intent, account_truth))
     result["account_truth"] = account_truth
     reconciliation_step = _reconcile_runner_state_from_account_truth(
         local_state,
