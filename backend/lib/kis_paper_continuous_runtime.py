@@ -471,11 +471,6 @@ def evaluateIntentExecutionPreflight(
     held = _symbol_set_from_snapshot(portfolio, "holdings")
     pending = _symbol_set_from_snapshot(order_state, "pending_orders")
     exits = _symbol_set_from_snapshot(order_state, "active_exits")
-    consumed_docs = {
-        str(item or "").strip()
-        for item in (order_state.get("consumed_trade_document_ids") or [])
-        if str(item or "").strip()
-    }
     submitting_keys = {
         str(item or "").strip()
         for item in [
@@ -489,15 +484,17 @@ def evaluateIntentExecutionPreflight(
         for item in (order_state.get("ambiguous_intent_keys") or [])
         if str(item or "").strip()
     }
+    consumed_keys = {
+        str(item or "").strip()
+        for item in (order_state.get("consumed_intent_keys") or [])
+        if str(item or "").strip()
+    }
     if symbol and symbol in held and str(payload.get("side") or "buy").lower() == "buy":
         errors.append("already_holding_symbol")
     if symbol and symbol in pending:
         errors.append("pending_order_exists")
     if symbol and symbol in exits:
         errors.append("active_exit_order_exists")
-    doc_ref = str(payload.get("flash_trade_document_ref") or "").strip()
-    if doc_ref and doc_ref in consumed_docs:
-        errors.append("trade_document_already_consumed")
     expiry = _parse_optional_kst_timestamp(payload.get("valid_until_kst") or payload.get("valid_until"))
     reference_now = _status_reference_datetime(status)
     if expiry and expiry <= reference_now:
@@ -514,7 +511,7 @@ def evaluateIntentExecutionPreflight(
     idempotency_key = str(payload.get("idempotency_key") or payload.get("intent_id") or "").strip()
     if not idempotency_key:
         errors.append("idempotency_key_required")
-    if idempotency_key and idempotency_key in _CONSUMED_INTENT_KEYS:
+    if idempotency_key and (idempotency_key in _CONSUMED_INTENT_KEYS or idempotency_key in consumed_keys):
         errors.append("duplicate_intent_idempotency_key")
     if idempotency_key and idempotency_key in ambiguous_keys:
         errors.append("ambiguous_submit_requires_reconciliation")
@@ -1439,6 +1436,11 @@ def _order_state_snapshot_from_runner_state(state: Mapping[str, Any], *, now: da
             for item in (state.get("consumed_trade_document_ids") or [])
             if str(item).strip()
         ],
+        "consumed_intent_keys": [
+            str(item)
+            for item in (state.get("consumed_intent_keys") or [])
+            if str(item).strip()
+        ],
         "submitting_intent_keys": [
             str(item)
             for item in (state.get("submitting_intent_keys") or [])
@@ -1537,8 +1539,6 @@ def _mark_runner_state_submitted(
             for row in (state.get("ambiguous_submits") or [])
             if isinstance(row, Mapping) and str(row.get("idempotency_key") or "").strip() != key
         ]
-    if doc_ref:
-        state["consumed_trade_document_ids"] = sorted(set([*(state.get("consumed_trade_document_ids") or []), doc_ref]))
     pending = [
         dict(row)
         for row in (state.get("pending_orders") or [])

@@ -1027,6 +1027,91 @@ def test_tick_auto_loads_next_fifo_intent_queue_and_persists_only_passed_order(t
     assert state["pending_orders"][0]["symbol"] == "005930"
 
 
+def test_tick_consumes_same_flash_document_intents_individually(tmp_path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    data_root = tmp_path / "data"
+    intent_dir = data_root / "intents" / "2026-06-05"
+    intent_dir.mkdir(parents=True)
+    first_intent = {
+        "schema_version": "paper_order_intent/v0",
+        "intent_id": "intent-same-doc-1",
+        "idempotency_key": "intent-same-doc-1",
+        "flash_trade_document_ref": "flash-same-doc",
+        "symbol": "005930",
+        "side": "buy",
+        "quantity": 1,
+        "order_price": 70000,
+        "venue_route": "KRX",
+        "broker_adapter": "kis_paper",
+        "available_cash_krw": 2_000_000,
+        "planned_order_cash_krw": 100_000,
+        "current_holdings_count": 0,
+        "valid_until_kst": "2026-06-05T09:50:00+09:00",
+        "paper_only": True,
+    }
+    second_intent = {
+        **first_intent,
+        "intent_id": "intent-same-doc-2",
+        "idempotency_key": "intent-same-doc-2",
+        "symbol": "000660",
+        "order_price": 120000,
+    }
+    (intent_dir / "paper-order-intents-latest.jsonl").write_text(
+        json.dumps(first_intent, ensure_ascii=False)
+        + "\n"
+        + json.dumps(second_intent, ensure_ascii=False)
+        + "\n",
+        encoding="utf-8",
+    )
+
+    env = _env()
+    env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _mark_order_grade_source(env)
+    _order_approval(tmp_path, env)
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(data_root)
+
+    first_transport = FakeTransport()
+    first_payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=KisPaperAdapter(env=env, transport=first_transport),
+        at_kst="2026-06-05T09:30:00",
+    )
+    assert first_payload["executionPreflight"]["idempotency_key"] == "intent-same-doc-1"
+    assert any(step.get("step") == "cash_order" and step.get("status") == "pass" for step in first_payload["steps"])
+
+    second_transport = FakeTransport()
+    second_payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=KisPaperAdapter(env=env, transport=second_transport),
+        at_kst="2026-06-05T09:31:00",
+    )
+
+    assert second_payload["intent_source"] == "next_intent_queue_exit_priority_fifo"
+    assert second_payload["executionPreflight"]["ok"] is True
+    assert second_payload["executionPreflight"]["idempotency_key"] == "intent-same-doc-2"
+    assert "trade_document_already_consumed" not in second_payload["executionPreflight"]["errors"]
+    assert any(step.get("step") == "cash_order" and step.get("status") == "pass" for step in second_payload["steps"])
+    assert any("/order-cash" in call["url"] for call in second_transport.calls)
+
+    state_path = data_root / "state" / "kis-paper-runner-state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert "intent-same-doc-1" in state["consumed_intent_keys"]
+    assert "intent-same-doc-2" in state["consumed_intent_keys"]
+    assert "flash-same-doc" not in state["consumed_trade_document_ids"]
+    duplicate_preflight = continuous.evaluateIntentExecutionPreflight(
+        second_intent,
+        order_state_snapshot={
+            "pending_orders": [],
+            "active_exits": [],
+            "consumed_intent_keys": state["consumed_intent_keys"],
+            "consumed_trade_document_ids": state["consumed_trade_document_ids"],
+        },
+        status=base_runner.get_runner_status("2026-06-05T09:32:00"),
+    )
+    assert "duplicate_intent_idempotency_key" in duplicate_preflight["errors"]
+
+
 def test_runner_consumes_flash_buy_intent_and_reaches_cash_order_step_with_fake_transport(tmp_path, monkeypatch):
     _calendar(tmp_path, monkeypatch)
     data_root = tmp_path / "data"
