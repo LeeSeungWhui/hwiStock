@@ -975,7 +975,7 @@ def _build_flash_prompt(
     ]
     required_schema = {
         "schema_version": "flash_trade_document/v1",
-        "document_kind": "TRADE_ACTIONS|NO_TRADE",
+        "document_kind": "TRADE_ACTIONS|TRADE_ACTIONS_WITH_NO_NEW_ENTRY|POSITION_MANAGEMENT|NO_TRADE",
         "analysis_language": "ko-KR",
         "investment_mode": "paper|live",
         "market_analysis_feed_mode": "integrated",
@@ -987,7 +987,7 @@ def _build_flash_prompt(
                 "symbol": "000000",
                 "name": "string",
                 "side": "BUY|SELL|HOLD|NO_TRADE",
-                "action": "BUY_NOW|WAIT_BUY|SELL_NOW|WAIT_SELL|HOLD|NO_TRADE",
+                "action": "BUY_NOW|WAIT_BUY|SELL_NOW|WAIT_SELL|HOLD|NO_TRADE|NO_NEW_ENTRY|HOLD_EXISTING_POSITION|WAIT_ORDER_RECONCILIATION|EXIT_REVIEW",
                 "quantity": 0,
                 "planned_order_cash_krw": 0,
                 "entry_price_limit": 0,
@@ -1002,11 +1002,19 @@ def _build_flash_prompt(
                 "required_confirmations": [],
                 "cancel_if": [],
                 "source_refs": [],
+                "symbol_source_refs": [],
+                "market_context_refs": [],
                 "pro_refs": [],
+                "pro_context_refs": [],
                 "morning_watchlist_refs": [],
                 "market_data_refs": [],
+                "kis_market_refs": [],
+                "rationale_type": "kis_market_data_momentum|symbol_news_and_market_data|deterministic_market_data_fallback",
+                "news_backed": False,
+                "source_quality_warnings": [],
             }
         ],
+        "position_actions": [],
         "no_trade_reasons": [],
         "global_risk_flags": [],
         "operator_notes": [],
@@ -1016,8 +1024,11 @@ def _build_flash_prompt(
         "너는 hwiStock의 10분 단위 매매문서 작성자다. broker API를 호출하지 않고 주문을 제출하지 않는다. "
         "latest Pro 전략 컨텍스트, GPT Pro morning watchlist, 지난 10분 뉴스/공시/KIS 통합시장데이터, 현재 보유/대기주문 상태를 보고 다음 10분 매매문서를 작성해라. "
         "compiled_watch 또는 morning_watchlist universe 밖 종목 생성 금지. paper mode는 KRX-only이며 09:00~15:00 KST 신규 주문/진입만 허용. "
-        "15:00 이후 신규 BUY/SELL 금지. 보유/대기주문과 충돌하는 신규 BUY 금지. 최대 보유 5개와 총예수금 75% exposure cap을 고려. "
-        "불확실하면 WAIT_BUY 또는 NO_TRADE. source_refs/pro_refs/market_data_refs 없는 BUY_NOW 금지. target_price/stop_loss_price 없는 BUY_NOW 금지. quantity:0 BUY_NOW 금지. "
+        "15:00 이후 신규 BUY/SELL 금지. 보유/대기주문과 충돌하는 신규 BUY 금지. 이때 NO_TRADE로 뭉개지 말고 NO_NEW_ENTRY, HOLD_EXISTING_POSITION, WAIT_ORDER_RECONCILIATION, EXIT_REVIEW로 표현해라. "
+        "NO_TRADE는 후보 없음/시장 위험/입력 부족/장외 같은 진짜 거래 없음에만 사용해라. 최대 보유 5개와 총예수금 75% exposure cap을 고려. "
+        "불확실하면 WAIT_BUY 또는 NO_NEW_ENTRY/HOLD_EXISTING_POSITION. source_refs/pro_refs/market_data_refs 없는 BUY_NOW 금지. target_price/stop_loss_price 없는 BUY_NOW 금지. quantity:0 BUY_NOW 금지. "
+        "BUY 근거는 symbol_source_refs(해당 종목 직접 뉴스/공시), market_context_refs(일반 뉴스/정책/매크로), kis_market_refs(KIS rank/현재가/거래량), pro_context_refs, morning_watchlist_refs로 분리해라. "
+        "종목 직접 뉴스가 없고 KIS 시장데이터만 있으면 rationale_type=kis_market_data_momentum, news_backed=false, source_quality_warnings에 no_symbol_specific_news_refs를 넣어라. "
         "각 action은 thesis, why_now, required_confirmations, cancel_if, confidence, urgency, refs를 반드시 포함해야 한다. "
         "사람이 읽는 자연어 문자열은 한국어로 쓰고, schema key/enum/symbol 숫자 필드는 지정 형식 그대로 유지해. "
         "calendar_context.kis_realtime_expected=false이면 KIS 실시간 부재를 장애/제공자 실패로 쓰지 말고 오프세션 정상 상태로 처리해. "

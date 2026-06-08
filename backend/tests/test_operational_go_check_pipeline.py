@@ -674,6 +674,44 @@ def test_unit013_rejects_off_universe_and_portfolio_conflict_without_intent():
     assert "already_holding_symbol" in conflict["rejected_actions"][0]["reasons"]
 
 
+def test_position_management_action_does_not_create_paper_intent():
+    doc = ao.buildFlashTradeDocument(
+        pro_artifact={"artifact_id": "art_pro_hourly_20260605_0900"},
+        recent_events=[],
+        kis_market_snapshots=[{"artifact_id": "art_kis_snapshot_20260605_0939"}],
+        compiled_watch=[_compiled_watch("005930")],
+        portfolio_snapshot={"artifact_id": "art_portfolio_20260605_0939", "holdings": []},
+        order_state_snapshot={
+            "artifact_id": "art_order_state_20260605_0939",
+            "pending_orders": [
+                {
+                    "symbol": "005930",
+                    "action": "WAIT_BUY",
+                    "submitted_at_kst": "2026-06-05T09:32:00+09:00",
+                    "entry_price_limit": 10000,
+                    "target_price": 10500,
+                    "stop_loss_price": 9800,
+                    "quantity": 10,
+                }
+            ],
+        },
+        produced_at_kst=NOW,
+    )
+
+    assert doc["document_kind"] == "POSITION_MANAGEMENT"
+    assert doc["actions"][0]["action"] == "NO_NEW_ENTRY"
+    pipeline = engine.generatePaperOrderIntentsFromFlashDocument(
+        doc,
+        compiled_watch=[_compiled_watch("005930")],
+        portfolio_snapshot={"holdings": []},
+        order_state_snapshot={"pending_orders": [{"symbol": "005930"}]},
+        now_kst=NOW,
+    )
+
+    assert pipeline["accepted_count"] == 0
+    assert "position_management_action_not_entry" in pipeline["rejected_actions"][0]["reasons"]
+
+
 def test_unit014_execution_preflight_idempotency_and_realtime_exit():
     executor.resetContinuousPaperRunnerForTests()
     doc = _flash_doc("005930")

@@ -698,10 +698,22 @@ def generatePaperOrderIntentsFromFlashDocument(
             reasons.append("ticker_required")
         elif universe and symbol not in universe:
             reasons.append("off_universe_ticker")
-        if action_type not in {"WAIT_BUY", "BUY_NOW", "HOLD", "SELL", "SELL_NOW", "WAIT_SELL", "NO_TRADE"}:
+        if action_type not in {
+            "WAIT_BUY",
+            "BUY_NOW",
+            "HOLD",
+            "SELL",
+            "SELL_NOW",
+            "WAIT_SELL",
+            "NO_TRADE",
+            "NO_NEW_ENTRY",
+            "HOLD_EXISTING_POSITION",
+            "WAIT_ORDER_RECONCILIATION",
+            "EXIT_REVIEW",
+        }:
             reasons.append("action_type_invalid")
-        if action_type in {"HOLD", "NO_TRADE"}:
-            reasons.append("non_entry_action_watch_only")
+        if action_type in {"HOLD", "NO_TRADE", "NO_NEW_ENTRY", "HOLD_EXISTING_POSITION", "WAIT_ORDER_RECONCILIATION", "EXIT_REVIEW"}:
+            reasons.append("position_management_action_not_entry")
         if action_type in {"SELL", "SELL_NOW", "WAIT_SELL"}:
             reasons.append("sell_exit_intent_deferred_to_unit_014_realtime_exit")
         if action_type in {"WAIT_BUY", "BUY_NOW"}:
@@ -710,9 +722,14 @@ def generatePaperOrderIntentsFromFlashDocument(
                 and action.get("kis_quote_confirmed") is not True
             ):
                 reasons.append("kis_quote_confirmation_required_before_paper_intent")
-            if not action.get("source_refs"):
+            if not (
+                action.get("source_refs")
+                or action.get("symbol_source_refs")
+                or action.get("kis_market_refs")
+                or action.get("market_data_refs")
+            ):
                 reasons.append("source_refs_required")
-            if not action.get("market_data_refs"):
+            if not (action.get("market_data_refs") or action.get("kis_market_refs")):
                 reasons.append("market_data_refs_required")
             if not action.get("portfolio_state_refs"):
                 reasons.append("portfolio_state_refs_required")
@@ -785,7 +802,13 @@ def generatePaperOrderIntentsFromFlashDocument(
             "valid_until_kst": action.get("cancel_if_not_filled_until") or document.get("valid_until") or produced_at,
             "flash_trade_document_ref": document.get("artifact_id"),
             "source_refs": list(action.get("source_refs") or document.get("source_refs") or []),
+            "symbol_source_refs": list(action.get("symbol_source_refs") or document.get("symbol_source_refs") or []),
+            "market_context_refs": list(action.get("market_context_refs") or document.get("market_context_refs") or []),
             "market_data_refs": list(action.get("market_data_refs") or document.get("market_data_refs") or []),
+            "kis_market_refs": list(action.get("kis_market_refs") or document.get("kis_market_refs") or []),
+            "rationale_type": action.get("rationale_type"),
+            "news_backed": bool(action.get("news_backed")),
+            "source_quality_warnings": list(action.get("source_quality_warnings") or []),
             "portfolio_snapshot_ref": (document.get("portfolio_snapshot_ref") or "art_portfolio_fixture"),
             "order_state_snapshot_ref": (document.get("order_state_snapshot_ref") or "art_order_state_fixture"),
             "authoritative_refs_verified_at_kst": produced_at,

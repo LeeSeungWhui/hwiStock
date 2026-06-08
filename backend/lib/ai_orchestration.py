@@ -32,6 +32,13 @@ NO_ORDER_DRY_RUN = "no_order_dry_run"
 DEEPSEEK_PRO_MODEL = "deepseek-v4-pro"
 DEEPSEEK_FLASH_MODEL = "deepseek-v4-flash"
 
+FLASH_BUY_ACTIONS = frozenset({"WAIT_BUY", "BUY_NOW"})
+FLASH_SELL_ACTIONS = frozenset({"SELL", "SELL_NOW", "WAIT_SELL"})
+FLASH_MANAGEMENT_ACTIONS = frozenset(
+    {"HOLD", "NO_TRADE", "NO_NEW_ENTRY", "HOLD_EXISTING_POSITION", "WAIT_ORDER_RECONCILIATION", "EXIT_REVIEW"}
+)
+FLASH_ACTION_TYPES = FLASH_BUY_ACTIONS | FLASH_SELL_ACTIONS | FLASH_MANAGEMENT_ACTIONS
+
 ALLOWED_ACTIONS = frozenset(
     {"watch", "reject", "consider_entry", "hold_review", "exit_review"}
 )
@@ -1003,6 +1010,7 @@ def buildFlashTradeDocument(
         for event in event_rows
         if str(event.get("source_event_id") or event.get("event_id") or event.get("source_id") or "").strip()
     ]
+    source_ref_context = _split_flash_source_context(event_rows)
     portfolio_ref = str(portfolio.get("artifact_id") or portfolio.get("snapshot_id") or "art_portfolio_fixture").strip()
     order_state_ref = str(order_state.get("artifact_id") or order_state.get("snapshot_id") or "art_order_state_fixture").strip()
     order_open, order_close = rp.orderWindowForMode(mode)
@@ -1047,7 +1055,12 @@ def buildFlashTradeDocument(
         entry_intent = row.get("entry_intent") if isinstance(row.get("entry_intent"), Mapping) else {}
         exit_plan = row.get("exit_plan") if isinstance(row.get("exit_plan"), Mapping) else {}
         provider_action_type = _normalize_flash_action_type(provider_action.get("action") or provider_action.get("stance"))
-        action = provider_action_type or ("NO_TRADE" if conflict_reasons else "WAIT_BUY")
+        action = provider_action_type or "WAIT_BUY"
+        if conflict_reasons and action in (FLASH_BUY_ACTIONS | {"NO_TRADE"}):
+            if "pending_order_exists" in conflict_reasons:
+                action = "NO_NEW_ENTRY"
+            elif "already_holding_symbol" in conflict_reasons or "prior_trade_document_still_valid" in conflict_reasons:
+                action = "HOLD_EXISTING_POSITION"
         quote_confirmation = _candidate_kis_confirmation(row, provider_action, market_rows, symbol=symbol)
         requires_kis_confirmation = bool(
             row.get("requires_kis_confirmation_before_order") is True
@@ -1060,8 +1073,6 @@ def buildFlashTradeDocument(
             downgraded_for_kis_confirmation = True
         if pro_low_utility and action == "BUY_NOW":
             action = "WAIT_BUY"
-        if conflict_reasons and action in {"WAIT_BUY", "BUY_NOW"}:
-            action = "NO_TRADE"
         entry_zone = _normalize_price_list(
             provider_action.get("entry_zone")
             or provider_action.get("entryZone")
@@ -1110,6 +1121,8 @@ def buildFlashTradeDocument(
         except (TypeError, ValueError):
             confidence = 0.35 if action_source_name == "deepseek_flash_provider" else 0.25
         confidence = min(1.0, max(0.0, confidence))
+        if action_source_name == "compiled_watch_deterministic_fallback":
+            confidence = min(confidence, 0.35)
         urgency = str(provider_action.get("urgency") or ("medium" if action == "BUY_NOW" else "low")).strip().lower()
         if urgency not in {"low", "medium", "high"}:
             urgency = "low"
@@ -1149,10 +1162,42 @@ def buildFlashTradeDocument(
             )
             if str(item).strip()
         ]
-        source_ref_values = _dedupe_strings(source_refs or list(row.get("source_ids") or []))
-        market_ref_values = _dedupe_strings(market_refs)
+        market_ref_values = _dedupe_strings(
+            market_refs
+            + _string_list(provider_action.get("market_data_refs"))
+            + _string_list(provider_action.get("kis_market_refs"))
+        )
         pro_ref_values = _dedupe_strings([str(dict(pro_artifact).get("artifact_id") or "")])
-        would_exceed_max_holdings = action in {"WAIT_BUY", "BUY_NOW"} and symbol not in held_symbols and current_holdings_count + 1 > rp.MAX_SIMULTANEOUS_HOLDINGS
+        split_refs = _flash_refs_for_symbol(
+            symbol,
+            row=row,
+            source_ref_context=source_ref_context,
+            legacy_source_refs=source_refs,
+        )
+        symbol_source_ref_values = _dedupe_strings(
+            split_refs["symbol_source_refs"] + _string_list(provider_action.get("symbol_source_refs"))
+        )
+        market_context_ref_values = _dedupe_strings(
+            split_refs["market_context_refs"]
+            + _string_list(provider_action.get("market_context_refs"))
+            + _string_list(provider_action.get("source_refs"))
+        )
+        source_ref_values = _dedupe_strings(symbol_source_ref_values + market_context_ref_values)
+        kis_market_ref_values = market_ref_values
+        source_quality_warnings: List[str] = []
+        rationale_type = str(provider_action.get("rationale_type") or "").strip()
+        if action_source_name == "compiled_watch_deterministic_fallback":
+            rationale_type = "deterministic_market_data_fallback"
+        elif not symbol_source_ref_values and kis_market_ref_values:
+            rationale_type = "kis_market_data_momentum"
+        elif not rationale_type:
+            rationale_type = "symbol_news_and_market_data" if symbol_source_ref_values else "market_context_only"
+        news_backed = bool(symbol_source_ref_values)
+        if action in FLASH_BUY_ACTIONS and not symbol_source_ref_values:
+            source_quality_warnings.append("no_symbol_specific_news_refs")
+        if _boolish(provider_action.get("news_backed")) and not symbol_source_ref_values:
+            source_quality_warnings.append("news_claim_without_symbol_specific_refs")
+        would_exceed_max_holdings = action in FLASH_BUY_ACTIONS and symbol not in held_symbols and current_holdings_count + 1 > rp.MAX_SIMULTANEOUS_HOLDINGS
         bucket_hhmm = produced_dt.astimezone(KST).strftime("%H%M") if produced_dt else "0000"
         actions.append(
             {
@@ -1161,7 +1206,7 @@ def buildFlashTradeDocument(
                 "ticker": symbol,
                 "name": str(row.get("name") or row.get("symbol_name") or symbol),
                 "action": action,
-                "side": "BUY" if action in {"WAIT_BUY", "BUY_NOW"} else ("SELL" if action in {"SELL_NOW", "WAIT_SELL"} else action),
+                "side": "BUY" if action in FLASH_BUY_ACTIONS else ("SELL" if action in FLASH_SELL_ACTIONS else "HOLD"),
                 "quantity": _safe_positive_int(provider_action.get("quantity") or entry_intent.get("quantity") or row.get("quantity")),
                 "entry_zone": entry_zone,
                 "entry_price_limit": _safe_positive_int(entry_price_limit),
@@ -1189,11 +1234,18 @@ def buildFlashTradeDocument(
                 ),
                 "max_cash_deployment_ratio": rp.MAX_CASH_DEPLOYMENT_RATIO,
                 "source_refs": source_ref_values,
+                "symbol_source_refs": symbol_source_ref_values,
+                "market_context_refs": market_context_ref_values,
                 "pro_refs": pro_ref_values,
+                "pro_context_refs": pro_ref_values,
                 "morning_watchlist_ref": morning_ref,
                 "morning_watchlist_refs": _dedupe_strings([morning_ref]),
                 "market_data_refs": market_ref_values,
+                "kis_market_refs": kis_market_ref_values,
                 "portfolio_state_refs": [portfolio_ref, order_state_ref],
+                "rationale_type": rationale_type,
+                "news_backed": news_backed,
+                "source_quality_warnings": source_quality_warnings,
                 "portfolio_conflict": {
                     "already_holding": "already_holding_symbol" in conflict_reasons,
                     "pending_order_exists": "pending_order_exists" in conflict_reasons,
@@ -1246,6 +1298,28 @@ def buildFlashTradeDocument(
             produced_at_kst=produced_at,
         )
 
+    position_actions = _build_flash_position_actions(
+        portfolio_snapshot=portfolio,
+        order_state_snapshot=order_state,
+        market_rows=market_rows,
+        produced_at_kst=produced_at,
+        portfolio_ref=portfolio_ref,
+        order_state_ref=order_state_ref,
+        market_refs=market_refs,
+    )
+    entry_actions_present = any(action.get("action") in (FLASH_BUY_ACTIONS | FLASH_SELL_ACTIONS) for action in actions)
+    management_actions_present = any(action.get("action") in FLASH_MANAGEMENT_ACTIONS for action in actions) or bool(position_actions)
+    document_kind = (
+        "TRADE_ACTIONS_WITH_NO_NEW_ENTRY"
+        if entry_actions_present and management_actions_present
+        else ("TRADE_ACTIONS" if entry_actions_present else "POSITION_MANAGEMENT")
+    )
+    new_entry_policy = (
+        "ENTRY_CANDIDATES_PRESENT"
+        if entry_actions_present
+        else ("NO_NEW_ENTRY_EXISTING_ORDER_OR_POSITION" if management_actions_present else "NO_NEW_ENTRY")
+    )
+
     return {
         "schema_version": FLASH_TRADE_DOCUMENT_SCHEMA,
         "artifact_id": f"art_flash_tdoc_{_compact_timestamp(produced_at)}",
@@ -1268,7 +1342,8 @@ def buildFlashTradeDocument(
         },
         "input_window_kst": dict(input_window_kst or {}),
         "bucket_id": _ten_minute_bucket_id(produced_at),
-        "document_kind": "TRADE_ACTIONS",
+        "document_kind": document_kind,
+        "new_entry_policy": new_entry_policy,
         "pro_hourly_report_ref": str(dict(pro_artifact).get("artifact_id") or ""),
         "pro_hourly_ref": str(dict(pro_artifact).get("artifact_id") or ""),
         "morning_watchlist_ref": morning_ref,
@@ -1280,7 +1355,14 @@ def buildFlashTradeDocument(
             or any("refresh" in warning for warning in morning_warnings)
         ),
         "source_refs": source_refs,
+        "symbol_source_refs": _dedupe_strings(
+            ref for action in actions for ref in action.get("symbol_source_refs", [])
+        ),
+        "market_context_refs": _dedupe_strings(
+            ref for action in actions for ref in action.get("market_context_refs", [])
+        ),
         "market_data_refs": market_refs,
+        "kis_market_refs": market_refs,
         "compiled_watch_refs": [
             str(row.get("artifact_id") or row.get("condition_card_id") or row.get("candidate_id") or "")
             for row in watch_rows
@@ -1295,6 +1377,10 @@ def buildFlashTradeDocument(
             "morning_watchlist_ref": morning_ref,
             "portfolio_ref": portfolio_ref,
             "order_state_ref": order_state_ref,
+            "market_context_refs": _dedupe_strings(
+                ref for action in actions for ref in action.get("market_context_refs", [])
+            ),
+            "kis_market_refs": market_refs,
         },
         "market_context": {
             "regime_mode": str(pro_regime.get("mode") or pro_regime.get("market_mode") or "NEUTRAL"),
@@ -1313,6 +1399,7 @@ def buildFlashTradeDocument(
             str(doc.get("artifact_id") or doc.get("document_id") or "") for doc in previous_docs
         ],
         "actions": actions,
+        "position_actions": position_actions,
         "no_trade_reasons": [],
         "global_risk_flags": ["pro_hourly_low_utility", "pro_context_low_utility"] if pro_low_utility else [],
         "warnings": candidate_universe_warnings,
@@ -1372,6 +1459,232 @@ def _candidate_kis_confirmation(
             if _safe_positive_int(candidate.get("askp1")) > 0 and _safe_positive_int(candidate.get("bidp1")) > 0:
                 orderbook_confirmed = True
     return {"quote_confirmed": quote_confirmed, "orderbook_confirmed": orderbook_confirmed}
+
+
+def _boolish(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _row_symbol(value: Mapping[str, Any]) -> str:
+    return str(
+        _first_non_empty(
+            value.get("symbol"),
+            value.get("ticker"),
+            value.get("mksc_shrn_iscd"),
+            value.get("stck_shrn_iscd"),
+            value.get("pdno"),
+            value.get("stck_code"),
+            value.get("iscd"),
+            value.get("isu_cd"),
+            value.get("code"),
+        )
+        or ""
+    ).strip()
+
+
+def _source_ref_id(value: Mapping[str, Any]) -> str:
+    return str(value.get("source_event_id") or value.get("event_id") or value.get("source_id") or "").strip()
+
+
+def _split_flash_source_context(event_rows: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+    symbol_refs: Dict[str, List[str]] = {}
+    refs_by_id: Dict[str, Mapping[str, Any]] = {}
+    market_context_refs: List[str] = []
+    for event in event_rows:
+        if not isinstance(event, Mapping):
+            continue
+        ref = _source_ref_id(event)
+        if not ref:
+            continue
+        refs_by_id[ref] = event
+        symbol = _row_symbol(event)
+        if symbol:
+            symbol_refs.setdefault(symbol, []).append(ref)
+        else:
+            market_context_refs.append(ref)
+    return {
+        "symbol_refs": {symbol: _dedupe_strings(refs) for symbol, refs in symbol_refs.items()},
+        "market_context_refs": _dedupe_strings(market_context_refs),
+        "refs_by_id": refs_by_id,
+    }
+
+
+def _flash_refs_for_symbol(
+    symbol: str,
+    *,
+    row: Mapping[str, Any],
+    source_ref_context: Mapping[str, Any],
+    legacy_source_refs: Sequence[Any],
+) -> Dict[str, List[str]]:
+    symbol_ref_map = (
+        source_ref_context.get("symbol_refs")
+        if isinstance(source_ref_context.get("symbol_refs"), Mapping)
+        else {}
+    )
+    refs_by_id = (
+        source_ref_context.get("refs_by_id")
+        if isinstance(source_ref_context.get("refs_by_id"), Mapping)
+        else {}
+    )
+    symbol_refs = _dedupe_strings(symbol_ref_map.get(symbol, []))
+    market_context_refs = _dedupe_strings(source_ref_context.get("market_context_refs") or [])
+    for ref in _string_list(row.get("source_ids")) + _string_list(row.get("source_refs")):
+        event = refs_by_id.get(ref) if isinstance(refs_by_id, Mapping) else None
+        if isinstance(event, Mapping) and _row_symbol(event) == symbol:
+            symbol_refs.append(ref)
+        else:
+            market_context_refs.append(ref)
+    known_refs = set(symbol_refs) | set(market_context_refs)
+    for ref in legacy_source_refs:
+        text = str(ref or "").strip()
+        if text and text not in known_refs:
+            market_context_refs.append(text)
+    return {
+        "symbol_source_refs": _dedupe_strings(symbol_refs),
+        "market_context_refs": _dedupe_strings(market_context_refs),
+    }
+
+
+def _snapshot_rows(snapshot: Mapping[str, Any], key: str) -> List[Mapping[str, Any]]:
+    rows = snapshot.get(key)
+    if isinstance(rows, Mapping):
+        iterable = rows.values()
+    elif isinstance(rows, Sequence) and not isinstance(rows, (str, bytes, bytearray)):
+        iterable = rows
+    else:
+        iterable = []
+    return [row for row in iterable if isinstance(row, Mapping)]
+
+
+def _kis_current_price_for_symbol(market_rows: Sequence[Mapping[str, Any]], *, symbol: str) -> int:
+    for market in market_rows:
+        for candidate in _iter_nested_market_rows(market):
+            if _row_symbol(candidate) != symbol:
+                continue
+            price = _safe_positive_int(
+                _first_non_empty(
+                    candidate.get("stck_prpr"),
+                    candidate.get("prpr"),
+                    candidate.get("price"),
+                    candidate.get("last"),
+                    candidate.get("askp1"),
+                    candidate.get("bidp1"),
+                )
+            )
+            if price > 0:
+                return price
+    return 0
+
+
+def _position_state_from_order_row(row: Mapping[str, Any]) -> str:
+    explicit = str(row.get("position_state") or row.get("order_state") or row.get("state") or row.get("status") or "").strip().lower()
+    if explicit in {"submitted_unreconciled", "order_submitted_fill_status_unknown"}:
+        return "submitted_unreconciled"
+    if explicit in {"filled", "filled_holding_confirmed", "holding_confirmed", "holding"}:
+        return "holding_confirmed"
+    if row.get("submitted_at_kst") or str(row.get("action") or "").strip() in FLASH_BUY_ACTIONS:
+        return "submitted_unreconciled"
+    return "pending_order"
+
+
+def _build_position_action(
+    row: Mapping[str, Any],
+    *,
+    position_state: str,
+    market_rows: Sequence[Mapping[str, Any]],
+    produced_at_kst: str,
+    portfolio_ref: str,
+    order_state_ref: str,
+    market_refs: Sequence[Any],
+) -> Optional[Dict[str, Any]]:
+    symbol = _row_symbol(row)
+    if not symbol:
+        return None
+    current_price = _kis_current_price_for_symbol(market_rows, symbol=symbol)
+    target_price = _safe_positive_int(row.get("target_price") or row.get("take_profit"))
+    stop_loss_price = _safe_positive_int(row.get("stop_loss_price") or row.get("stop_loss"))
+    action = "WAIT_ORDER_RECONCILIATION" if position_state == "submitted_unreconciled" else "HOLD_EXISTING_POSITION"
+    reason = "주문 접수됨, 체결/보유 반영 확인 대기" if position_state == "submitted_unreconciled" else "기존 보유/주문 상태 관리"
+    if current_price > 0 and (
+        (target_price > 0 and current_price >= target_price)
+        or (stop_loss_price > 0 and current_price <= stop_loss_price)
+    ):
+        action = "EXIT_REVIEW"
+        reason = "KIS 현재가가 익절/손절 기준에 닿아 청산 검토 필요"
+    elif current_price <= 0:
+        reason = f"{reason}; KIS 현재가 부재로 SELL_NOW 금지"
+    return {
+        "symbol": symbol,
+        "ticker": symbol,
+        "name": str(row.get("name") or row.get("symbol_name") or symbol),
+        "position_state": position_state,
+        "action": action,
+        "target_price": target_price,
+        "stop_loss_price": stop_loss_price,
+        "current_price": current_price,
+        "quantity": _safe_positive_int(row.get("quantity")),
+        "entry_price_limit": _safe_positive_int(row.get("entry_price_limit") or row.get("order_price") or row.get("price")),
+        "take_profit": row.get("take_profit") or target_price,
+        "stop_loss": row.get("stop_loss") or stop_loss_price,
+        "trailing_stop_pct": row.get("trailing_stop_pct"),
+        "reason": reason,
+        "next_check": "다음 Flash에서 체결/보유 reconciliation과 KIS 현재가를 다시 확인",
+        "portfolio_state_refs": [portfolio_ref, order_state_ref],
+        "market_data_refs": _dedupe_strings(market_refs),
+        "kis_market_refs": _dedupe_strings(market_refs),
+        "produced_at_kst": produced_at_kst,
+        "paper_only": True,
+        "no_live_order": True,
+    }
+
+
+def _build_flash_position_actions(
+    *,
+    portfolio_snapshot: Mapping[str, Any],
+    order_state_snapshot: Mapping[str, Any],
+    market_rows: Sequence[Mapping[str, Any]],
+    produced_at_kst: str,
+    portfolio_ref: str,
+    order_state_ref: str,
+    market_refs: Sequence[Any],
+) -> List[Dict[str, Any]]:
+    actions: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+    for row in _snapshot_rows(order_state_snapshot, "pending_orders"):
+        symbol = _row_symbol(row)
+        if not symbol or symbol in seen:
+            continue
+        action = _build_position_action(
+            row,
+            position_state=_position_state_from_order_row(row),
+            market_rows=market_rows,
+            produced_at_kst=produced_at_kst,
+            portfolio_ref=portfolio_ref,
+            order_state_ref=order_state_ref,
+            market_refs=market_refs,
+        )
+        if action:
+            actions.append(action)
+            seen.add(symbol)
+    for row in _snapshot_rows(portfolio_snapshot, "holdings"):
+        symbol = _row_symbol(row)
+        if not symbol or symbol in seen:
+            continue
+        action = _build_position_action(
+            row,
+            position_state="holding_confirmed",
+            market_rows=market_rows,
+            produced_at_kst=produced_at_kst,
+            portfolio_ref=portfolio_ref,
+            order_state_ref=order_state_ref,
+            market_refs=market_refs,
+        )
+        if action:
+            actions.append(action)
+            seen.add(symbol)
+    return actions[:5]
 
 
 def _iter_nested_market_rows(value: Any) -> List[Mapping[str, Any]]:
@@ -1543,6 +1856,7 @@ def validateFlashTradeDocument(
 ) -> Dict[str, Any]:
     payload = deepcopy(dict(document or {}))
     errors: List[str] = []
+    warnings: List[str] = list(payload.get("warnings") or []) if isinstance(payload.get("warnings"), list) else []
 
     if payload.get("schema_version") != FLASH_TRADE_DOCUMENT_SCHEMA:
         errors.append("schema_version_must_be_flash_trade_document_v0")
@@ -1611,18 +1925,18 @@ def validateFlashTradeDocument(
         elif universe and symbol not in universe:
             errors.append(f"actions_item_{index}_off_universe_ticker")
         action_type = str(action.get("action") or "").strip()
-        if action_type not in {"WAIT_BUY", "BUY_NOW", "HOLD", "SELL", "SELL_NOW", "WAIT_SELL", "NO_TRADE"}:
+        if action_type not in FLASH_ACTION_TYPES:
             errors.append(f"actions_item_{index}_action_invalid")
         side = str(action.get("side") or "").strip().upper()
-        is_buy = action_type in {"WAIT_BUY", "BUY_NOW"}
-        is_sell = action_type in {"SELL", "SELL_NOW", "WAIT_SELL"} or side == "SELL"
+        is_buy = action_type in FLASH_BUY_ACTIONS
+        is_sell = action_type in FLASH_SELL_ACTIONS or side == "SELL"
         valid_until = _parse_kst_timestamp(action.get("valid_until_kst"), f"actions_item_{index}_valid_until_kst", [])
         if valid_until and bucket_end and valid_until > bucket_end:
             errors.append(f"actions_item_{index}_valid_until_kst_must_be_within_bucket")
         if mode == rp.PAPER_INVESTMENT_MODE and produced_dt and not rp.isOrderWindowOpen(produced_dt, investment_mode=mode):
             if is_buy or is_sell:
                 errors.append(f"actions_item_{index}_paper_buy_sell_after_1500_forbidden")
-        if (market_context_open is False or broker_order_open is False) and action_type not in {"HOLD", "NO_TRADE"}:
+        if (market_context_open is False or broker_order_open is False) and action_type not in FLASH_MANAGEMENT_ACTIONS:
             errors.append(f"actions_item_{index}_market_or_order_closed_must_hold_or_no_trade")
         confidence = action.get("confidence")
         if confidence is None:
@@ -1635,13 +1949,49 @@ def validateFlashTradeDocument(
             else:
                 if confidence_float < 0 or confidence_float > 1:
                     errors.append(f"actions_item_{index}_confidence_invalid")
-        if action_type in {"WAIT_BUY", "BUY_NOW"}:
+        if action_type in FLASH_BUY_ACTIONS:
             provisional_without_kis_quote = (
                 action.get("requires_kis_confirmation_before_order") is True
                 and action.get("kis_quote_confirmed") is not True
                 and str(action.get("candidate_universe_source") or payload.get("candidate_universe_source") or "")
                 == "gpt_morning_watchlist_provisional"
             )
+            symbol_refs = action.get("symbol_source_refs") if isinstance(action.get("symbol_source_refs"), list) else []
+            kis_refs = (
+                action.get("kis_market_refs")
+                if isinstance(action.get("kis_market_refs"), list)
+                else action.get("market_data_refs")
+            )
+            has_kis_refs = bool(kis_refs)
+            action_warnings = (
+                list(action.get("source_quality_warnings") or [])
+                if isinstance(action.get("source_quality_warnings"), list)
+                else []
+            )
+            for warning in action_warnings:
+                warnings.append(f"actions_item_{index}_{warning}")
+            if not symbol_refs and has_kis_refs:
+                if isinstance(action, dict):
+                    action.setdefault("rationale_type", "kis_market_data_momentum")
+                    action["news_backed"] = False
+                if "no_symbol_specific_news_refs" not in action_warnings:
+                    action_warnings.append("no_symbol_specific_news_refs")
+                if isinstance(action, dict):
+                    action["source_quality_warnings"] = action_warnings
+                warnings.append(f"actions_item_{index}_no_symbol_specific_news_refs")
+            claimed_news = str(action.get("rationale_type") or "").strip().lower() in {
+                "news",
+                "news_catalyst",
+                "symbol_news",
+                "symbol_news_and_market_data",
+            } or action.get("news_backed") is True
+            if claimed_news and not symbol_refs:
+                if "news_claim_without_symbol_specific_refs" not in action_warnings:
+                    action_warnings.append("news_claim_without_symbol_specific_refs")
+                if isinstance(action, dict):
+                    action["source_quality_warnings"] = action_warnings
+                    action["news_backed"] = False
+                warnings.append(f"actions_item_{index}_news_claim_without_symbol_specific_refs")
             if side not in {"BUY"}:
                 errors.append(f"actions_item_{index}_side_buy_required")
             if action.get("valid_until_kst") in (None, ""):
@@ -1652,7 +2002,7 @@ def validateFlashTradeDocument(
                 errors.append(f"actions_item_{index}_target_price_required")
             if _safe_positive_int(action.get("stop_loss_price")) <= 0:
                 errors.append(f"actions_item_{index}_stop_loss_price_required")
-            if not action.get("source_refs"):
+            if not action.get("source_refs") and not symbol_refs and not has_kis_refs:
                 errors.append(f"actions_item_{index}_source_refs_required")
             if not action.get("pro_refs"):
                 errors.append(f"actions_item_{index}_pro_refs_required")
@@ -1660,7 +2010,7 @@ def validateFlashTradeDocument(
                 errors.append(f"actions_item_{index}_market_data_refs_required")
             ref_kind_count = sum(
                 1
-                for key in ("source_refs", "pro_refs", "market_data_refs")
+                for key in ("symbol_source_refs", "source_refs", "pro_refs", "kis_market_refs", "market_data_refs")
                 if action.get(key)
             )
             if action_type == "BUY_NOW" and ref_kind_count < 2:
@@ -1688,6 +2038,7 @@ def validateFlashTradeDocument(
     if payload.get("document_kind") == "NO_TRADE" and not payload.get("no_trade_reason"):
         errors.append("no_trade_reason_required")
 
+    payload["warnings"] = _dedupe_strings(warnings)
     payload["validation_status"] = "rejected" if errors else (
         "safe_block" if payload.get("document_kind") == "NO_TRADE" else "accepted"
     )
@@ -2265,7 +2616,14 @@ def _active_symbols_from_trade_documents(documents: Sequence[Mapping[str, Any]],
         for action in document.get("actions") or []:
             if not isinstance(action, Mapping):
                 continue
-            if str(action.get("action") or "").strip() in {"WAIT_BUY", "BUY_NOW", "HOLD"}:
+            if str(action.get("action") or "").strip() in {
+                "WAIT_BUY",
+                "BUY_NOW",
+                "HOLD",
+                "NO_NEW_ENTRY",
+                "HOLD_EXISTING_POSITION",
+                "WAIT_ORDER_RECONCILIATION",
+            }:
                 symbol = str(action.get("ticker") or action.get("symbol") or "").strip()
                 if symbol:
                     symbols.add(symbol)
@@ -2316,9 +2674,15 @@ def _normalize_flash_action_type(value: Any) -> str:
         "WAIT_SELL": "WAIT_SELL",
         "AVOID": "NO_TRADE",
         "REJECT": "NO_TRADE",
+        "NO_NEW_ENTRY": "NO_NEW_ENTRY",
+        "HOLD_EXISTING": "HOLD_EXISTING_POSITION",
+        "HOLD_EXISTING_POSITION": "HOLD_EXISTING_POSITION",
+        "WAIT_RECONCILIATION": "WAIT_ORDER_RECONCILIATION",
+        "WAIT_ORDER_RECONCILIATION": "WAIT_ORDER_RECONCILIATION",
+        "EXIT_REVIEW": "EXIT_REVIEW",
     }
     normalized = aliases.get(raw, raw)
-    return normalized if normalized in {"WAIT_BUY", "BUY_NOW", "HOLD", "SELL_NOW", "WAIT_SELL", "NO_TRADE"} else ""
+    return normalized if normalized in FLASH_ACTION_TYPES else ""
 
 
 def _normalize_price_list(value: Any) -> List[int]:
