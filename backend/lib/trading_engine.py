@@ -745,7 +745,9 @@ def generatePaperOrderIntentsFromFlashDocument(
 
         planned_cash = int(action.get("planned_order_cash_krw") or action.get("max_cash_krw") or 100_000)
         entry_zone = _normalize_entry_zone(action.get("entry_zone"))
-        order_price = _resolve_order_price(action_type, action, entry_zone)
+        raw_order_price = _resolve_order_price(action_type, action, entry_zone)
+        side = "buy" if action_type in {"WAIT_BUY", "BUY_NOW"} else "sell"
+        order_price = normalizeKrxLimitPrice(raw_order_price, side=side)
         if order_price <= 0:
             rejected.append(
                 {
@@ -769,7 +771,7 @@ def generatePaperOrderIntentsFromFlashDocument(
                 }
             )
             continue
-        side = "buy" if action_type in {"WAIT_BUY", "BUY_NOW"} else "sell"
+        tick_size = krxTickSizeForPrice(raw_order_price)
         intent = {
             "schema_version": PAPER_ORDER_INTENT_SCHEMA_VERSION,
             "artifact_id": f"art_intent_{_compact_timestamp(produced_at)}_{symbol}_{len(accepted)+1}",
@@ -799,6 +801,9 @@ def generatePaperOrderIntentsFromFlashDocument(
             "order_price": order_price,
             "price": order_price,
             "entry_price_limit": order_price,
+            "raw_order_price": raw_order_price,
+            "krx_tick_size": tick_size,
+            "order_price_adjusted_to_krx_tick": raw_order_price != order_price,
             "target_price": _parse_positive_int(action.get("target_price") or action.get("take_profit")),
             "stop_loss_price": _parse_positive_int(action.get("stop_loss_price") or action.get("stop_loss")),
             "quantity": int(quantity),
@@ -1056,6 +1061,36 @@ def _resolve_order_price(action_type: str, action: Mapping[str, Any], entry_zone
     if action_type == "BUY_NOW":
         return ordered[-1]
     return ordered[0]
+
+
+def krxTickSizeForPrice(price: Any) -> int:
+    value = _parse_positive_int(price)
+    if value < 2_000:
+        return 1
+    if value < 5_000:
+        return 5
+    if value < 20_000:
+        return 10
+    if value < 50_000:
+        return 50
+    if value < 200_000:
+        return 100
+    if value < 500_000:
+        return 500
+    return 1_000
+
+
+def normalizeKrxLimitPrice(price: Any, *, side: str = "buy") -> int:
+    value = _parse_positive_int(price)
+    if value <= 0:
+        return 0
+    tick = krxTickSizeForPrice(value)
+    remainder = value % tick
+    if remainder == 0:
+        return value
+    if str(side or "").lower() == "sell":
+        return value + (tick - remainder)
+    return value - remainder
 
 
 def _parse_positive_int(value: Any) -> int:

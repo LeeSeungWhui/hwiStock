@@ -539,6 +539,45 @@ def test_gpt_fallback_without_kis_quote_rejects_paper_intent_even_after_wait_buy
     assert "kis_quote_confirmation_required_before_paper_intent" in pipeline["rejected_actions"][0]["reasons"]
 
 
+def test_paper_intent_normalizes_krx_tick_size_before_cash_order():
+    doc = ao.buildFlashTradeDocument(
+        pro_artifact={"artifact_id": "art_pro_hourly_20260605_0900"},
+        recent_events=[{"source_event_id": "naver:news:1"}],
+        kis_market_snapshots=[{"artifact_id": "art_kis_snapshot_20260605_0939"}],
+        compiled_watch=[_compiled_watch("040350")],
+        portfolio_snapshot={"artifact_id": "art_portfolio_20260605_0939", "holdings": []},
+        order_state_snapshot={"artifact_id": "art_order_state_20260605_0939", "pending_orders": []},
+        provider_actions=[
+            {
+                "symbol": "040350",
+                "action": "WAIT_BUY",
+                "entry_price_limit": 9303,
+                "target_price": 9630,
+                "stop_loss_price": 9069,
+                "planned_order_cash_krw": 100000,
+                "confidence": 0.7,
+            }
+        ],
+        produced_at_kst=NOW,
+    )
+
+    pipeline = engine.generatePaperOrderIntentsFromFlashDocument(
+        doc,
+        compiled_watch=[_compiled_watch("040350")],
+        portfolio_snapshot={"artifact_id": "art_portfolio_20260605_0939", "holdings": []},
+        order_state_snapshot={"artifact_id": "art_order_state_20260605_0939", "pending_orders": []},
+        now_kst=NOW,
+    )
+
+    assert pipeline["accepted_count"] == 1
+    intent = pipeline["accepted_intents"][0]
+    assert intent["raw_order_price"] == 9303
+    assert intent["order_price"] == 9300
+    assert intent["entry_price_limit"] == 9300
+    assert intent["krx_tick_size"] == 10
+    assert intent["order_price_adjusted_to_krx_tick"] is True
+
+
 def test_flash_document_ignores_expired_previous_wait_buy_documents():
     doc = ao.buildFlashTradeDocument(
         pro_artifact={"artifact_id": "art_pro_hourly_20260605_0900"},
