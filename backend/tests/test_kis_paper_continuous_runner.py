@@ -1022,7 +1022,7 @@ def test_tick_blocks_sell_when_provider_sellable_quantity_is_insufficient(tmp_pa
 
     cash_order = [step for step in payload["steps"] if step.get("step") == "cash_order"][-1]
     assert cash_order["status"] == "blocked_risk_overlay"
-    assert "sellable_quantity_truth_not_pass" in cash_order["errors"]
+    assert "sellable_truth_not_accepted" in cash_order["errors"]
     assert payload["account_truth"]["sellable_status"] == "skipped_provider_unsupported"
     assert payload["account_truth"]["sellable_quantity"] is None
     assert payload["executionPreflight"]["riskOverlay"]["risk_overlay"]["sellable_quantity"] == 0
@@ -1180,6 +1180,92 @@ def test_preflight_requires_paper_only_and_kis_paper_adapter(tmp_path, monkeypat
     assert preflight["ok"] is False
     assert "paper_only_guard_failed" in preflight["errors"]
     assert "broker_adapter_not_allowed_for_paper_order" in preflight["errors"]
+
+
+def test_runner_sell_preflight_accepts_balance_position_sellable_fallback(tmp_path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    monkeypatch.setenv("HWISTOCK_MARKET_DATA_SOURCE", "kis_market_mode_aware")
+    status = base_runner.get_runner_status("2026-06-05T09:30:00")
+
+    preflight = continuous.evaluateIntentExecutionPreflight(
+        {
+            "schema_version": "paper_order_intent/v0",
+            "intent_id": "intent-sell-fallback-1",
+            "idempotency_key": "intent-sell-fallback-1",
+            "symbol": "005930",
+            "side": "sell",
+            "quantity": 2,
+            "venue_route": "KRX",
+            "broker_adapter": "kis_paper",
+            "planned_order_cash_krw": 0,
+            "paper_only": True,
+        },
+        order_state_snapshot={"pending_orders": [], "active_exits": [], "consumed_intent_keys": []},
+        status=status,
+        account_truth={
+            "source": "kis_paper_read_steps",
+            "balance_status": "pass",
+            "sellable_status": "skipped_provider_unsupported",
+            "sellable_quantity": None,
+            "current_holdings_count": 5,
+            "positions_count": 5,
+            "positions": [
+                {
+                    "symbol": "005930",
+                    "quantity": 7,
+                    "sellable_quantity": 7,
+                    "source": "kis_balance_output1",
+                }
+            ],
+        },
+    )
+
+    assert preflight["ok"] is True
+    overlay = preflight["riskOverlay"]["risk_overlay"]
+    assert overlay["sellable_quantity"] == 7
+    assert overlay["sellable_truth_status"] == "provider_unsupported_with_balance_fallback"
+    assert overlay["sellable_truth_source"] == "kis_balance_output1"
+    assert overlay["sellable_truth_accepted"] is True
+    assert overlay["sellable_helper_status"] == "skipped_provider_unsupported"
+    assert overlay["fallback_used"] is True
+    assert "sellable_helper_unavailable_using_balance_position" in overlay["sellable_truth_warnings"]
+
+
+def test_runner_sell_preflight_blocks_active_sell_duplicate_with_balance_fallback(tmp_path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    monkeypatch.setenv("HWISTOCK_MARKET_DATA_SOURCE", "kis_market_mode_aware")
+    status = base_runner.get_runner_status("2026-06-05T09:30:00")
+
+    preflight = continuous.evaluateIntentExecutionPreflight(
+        {
+            "schema_version": "paper_order_intent/v0",
+            "intent_id": "intent-sell-active-1",
+            "idempotency_key": "intent-sell-active-1",
+            "symbol": "005930",
+            "side": "sell",
+            "quantity": 2,
+            "venue_route": "KRX",
+            "broker_adapter": "kis_paper",
+            "planned_order_cash_krw": 0,
+            "paper_only": True,
+        },
+        order_state_snapshot={
+            "pending_orders": [],
+            "active_exits": [{"symbol": "005930", "side": "sell"}],
+            "consumed_intent_keys": [],
+        },
+        status=status,
+        account_truth={
+            "source": "kis_paper_read_steps",
+            "balance_status": "pass",
+            "sellable_status": "skipped_provider_unsupported",
+            "sellable_quantity": None,
+            "positions": [{"symbol": "005930", "quantity": 7, "sellable_quantity": 7, "source": "kis_balance_output1"}],
+        },
+    )
+
+    assert preflight["ok"] is False
+    assert "active_sell_order_exists" in preflight["errors"]
 
 
 def test_tick_auto_loads_next_fifo_intent_queue_and_persists_only_passed_order(tmp_path, monkeypatch):
@@ -1345,7 +1431,7 @@ def test_tick_consumes_same_flash_document_intents_individually(tmp_path, monkey
         },
         status=base_runner.get_runner_status("2026-06-05T09:32:00"),
     )
-    assert "duplicate_intent_idempotency_key" in duplicate_preflight["errors"]
+    assert "intent_idempotency_key_already_consumed" in duplicate_preflight["errors"]
 
 
 def test_runner_consumes_flash_buy_intent_and_reaches_cash_order_step_with_fake_transport(tmp_path, monkeypatch):
@@ -1471,9 +1557,67 @@ def test_tick_prioritizes_exit_sell_intent_before_entry_fifo(tmp_path, monkeypat
     )
     assert payload["intent_source"] == "next_intent_queue_exit_priority_fifo"
     assert payload["executionPreflight"]["idempotency_key"] == "intent-sell-exit"
-    assert "sellable_quantity_truth_not_pass" in payload["executionPreflight"]["errors"]
+    assert "sellable_truth_not_accepted" in payload["executionPreflight"]["errors"]
     assert not (data_root / "state" / "kis-paper-runner-state.json").exists()
     assert not any("/order-cash" in call["url"] for call in transport.calls)
+
+
+def test_tick_sell_exit_uses_balance_position_sellable_fallback(tmp_path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    data_root = tmp_path / "data"
+    intent_dir = data_root / "intents" / "2026-06-05"
+    intent_dir.mkdir(parents=True)
+    sell_intent = {
+        "schema_version": "paper_order_intent/v0",
+        "intent_id": "intent-sell-balance-fallback",
+        "idempotency_key": "intent-sell-balance-fallback",
+        "side": "sell",
+        "intent_type": "position_time_stop_exit",
+        "symbol": "000660",
+        "quantity": 3,
+        "order_price": 120000,
+        "venue_route": "KRX",
+        "broker_adapter": "kis_paper",
+        "planned_order_cash_krw": 0,
+        "valid_until_kst": "2026-06-05T09:50:00+09:00",
+        "paper_only": True,
+    }
+    (intent_dir / "paper-order-intents-latest.jsonl").write_text(
+        json.dumps(sell_intent, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    env = _env()
+    env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _mark_order_grade_source(env)
+    _order_approval(tmp_path, env)
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(data_root)
+    transport = FakeTransport(
+        balance_positions=[
+            {
+                "pdno": "000660",
+                "hldg_qty": "5",
+                "ord_psbl_qty": "5",
+                "prpr": "120000",
+                "pchs_avg_pric": "119000",
+            }
+        ]
+    )
+    adapter = KisPaperAdapter(env=env, transport=transport)
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=adapter,
+        at_kst="2026-06-05T09:30:00",
+    )
+
+    assert payload["executionPreflight"]["ok"] is True
+    overlay = payload["executionPreflight"]["riskOverlay"]["risk_overlay"]
+    assert overlay["sellable_truth_status"] == "provider_unsupported_with_balance_fallback"
+    assert overlay["sellable_truth_source"] == "kis_balance_output1"
+    assert overlay["sellable_quantity"] == 5
+    assert overlay["fallback_used"] is True
+    assert any(step.get("step") == "cash_order" and step.get("status") == "pass" for step in payload["steps"])
+    assert any("/order-cash" in call["url"] for call in transport.calls)
 
 
 def test_tick_does_not_mark_intent_consumed_when_broker_warns(tmp_path, monkeypatch):

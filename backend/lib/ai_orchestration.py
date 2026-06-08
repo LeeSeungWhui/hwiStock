@@ -39,6 +39,19 @@ FLASH_MANAGEMENT_ACTIONS = frozenset(
 )
 FLASH_ACTION_TYPES = FLASH_BUY_ACTIONS | FLASH_SELL_ACTIONS | FLASH_MANAGEMENT_ACTIONS
 
+SELLABLE_TRUTH_PASS_STATUSES = frozenset({"pass", "ok", "available", "confirmed"})
+SELLABLE_TRUTH_PROVIDER_UNSUPPORTED_STATUSES = frozenset(
+    {"", "none", "unknown", "skipped_provider_unsupported", "provider_unsupported", "paper_mock_unsupported"}
+)
+SELLABLE_TRUTH_ACCEPTED_STATUSES = frozenset(
+    {
+        "pass",
+        "pass_balance_position_fallback",
+        "pass_daily_fill_fallback",
+        "provider_unsupported_with_balance_fallback",
+    }
+)
+
 ALLOWED_ACTIONS = frozenset(
     {"watch", "reject", "consider_entry", "hold_review", "exit_review"}
 )
@@ -1677,6 +1690,81 @@ def _position_sellable_status(row: Mapping[str, Any]) -> str:
     ).strip().lower()
 
 
+def _position_sellable_truth_source(row: Mapping[str, Any]) -> str:
+    account_truth = row.get("trading_account_truth") if isinstance(row.get("trading_account_truth"), Mapping) else {}
+    return str(
+        _first_non_empty(
+            row.get("sellable_truth_source"),
+            row.get("truth_source"),
+            row.get("source"),
+            row.get("position_source"),
+            row.get("account_truth_source"),
+            account_truth.get("sellable_truth_source") if isinstance(account_truth, Mapping) else None,
+            account_truth.get("source") if isinstance(account_truth, Mapping) else None,
+            "kis_balance_position",
+        )
+    ).strip()
+
+
+def _normalize_position_sellable_truth(
+    row: Mapping[str, Any],
+    *,
+    position_state: str,
+    sellable_quantity: int,
+    sellable_status: str,
+) -> Dict[str, Any]:
+    status = str(sellable_status or "").strip().lower()
+    source = _position_sellable_truth_source(row)
+    warnings: List[str] = []
+    if position_state != "holding_confirmed":
+        return {
+            "sellable_truth_status": "unknown",
+            "sellable_truth_source": source,
+            "sellable_truth_accepted": False,
+            "sellable_truth_warnings": [],
+            "fallback_used": False,
+        }
+    if sellable_quantity <= 0:
+        return {
+            "sellable_truth_status": "provider_unsupported_no_fallback"
+            if status in SELLABLE_TRUTH_PROVIDER_UNSUPPORTED_STATUSES
+            else "unknown",
+            "sellable_truth_source": source,
+            "sellable_truth_accepted": False,
+            "sellable_truth_warnings": [],
+            "fallback_used": False,
+        }
+    if status in SELLABLE_TRUTH_PASS_STATUSES:
+        return {
+            "sellable_truth_status": "pass",
+            "sellable_truth_source": source or "sellable_helper",
+            "sellable_truth_accepted": True,
+            "sellable_truth_warnings": [],
+            "fallback_used": False,
+        }
+    if status in SELLABLE_TRUTH_PROVIDER_UNSUPPORTED_STATUSES:
+        warnings.append("sellable_helper_unavailable_using_balance_position")
+        fallback_status = (
+            "provider_unsupported_with_balance_fallback"
+            if status in {"skipped_provider_unsupported", "provider_unsupported", "paper_mock_unsupported"}
+            else "pass_balance_position_fallback"
+        )
+        return {
+            "sellable_truth_status": fallback_status,
+            "sellable_truth_source": source or "kis_balance_position",
+            "sellable_truth_accepted": True,
+            "sellable_truth_warnings": warnings,
+            "fallback_used": True,
+        }
+    return {
+        "sellable_truth_status": "blocked",
+        "sellable_truth_source": source,
+        "sellable_truth_accepted": False,
+        "sellable_truth_warnings": [],
+        "fallback_used": False,
+    }
+
+
 def _position_quantity(row: Mapping[str, Any]) -> int:
     return _safe_positive_int(
         _first_non_empty(
@@ -1750,7 +1838,7 @@ def _sell_execution_blockers(
     current_price: int,
     quantity: int,
     sellable_quantity: int,
-    sellable_status: str,
+    sellable_truth_accepted: bool,
     broker_order_open: bool,
 ) -> List[str]:
     blockers: List[str] = []
@@ -1760,10 +1848,10 @@ def _sell_execution_blockers(
         blockers.append("missing_krx_quote")
     if not broker_order_open:
         blockers.append("order_window_closed")
-    if sellable_status and sellable_status not in {"pass", "ok", "available", "confirmed"}:
-        blockers.append("sellable_truth_not_pass")
     if sellable_quantity <= 0:
         blockers.append("missing_sellable_truth")
+    if not sellable_truth_accepted:
+        blockers.append("sellable_truth_not_accepted")
     elif quantity > 0 and sellable_quantity < quantity:
         blockers.append("sellable_quantity_insufficient")
     return _dedupe_strings(blockers)
@@ -1801,6 +1889,12 @@ def _build_position_action(
     quantity = _position_quantity(row)
     sellable_quantity = _position_sellable_quantity(row)
     sellable_status = _position_sellable_status(row)
+    sellable_truth = _normalize_position_sellable_truth(
+        row,
+        position_state=position_state,
+        sellable_quantity=sellable_quantity,
+        sellable_status=sellable_status,
+    )
     pnl_pct = _unrealized_pnl_pct(current_price=current_price, entry_price=entry_price)
     progress_pct = _price_progress_to_target_pct(
         current_price=current_price,
@@ -1824,7 +1918,7 @@ def _build_position_action(
         current_price=current_price,
         quantity=quantity,
         sellable_quantity=sellable_quantity,
-        sellable_status=sellable_status,
+        sellable_truth_accepted=bool(sellable_truth["sellable_truth_accepted"]),
         broker_order_open=broker_order_open,
     )
     sell_allowed = not blockers
@@ -1905,6 +1999,11 @@ def _build_position_action(
         "quantity": quantity,
         "sellable_quantity": sellable_quantity,
         "sellable_status": sellable_status or None,
+        "sellable_truth_status": sellable_truth["sellable_truth_status"],
+        "sellable_truth_source": sellable_truth["sellable_truth_source"],
+        "sellable_truth_accepted": sellable_truth["sellable_truth_accepted"],
+        "sellable_truth_warnings": _dedupe_strings(sellable_truth["sellable_truth_warnings"]),
+        "fallback_used": bool(sellable_truth["fallback_used"]),
         "entry_price_limit": _safe_positive_int(row.get("entry_price_limit") or row.get("order_price") or row.get("price")),
         "take_profit": row.get("take_profit") or target_price,
         "stop_loss": row.get("stop_loss") or stop_loss_price,

@@ -88,6 +88,12 @@ def _flash_doc_with_position_sell(*, order_window_open: bool = True):
                 "entry_price": 10000,
                 "quantity": 10,
                 "sellable_quantity": 10,
+                "sellable_status": "pass",
+                "sellable_truth_status": "pass",
+                "sellable_truth_source": "sellable_helper",
+                "sellable_truth_accepted": True,
+                "sellable_truth_warnings": [],
+                "fallback_used": False,
                 "unrealized_pnl_pct": 0.002,
                 "time_exit_status": "hard_max_exceeded",
                 "time_exit_reason": "hard_max_hold_exceeded",
@@ -916,6 +922,8 @@ def test_time_stop_sell_intent_has_paper_only_kis_paper_krx():
     assert intent["order_division"] == "00"
     assert intent["quantity"] == 10
     assert intent["sellable_quantity"] == 10
+    assert intent["sellable_truth_status"] == "pass"
+    assert intent["sellable_truth_accepted"] is True
     assert intent["planned_order_cash_krw"] == 0
     assert intent["estimated_order_cash_krw"] == intent["quantity"] * intent["order_price"]
     assert intent["paper_only"] is True
@@ -936,6 +944,51 @@ def test_time_stop_does_not_create_sell_when_order_window_closed():
 
     assert pipeline["accepted_count"] == 0
     assert "krx_order_session_not_open" in pipeline["rejected_actions"][0]["reasons"]
+    assert "order_window_closed" in pipeline["rejected_actions"][0]["reasons"]
+
+
+def test_time_stop_sell_intent_accepts_balance_fallback_sellable_truth():
+    doc = _flash_doc_with_position_sell(order_window_open=True)
+    action = doc["position_actions"][0]
+    action.update(
+        {
+            "sellable_status": "none",
+            "sellable_truth_status": "pass_balance_position_fallback",
+            "sellable_truth_source": "kis_balance_output1",
+            "sellable_truth_accepted": True,
+            "sellable_truth_warnings": ["sellable_helper_unavailable_using_balance_position"],
+            "fallback_used": True,
+        }
+    )
+    pipeline = engine.generatePaperOrderIntentsFromFlashDocument(
+        doc,
+        compiled_watch=[_compiled_watch("005930")],
+        portfolio_snapshot={"holdings": [{"symbol": "005930", "quantity": 10, "sellable_quantity": 10}]},
+        order_state_snapshot={"pending_orders": [], "active_exits": []},
+        now_kst=NOW,
+    )
+
+    assert pipeline["accepted_count"] == 1
+    intent = pipeline["accepted_intents"][0]
+    assert intent["side"] == "sell"
+    assert intent["sellable_truth_status"] == "pass_balance_position_fallback"
+    assert intent["sellable_truth_source"] == "kis_balance_output1"
+    assert intent["sellable_truth_accepted"] is True
+    assert intent["fallback_used"] is True
+
+
+def test_active_sell_order_blocks_duplicate_sell():
+    doc = _flash_doc_with_position_sell(order_window_open=True)
+    pipeline = engine.generatePaperOrderIntentsFromFlashDocument(
+        doc,
+        compiled_watch=[_compiled_watch("005930")],
+        portfolio_snapshot={"holdings": [{"symbol": "005930", "quantity": 10, "sellable_quantity": 10}]},
+        order_state_snapshot={"pending_orders": [], "active_exits": [{"symbol": "005930", "side": "sell"}]},
+        now_kst=NOW,
+    )
+
+    assert pipeline["accepted_count"] == 0
+    assert "active_sell_order_exists" in pipeline["rejected_actions"][0]["reasons"]
 
 
 def test_unit014_execution_preflight_idempotency_and_realtime_exit():
@@ -981,7 +1034,7 @@ def test_unit014_execution_preflight_idempotency_and_realtime_exit():
         },
     )
     assert second["ok"] is False
-    assert "duplicate_intent_idempotency_key" in second["errors"]
+    assert "intent_idempotency_key_already_consumed" in second["errors"]
 
     exit_decision = executor.evaluateRealtimeExitDecision(
         {"symbol": "005930", "stop_loss": 9800, "take_profit": 10500, "highest_price": 10400, "trailing_stop_pct": 1.2},

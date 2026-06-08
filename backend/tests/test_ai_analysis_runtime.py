@@ -186,7 +186,33 @@ def test_default_order_state_snapshot_includes_reconciled_holdings(tmp_path: Pat
     assert snapshot["holdings"][0]["symbol"] == "005930"
     assert snapshot["holdings"][0]["position_state"] == "holding_confirmed"
     assert snapshot["active_exits"][0]["symbol"] == "005930"
-    assert snapshot["consumed_trade_document_ids"] == ["intent-1"]
+    assert snapshot["consumed_intent_keys"] == ["intent-1"]
+    assert snapshot["consumed_trade_document_ids"] == []
+    assert snapshot["legacy_consumed_trade_document_ids"] == []
+
+
+def test_default_order_state_snapshot_ignores_legacy_consumed_trade_document_ids_for_siblings(tmp_path: Path):
+    data_root = tmp_path / "data"
+    state_path = data_root / "state" / "kis-paper-runner-state.json"
+    _write_json(
+        state_path,
+        {
+            "schema_version": "kis_paper_runner_state/v0",
+            "pending_orders": [],
+            "holdings": [],
+            "active_exits": [],
+            "consumed_intent_keys": ["intent-1"],
+            "consumed_trade_document_ids": ["flash-same-doc"],
+        },
+    )
+    now = datetime.fromisoformat("2026-06-08T09:10:00+09:00")
+
+    snapshot = runtime._default_order_state_snapshot(now, data_root=data_root)  # noqa: SLF001
+
+    assert snapshot["consumed_intent_keys"] == ["intent-1"]
+    assert snapshot["consumed_trade_document_ids"] == []
+    assert snapshot["legacy_consumed_trade_document_ids"] == ["flash-same-doc"]
+    assert snapshot["legacy_consumed_trade_document_ids_ignored_for_sibling_intents"] is True
 
 
 def test_deepseek_payload_omits_max_tokens_by_default(monkeypatch):

@@ -204,6 +204,17 @@ def _sellable_holding_row(**overrides):
     return payload
 
 
+def _balance_fallback_holding_row(**overrides):
+    payload = _holding_row(
+        sellable_quantity=10,
+        sellable_status="none",
+        source="kis_balance_output1",
+        trading_account_truth={"sellable_quantity": 10, "sellable_status": "none", "source": "kis_balance_output1"},
+    )
+    payload.update(overrides)
+    return payload
+
+
 def _ai_recommendation(**overrides):
     payload = {
         "schema_version": "ai_recommendation/v0",
@@ -868,6 +879,95 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         self.assertIsNone(position_action["exit_blocked_reason"])
         self.assertEqual(position_action["time_exit_status"], "hard_max_exceeded")
         self.assertEqual(position_action["time_exit_reason"], "hard_max_hold_exceeded")
+        self.assertEqual(position_action["sellable_truth_status"], "pass")
+        self.assertTrue(position_action["sellable_truth_accepted"])
+
+    def test_sell_now_allowed_when_sellable_quantity_positive_but_status_none_with_holding_confirmed(self):
+        doc = _position_management_doc(
+            holding=[_balance_fallback_holding_row(entry_time_kst="2026-06-04T08:34:00+09:00")],
+            price=10020,
+        )
+
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["action"], "SELL_NOW")
+        self.assertTrue(position_action["sell_allowed"])
+        self.assertEqual(position_action["sellable_quantity"], 10)
+        self.assertEqual(position_action["sellable_status"], "none")
+        self.assertEqual(position_action["sellable_truth_status"], "pass_balance_position_fallback")
+        self.assertEqual(position_action["sellable_truth_source"], "kis_balance_output1")
+        self.assertTrue(position_action["sellable_truth_accepted"])
+        self.assertIn("sellable_helper_unavailable_using_balance_position", position_action["sellable_truth_warnings"])
+        self.assertTrue(position_action["fallback_used"])
+        self.assertIsNone(position_action["exit_blocked_reason"])
+
+    def test_sell_now_allowed_with_provider_unsupported_and_balance_position_fallback(self):
+        doc = _position_management_doc(
+            holding=[
+                _balance_fallback_holding_row(
+                    entry_time_kst="2026-06-04T08:34:00+09:00",
+                    sellable_status="skipped_provider_unsupported",
+                    trading_account_truth={
+                        "sellable_quantity": 10,
+                        "sellable_status": "skipped_provider_unsupported",
+                        "source": "kis_balance_output1",
+                    },
+                )
+            ],
+            price=10020,
+        )
+
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["action"], "SELL_NOW")
+        self.assertEqual(position_action["sellable_truth_status"], "provider_unsupported_with_balance_fallback")
+        self.assertTrue(position_action["sellable_truth_accepted"])
+
+    def test_sell_now_blocked_when_sellable_status_none_and_no_holding_confirmed(self):
+        doc = _position_management_doc(
+            pending=[
+                {
+                    "symbol": "005930",
+                    "position_state": "submitted_unreconciled",
+                    "action": "WAIT_BUY",
+                    "submitted_at_kst": "2026-06-04T08:54:00+09:00",
+                    "entry_price_limit": 10000,
+                    "target_price": 10500,
+                    "stop_loss_price": 9800,
+                    "quantity": 10,
+                    "sellable_quantity": 10,
+                    "sellable_status": "none",
+                    "source": "kis_balance_output1",
+                }
+            ],
+            price=10500,
+        )
+
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["position_state"], "submitted_unreconciled")
+        self.assertEqual(position_action["action"], "WAIT_ORDER_RECONCILIATION")
+        self.assertFalse(position_action["sell_allowed"])
+        self.assertFalse(position_action["sellable_truth_accepted"])
+        self.assertEqual(position_action["sellable_truth_status"], "unknown")
+        self.assertEqual(position_action["exit_blocked_reason"], "fill_status_not_reconciled")
+
+    def test_sell_now_blocked_when_sellable_quantity_zero(self):
+        doc = _position_management_doc(
+            holding=[
+                _holding_row(
+                    entry_time_kst="2026-06-04T08:34:00+09:00",
+                    sellable_quantity=0,
+                    sellable_status="none",
+                    source="kis_balance_output1",
+                )
+            ],
+            price=10020,
+        )
+
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["action"], "WAIT_SELL")
+        self.assertFalse(position_action["sell_allowed"])
+        self.assertEqual(position_action["sellable_truth_status"], "provider_unsupported_no_fallback")
+        self.assertIn("missing_sellable_truth", position_action["exit_blocked_reason"])
+        self.assertIn("sellable_truth_not_accepted", position_action["exit_blocked_reason"])
 
     def test_holding_31m_without_sell_truth_wait_sell_with_blocker(self):
         doc = _position_management_doc(
@@ -968,6 +1068,39 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         self.assertEqual(position_action["holding_age_minutes"], 5)
         self.assertEqual(position_action["action"], "SELL_NOW")
         self.assertEqual(position_action["time_exit_reason"], "stop_loss_hit")
+
+    def test_target_price_hit_creates_sell_intent_with_balance_fallback(self):
+        doc = _position_management_doc(
+            holding=[_balance_fallback_holding_row(entry_time_kst="2026-06-04T09:00:00+09:00")],
+            price=10500,
+        )
+
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["action"], "SELL_NOW")
+        self.assertEqual(position_action["time_exit_reason"], "target_price_hit")
+        self.assertEqual(position_action["sellable_truth_status"], "pass_balance_position_fallback")
+
+    def test_stop_loss_hit_creates_sell_intent_with_balance_fallback(self):
+        doc = _position_management_doc(
+            holding=[_balance_fallback_holding_row(entry_time_kst="2026-06-04T09:00:00+09:00")],
+            price=9700,
+        )
+
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["action"], "SELL_NOW")
+        self.assertEqual(position_action["time_exit_reason"], "stop_loss_hit")
+        self.assertEqual(position_action["sellable_truth_status"], "pass_balance_position_fallback")
+
+    def test_hard_max_hold_exceeded_creates_sell_intent_with_balance_fallback(self):
+        doc = _position_management_doc(
+            holding=[_balance_fallback_holding_row(entry_time_kst="2026-06-04T08:34:00+09:00")],
+            price=10020,
+        )
+
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["action"], "SELL_NOW")
+        self.assertEqual(position_action["time_exit_reason"], "hard_max_hold_exceeded")
+        self.assertEqual(position_action["sellable_truth_status"], "pass_balance_position_fallback")
 
     def testPriorTradeDocumentStillValidProducesHoldExistingNotNoTrade(self):
         doc = ao.buildFlashTradeDocument(

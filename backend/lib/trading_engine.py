@@ -35,6 +35,16 @@ COMPILED_WATCH_SCHEMA_VERSION = "compiled_watch/v0"
 PAPER_ORDER_INTENT_SCHEMA_VERSION = "paper_order_intent/v0"
 NO_ORDER_DRY_RUN = "no_order_dry_run"
 
+SELLABLE_TRUTH_ACCEPTED_STATUSES = frozenset(
+    {
+        "pass",
+        "pass_balance_position_fallback",
+        "pass_daily_fill_fallback",
+        "provider_unsupported_with_balance_fallback",
+    }
+)
+SELLABLE_LEGACY_PASS_STATUSES = frozenset({"pass", "ok", "available", "confirmed"})
+
 ALLOWED_VENUE_ROUTES = frozenset({"KRX", "NXT", "SOR", "AUTO_SESSION"})
 ALLOWED_WATCH_CONDITION_TYPES = frozenset(
     {
@@ -749,7 +759,7 @@ def generatePaperOrderIntentsFromFlashDocument(
 
         idempotency_key = f"{document.get('artifact_id') or 'flash'}:{document.get('bucket_id') or ''}:{symbol}:{action_type}"
         if idempotency_key in active_keys:
-            reasons.append("duplicate_active_intent")
+            reasons.append("duplicate_intent_key")
 
         if reasons:
             rejected.append(
@@ -910,6 +920,14 @@ def generatePaperOrderIntentsFromFlashDocument(
         requested_quantity = _parse_positive_int(position_action.get("quantity")) or sellable_quantity
         current_price = _parse_positive_int(position_action.get("current_price") or position_action.get("order_price"))
         market_refs = list(position_action.get("market_data_refs") or position_action.get("kis_market_refs") or [])
+        sellable_truth_status = str(position_action.get("sellable_truth_status") or "").strip().lower()
+        sellable_status = str(position_action.get("sellable_status") or "").strip().lower()
+        sellable_truth_accepted = (
+            position_action.get("sellable_truth_accepted") is True
+            or sellable_truth_status in SELLABLE_TRUTH_ACCEPTED_STATUSES
+            or (not sellable_truth_status and sellable_status in SELLABLE_LEGACY_PASS_STATUSES)
+        )
+        sellable_truth_warnings = list(position_action.get("sellable_truth_warnings") or [])
         reasons: List[str] = []
         if not symbol:
             reasons.append("ticker_required")
@@ -920,18 +938,23 @@ def generatePaperOrderIntentsFromFlashDocument(
         if not idempotency_key:
             reasons.append("idempotency_key_required")
         if idempotency_key in active_keys:
-            reasons.append("duplicate_active_intent")
+            reasons.append("duplicate_intent_key")
+        if symbol in exiting:
+            reasons.append("active_sell_order_exists")
         if current_price <= 0:
             reasons.append("krx_quote_required_for_sell_intent")
         if not market_refs:
             reasons.append("market_data_refs_required")
         if sellable_quantity <= 0:
             reasons.append("sellable_quantity_truth_required")
+        if not sellable_truth_accepted:
+            reasons.append("sellable_truth_not_accepted")
         if requested_quantity <= 0:
             reasons.append("sell_quantity_must_be_positive")
         elif sellable_quantity > 0 and requested_quantity > sellable_quantity:
             reasons.append("sellable_quantity_insufficient")
         if order_window_open is not True:
+            reasons.append("order_window_closed")
             reasons.append("krx_order_session_not_open")
         if position_action.get("exit_blocked_reason"):
             reasons.append(str(position_action.get("exit_blocked_reason")))
@@ -1018,6 +1041,12 @@ def generatePaperOrderIntentsFromFlashDocument(
             "stop_loss_price": _parse_positive_int(position_action.get("stop_loss_price") or position_action.get("stop_loss")),
             "quantity": quantity,
             "sellable_quantity": sellable_quantity,
+            "sellable_status": sellable_status or None,
+            "sellable_truth_status": sellable_truth_status or ("pass" if sellable_status in SELLABLE_LEGACY_PASS_STATUSES else None),
+            "sellable_truth_source": position_action.get("sellable_truth_source"),
+            "sellable_truth_accepted": bool(sellable_truth_accepted),
+            "sellable_truth_warnings": sellable_truth_warnings,
+            "fallback_used": bool(position_action.get("fallback_used")),
             "entry_price": _parse_positive_int(position_action.get("entry_price") or position_action.get("entry_price_limit")),
             "take_profit": position_action.get("take_profit"),
             "stop_loss": position_action.get("stop_loss"),

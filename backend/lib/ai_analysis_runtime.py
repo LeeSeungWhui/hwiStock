@@ -1569,7 +1569,8 @@ def _default_order_state_snapshot(now: datetime, *, data_root: Path = DEFAULT_DA
     pending_orders: list[Dict[str, Any]] = []
     holdings: list[Dict[str, Any]] = []
     active_exits: list[Dict[str, Any]] = []
-    consumed_ids: list[str] = []
+    consumed_intent_keys: list[str] = []
+    legacy_consumed_trade_document_ids: list[str] = []
     if state_path.is_file():
         try:
             state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -1591,9 +1592,14 @@ def _default_order_state_snapshot(now: datetime, *, data_root: Path = DEFAULT_DA
                 for row in (state.get("active_exits") or [])
                 if isinstance(row, Mapping)
             ]
-            consumed_ids = [
+            consumed_intent_keys = [
                 str(item)
-                for item in (state.get("consumed_trade_document_ids") or state.get("consumed_intent_keys") or [])
+                for item in (state.get("consumed_intent_keys") or [])
+                if str(item).strip()
+            ]
+            legacy_consumed_trade_document_ids = [
+                str(item)
+                for item in (state.get("consumed_trade_document_ids") or [])
                 if str(item).strip()
             ]
     return {
@@ -1606,7 +1612,12 @@ def _default_order_state_snapshot(now: datetime, *, data_root: Path = DEFAULT_DA
         "holdings": holdings,
         "active_exits": active_exits,
         "cooldowns": [],
-        "consumed_trade_document_ids": consumed_ids,
+        "consumed_trade_document_ids": [],
+        "consumed_intent_keys": consumed_intent_keys,
+        "legacy_consumed_trade_document_ids": legacy_consumed_trade_document_ids,
+        "legacy_consumed_trade_document_ids_ignored_for_sibling_intents": bool(
+            legacy_consumed_trade_document_ids
+        ),
         "credential_values_printed": False,
         "fake_broker_used": False,
     }

@@ -68,6 +68,18 @@ ORDER_GRADE_MARKET_DATA_SOURCES = frozenset(
 OPERATION_MODES = frozenset({"observe_only", "paper_experiment", "live_production"})
 DEFAULT_MAX_DAILY_PAPER_ORDERS = 20
 DEFAULT_MAX_PAPER_NOTIONAL_KRW = 2_000_000
+SELLABLE_TRUTH_PASS_STATUSES = frozenset({"pass", "ok", "available", "confirmed"})
+SELLABLE_TRUTH_PROVIDER_UNSUPPORTED_STATUSES = frozenset(
+    {"", "none", "unknown", "skipped_provider_unsupported", "provider_unsupported", "paper_mock_unsupported"}
+)
+SELLABLE_TRUTH_ACCEPTED_STATUSES = frozenset(
+    {
+        "pass",
+        "pass_balance_position_fallback",
+        "pass_daily_fill_fallback",
+        "provider_unsupported_with_balance_fallback",
+    }
+)
 
 
 def _now_kst() -> datetime:
@@ -272,6 +284,98 @@ def _coerce_nonnegative_int(value: Any, default: int) -> int:
     return parsed if parsed >= 0 else default
 
 
+def _symbol_matches(row: Mapping[str, Any], symbol: str) -> bool:
+    expected = str(symbol or "").strip()
+    if not expected:
+        return False
+    actual = str(row.get("symbol") or row.get("ticker") or row.get("pdno") or row.get("PDNO") or "").strip()
+    return actual == expected
+
+
+def _row_positive_quantity(row: Mapping[str, Any], keys: Sequence[str]) -> int:
+    for key in keys:
+        parsed = _coerce_nonnegative_int(row.get(key), 0)
+        if parsed > 0:
+            return parsed
+    return 0
+
+
+def normalizeSellableTruth(
+    intent: Optional[Mapping[str, Any]],
+    account_truth: Optional[Mapping[str, Any]],
+) -> Dict[str, Any]:
+    payload = dict(intent or {})
+    account = dict(account_truth or {})
+    symbol = str(payload.get("symbol") or payload.get("ticker") or "").strip()
+    requested_quantity = _coerce_nonnegative_int(payload.get("quantity"), 0)
+    helper_status = str(account.get("sellable_status") or "").strip().lower()
+    helper_quantity = _coerce_nonnegative_int(account.get("sellable_quantity"), 0)
+    if helper_status in SELLABLE_TRUTH_PASS_STATUSES and helper_quantity > 0:
+        return {
+            "sellable_truth_status": "pass",
+            "sellable_truth_source": "sellable_helper",
+            "sellable_truth_accepted": requested_quantity <= 0 or helper_quantity >= requested_quantity,
+            "sellable_quantity": helper_quantity,
+            "sellable_helper_status": helper_status,
+            "fallback_used": False,
+            "sellable_truth_warnings": [],
+        }
+
+    for row in account.get("positions") or []:
+        if not isinstance(row, Mapping) or not _symbol_matches(row, symbol):
+            continue
+        quantity = _row_positive_quantity(row, ("sellable_quantity", "ord_psbl_qty", "sll_psbl_qty", "quantity", "hldg_qty"))
+        if quantity <= 0:
+            continue
+        source = str(row.get("source") or "kis_balance_position")
+        status = (
+            "provider_unsupported_with_balance_fallback"
+            if helper_status in {"skipped_provider_unsupported", "provider_unsupported", "paper_mock_unsupported"}
+            else "pass_balance_position_fallback"
+        )
+        return {
+            "sellable_truth_status": status,
+            "sellable_truth_source": source,
+            "sellable_truth_accepted": requested_quantity <= 0 or quantity >= requested_quantity,
+            "sellable_quantity": quantity,
+            "sellable_helper_status": helper_status or None,
+            "fallback_used": True,
+            "sellable_truth_warnings": ["sellable_helper_unavailable_using_balance_position"],
+        }
+
+    for row in account.get("daily_order_fills") or []:
+        if not isinstance(row, Mapping) or not _symbol_matches(row, symbol):
+            continue
+        if str(row.get("side") or "").strip().lower() not in {"", "buy"}:
+            continue
+        quantity = _row_positive_quantity(row, ("filled_quantity", "quantity", "order_quantity"))
+        if quantity <= 0:
+            continue
+        return {
+            "sellable_truth_status": "pass_daily_fill_fallback",
+            "sellable_truth_source": str(row.get("source") or "kis_daily_ccld_output1"),
+            "sellable_truth_accepted": requested_quantity <= 0 or quantity >= requested_quantity,
+            "sellable_quantity": quantity,
+            "sellable_helper_status": helper_status or None,
+            "fallback_used": True,
+            "sellable_truth_warnings": ["sellable_helper_unavailable_using_daily_fill"],
+        }
+
+    if helper_status in SELLABLE_TRUTH_PROVIDER_UNSUPPORTED_STATUSES:
+        status = "provider_unsupported_no_fallback" if helper_status else "unknown"
+    else:
+        status = "blocked"
+    return {
+        "sellable_truth_status": status,
+        "sellable_truth_source": "none",
+        "sellable_truth_accepted": False,
+        "sellable_quantity": helper_quantity,
+        "sellable_helper_status": helper_status or None,
+        "fallback_used": False,
+        "sellable_truth_warnings": [],
+    }
+
+
 def evaluatePaperRiskOverlay(
     intent: Optional[Mapping[str, Any]],
     *,
@@ -331,16 +435,28 @@ def evaluatePaperRiskOverlay(
         errors.append("balance_truth_not_pass")
     if side == "buy" and account_truth_present and account.get("buyable_status") != "pass":
         errors.append("buyable_cash_truth_not_pass")
-    if side == "sell" and account_truth_present and account.get("sellable_status") != "pass":
-        errors.append("sellable_quantity_truth_not_pass")
+    sellable_truth = normalizeSellableTruth(payload, account) if side == "sell" and account_truth_present else {
+        "sellable_truth_status": None,
+        "sellable_truth_source": None,
+        "sellable_truth_accepted": False,
+        "sellable_quantity": 0,
+        "sellable_helper_status": None,
+        "fallback_used": False,
+        "sellable_truth_warnings": [],
+    }
     if side == "sell" and account_truth_present:
-        sellable_quantity = int(account.get("sellable_quantity") or 0)
+        sellable_quantity = int(sellable_truth.get("sellable_quantity") or 0)
         requested_quantity = int(payload.get("quantity") or 0)
         if requested_quantity <= 0:
             errors.append("sell_quantity_must_be_positive")
+        elif not (
+            sellable_truth.get("sellable_truth_accepted") is True
+            or str(sellable_truth.get("sellable_truth_status") or "") in SELLABLE_TRUTH_ACCEPTED_STATUSES
+        ):
+            errors.append("sellable_truth_not_accepted")
         elif sellable_quantity < requested_quantity:
             errors.append("sellable_quantity_insufficient")
-    if current_holdings >= 5:
+    if side == "buy" and current_holdings >= 5:
         errors.append("max_simultaneous_holdings_exceeded")
     if side == "buy" and planned_cash <= 0:
         errors.append("planned_order_cash_must_be_positive")
@@ -371,7 +487,13 @@ def evaluatePaperRiskOverlay(
             "pending_buy_notional_krw": pending_buy_notional,
             "effective_total_deposit_krw": effective_total_deposit,
             "current_holdings_count": current_holdings,
-            "sellable_quantity": int(account.get("sellable_quantity") or 0) if account_truth_present else 0,
+            "sellable_quantity": int(sellable_truth.get("sellable_quantity") or 0) if account_truth_present else 0,
+            "sellable_truth_status": sellable_truth.get("sellable_truth_status"),
+            "sellable_truth_source": sellable_truth.get("sellable_truth_source"),
+            "sellable_truth_accepted": sellable_truth.get("sellable_truth_accepted"),
+            "sellable_truth_warnings": list(sellable_truth.get("sellable_truth_warnings") or []),
+            "sellable_helper_status": sellable_truth.get("sellable_helper_status"),
+            "fallback_used": bool(sellable_truth.get("fallback_used")),
         },
     }
 
@@ -493,8 +615,11 @@ def evaluateIntentExecutionPreflight(
         errors.append("already_holding_symbol")
     if symbol and symbol in pending:
         errors.append("pending_order_exists")
+    side = str(payload.get("side") or "buy").lower()
     if symbol and symbol in exits:
         errors.append("active_exit_order_exists")
+        if side == "sell":
+            errors.append("active_sell_order_exists")
     expiry = _parse_optional_kst_timestamp(payload.get("valid_until_kst") or payload.get("valid_until"))
     reference_now = _status_reference_datetime(status)
     if expiry and expiry <= reference_now:
@@ -512,7 +637,7 @@ def evaluateIntentExecutionPreflight(
     if not idempotency_key:
         errors.append("idempotency_key_required")
     if idempotency_key and (idempotency_key in _CONSUMED_INTENT_KEYS or idempotency_key in consumed_keys):
-        errors.append("duplicate_intent_idempotency_key")
+        errors.append("intent_idempotency_key_already_consumed")
     if idempotency_key and idempotency_key in ambiguous_keys:
         errors.append("ambiguous_submit_requires_reconciliation")
     if idempotency_key and idempotency_key in submitting_keys:
@@ -1610,11 +1735,13 @@ def _order_state_snapshot_from_runner_state(state: Mapping[str, Any], *, now: da
             if isinstance(row, Mapping)
         ],
         "cooldowns": [],
-        "consumed_trade_document_ids": [
+        "consumed_trade_document_ids": [],
+        "legacy_consumed_trade_document_ids": [
             str(item)
             for item in (state.get("consumed_trade_document_ids") or [])
             if str(item).strip()
         ],
+        "legacy_consumed_trade_document_ids_ignored_for_sibling_intents": bool(state.get("consumed_trade_document_ids") or []),
         "consumed_intent_keys": [
             str(item)
             for item in (state.get("consumed_intent_keys") or [])
