@@ -157,6 +157,38 @@ def test_provider_prompts_require_korean_natural_language_values():
     assert "flash_trade_document/v1" in flash_prompt
 
 
+def test_default_order_state_snapshot_includes_reconciled_holdings(tmp_path: Path):
+    data_root = tmp_path / "data"
+    state_path = data_root / "state" / "kis-paper-runner-state.json"
+    _write_json(
+        state_path,
+        {
+            "schema_version": "kis_paper_runner_state/v0",
+            "pending_orders": [],
+            "holdings": [
+                {
+                    "symbol": "005930",
+                    "position_state": "holding_confirmed",
+                    "quantity": 2,
+                    "target_price": 72100,
+                    "stop_loss_price": 67900,
+                }
+            ],
+            "active_exits": [{"symbol": "005930", "side": "sell"}],
+            "consumed_intent_keys": ["intent-1"],
+        },
+    )
+    now = datetime.fromisoformat("2026-06-08T09:10:00+09:00")
+
+    snapshot = runtime._default_order_state_snapshot(now, data_root=data_root)  # noqa: SLF001
+
+    assert snapshot["pending_orders"] == []
+    assert snapshot["holdings"][0]["symbol"] == "005930"
+    assert snapshot["holdings"][0]["position_state"] == "holding_confirmed"
+    assert snapshot["active_exits"][0]["symbol"] == "005930"
+    assert snapshot["consumed_trade_document_ids"] == ["intent-1"]
+
+
 def test_deepseek_payload_omits_max_tokens_by_default(monkeypatch):
     _clear_max_token_envs(monkeypatch)
     captured = _capture_deepseek_request(monkeypatch)

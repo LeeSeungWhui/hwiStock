@@ -713,8 +713,54 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         self.assertTrue(doc["actions"][0]["portfolio_conflict"]["pending_order_exists"])
         self.assertEqual(doc["position_actions"][0]["position_state"], "submitted_unreconciled")
         self.assertEqual(doc["position_actions"][0]["action"], "WAIT_ORDER_RECONCILIATION")
+        self.assertFalse(doc["position_actions"][0]["sell_allowed"])
+        self.assertEqual(doc["position_actions"][0]["exit_blocked_reason"], "fill_status_not_reconciled")
         self.assertEqual(doc["position_actions"][0]["target_price"], 10500)
         self.assertEqual(doc["position_actions"][0]["stop_loss_price"], 9800)
+        validation = ao.validateFlashTradeDocument(doc)
+        self.assertTrue(validation["ok"], msg=validation["errors"])
+
+    def testOrderStateHoldingsProduceConfirmedPositionAction(self):
+        doc = ao.buildFlashTradeDocument(
+            pro_artifact={"artifact_id": "art_pro_hourly_20260604_0900"},
+            recent_events=[{"source_event_id": "event-general"}],
+            kis_market_snapshots=[_kis_snapshot(price=9700)],
+            compiled_watch=[_compiled_flash_watch()],
+            portfolio_snapshot={"artifact_id": "art_portfolio_20260604_0905", "holdings": []},
+            order_state_snapshot={
+                "artifact_id": "art_order_state_20260604_0905",
+                "pending_orders": [],
+                "holdings": [
+                    {
+                        "symbol": "005930",
+                        "position_state": "holding_confirmed",
+                        "quantity": 10,
+                        "entry_price_limit": 10000,
+                        "target_price": 10500,
+                        "stop_loss_price": 9800,
+                        "take_profit": 10500,
+                        "stop_loss": 9800,
+                        "trailing_stop_pct": 1.2,
+                    }
+                ],
+            },
+            morning_watchlist=_morning_watchlist(),
+            produced_at_kst=NOW_KST,
+        )
+
+        self.assertEqual(doc["document_kind"], "POSITION_MANAGEMENT")
+        self.assertEqual(doc["new_entry_policy"], "NO_NEW_ENTRY_EXISTING_ORDER_OR_POSITION")
+        self.assertEqual(doc["portfolio_constraints"]["current_holdings_count"], 1)
+        self.assertEqual(doc["actions"][0]["action"], "HOLD_EXISTING_POSITION")
+        self.assertTrue(doc["actions"][0]["portfolio_conflict"]["already_holding"])
+        self.assertFalse(doc["actions"][0]["portfolio_conflict"]["pending_order_exists"])
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["symbol"], "005930")
+        self.assertEqual(position_action["position_state"], "holding_confirmed")
+        self.assertEqual(position_action["action"], "EXIT_REVIEW")
+        self.assertTrue(position_action["sell_allowed"])
+        self.assertIsNone(position_action["exit_blocked_reason"])
+        self.assertEqual(position_action["current_price"], 9700)
         validation = ao.validateFlashTradeDocument(doc)
         self.assertTrue(validation["ok"], msg=validation["errors"])
 

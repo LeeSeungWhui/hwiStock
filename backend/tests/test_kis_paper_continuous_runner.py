@@ -18,6 +18,7 @@ if baseDir not in sys.path:
     sys.path.insert(0, baseDir)
 
 from lib import ai_orchestration as ao  # noqa: E402
+from lib import kis_paper_continuous_runtime as continuous_runtime  # noqa: E402
 from lib import paper_trading_ledger as ledger  # noqa: E402
 from lib import trading_engine as engine  # noqa: E402
 from lib.kis_paper_token_cache import loadKisPaperAccessToken  # noqa: E402
@@ -27,6 +28,8 @@ from service.kis_paper_adapter import (  # noqa: E402
     KisPaperAdapter,
     KisPaperAdapterError,
     describeKisPaperEnv,
+    extractKisBalancePositionsPayload,
+    extractKisDailyFillRowsPayload,
     summarizeKisBalancePayload,
     summarizeKisRealizedPnlPayload,
     validatePaperBaseUrl,
@@ -34,12 +37,22 @@ from service.kis_paper_adapter import (  # noqa: E402
 
 
 class FakeTransport:
-    def __init__(self, *, order_status="pass", sellable_quantity="10", invalid_balance_once=False):
+    def __init__(
+        self,
+        *,
+        order_status="pass",
+        sellable_quantity="10",
+        invalid_balance_once=False,
+        balance_positions=None,
+        daily_fills=None,
+    ):
         self.calls = []
         self.order_status = order_status
         self.sellable_quantity = sellable_quantity
         self.invalid_balance_once = invalid_balance_once
         self.invalid_balance_returned = False
+        self.balance_positions = balance_positions if balance_positions is not None else [{"pdno": "005930"}, {"pdno": "000660"}]
+        self.daily_fills = daily_fills if daily_fills is not None else [{"row": 1}]
 
     def requestJson(self, method, url, *, headers=None, body=None, timeout=20):
         self.calls.append({"method": method, "url": url, "headers": dict(headers or {}), "body": dict(body or {}) if body else None})
@@ -76,7 +89,7 @@ class FakeTransport:
                 "payload": {
                     "rt_cd": "0",
                     "msg_cd": "ok",
-                    "output1": [{"pdno": "005930"}, {"pdno": "000660"}],
+                    "output1": self.balance_positions,
                     "output2": [
                         {
                             "dnca_tot_amt": "1860000",
@@ -107,6 +120,8 @@ class FakeTransport:
                 "http_status": 200,
                 "payload": {"rt_cd": "0", "msg_cd": "ok", "output": [{"bass_dt": "20260605", "opnd_yn": "Y"}]},
             }
+        if "/uapi/domestic-stock/v1/trading/inquire-daily-ccld" in url:
+            return {"http_status": 200, "payload": {"rt_cd": "0", "msg_cd": "ok", "output1": self.daily_fills}}
         return {"http_status": 200, "payload": {"rt_cd": "0", "msg_cd": "ok", "output1": [{"row": 1}]}}
 
 
@@ -296,6 +311,106 @@ def test_tick_invalidates_cached_token_once_when_account_step_rejects_it(tmp_pat
     assert any(step.get("step") == "oauth_token" and step.get("cache_hit") is False for step in payload["steps"])
 
 
+def test_reconciliation_promotes_pending_buy_to_holding_from_kis_balance(tmp_path: Path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    data_root = tmp_path / "data"
+    state_dir = data_root / "state"
+    state_dir.mkdir(parents=True)
+    (state_dir / "kis-paper-runner-state.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "kis_paper_runner_state/v0",
+                "consumed_intent_keys": ["intent-reconcile-1"],
+                "consumed_trade_document_ids": [],
+                "submitting_intent_keys": [],
+                "ambiguous_intent_keys": [],
+                "ambiguous_submits": [],
+                "pending_orders": [
+                    {
+                        "idempotency_key": "intent-reconcile-1",
+                        "flash_trade_document_ref": "flash-reconcile-1",
+                        "symbol": "005930",
+                        "side": "buy",
+                        "quantity": 2,
+                        "order_price": 70000,
+                        "entry_price_limit": 70000,
+                        "target_price": 72100,
+                        "stop_loss_price": 67900,
+                        "take_profit": 72100,
+                        "stop_loss": 67900,
+                        "trailing_stop_pct": 1.5,
+                        "broker_order_no": "1234567890",
+                        "krx_forwarding_order_orgno": "00123",
+                        "submitted_at_kst": "2026-06-05T09:01:00+09:00",
+                        "broker_endpoint_called": True,
+                    }
+                ],
+                "holdings": None,
+                "active_exits": None,
+                "submitted_order_history": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    env = _env()
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(data_root)
+    transport = FakeTransport(
+        balance_positions=[
+            {
+                "pdno": "005930",
+                "prdt_name": "삼성전자",
+                "hldg_qty": "2",
+                "ord_psbl_qty": "2",
+                "pchs_avg_pric": "70000",
+                "prpr": "70500",
+                "evlu_amt": "141000",
+                "evlu_pfls_amt": "1000",
+            }
+        ],
+        daily_fills=[
+            {
+                "pdno": "005930",
+                "sll_buy_dvsn_cd": "02",
+                "odno": "1234567890",
+                "tot_ccld_qty": "2",
+                "ord_qty": "2",
+                "rmn_qty": "0",
+                "avg_prvs": "70000",
+            }
+        ],
+    )
+    adapter = KisPaperAdapter(env=env, transport=transport)
+
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=adapter,
+        at_kst="2026-06-05T09:30:00",
+    )
+
+    reconciliation = [step for step in payload["steps"] if step.get("step") == "local_state_reconciliation"][-1]
+    assert reconciliation["status"] == "pass"
+    assert reconciliation["promoted_to_holdings_count"] == 1
+    assert reconciliation["promoted_symbols"] == ["005930"]
+    assert payload["account_truth"]["positions"][0]["quantity"] == 2
+    assert payload["account_truth"]["daily_order_fills"][0]["filled_quantity"] == 2
+    state = json.loads((state_dir / "kis-paper-runner-state.json").read_text(encoding="utf-8"))
+    assert state["pending_orders"] == []
+    holding = state["holdings"][0]
+    assert holding["symbol"] == "005930"
+    assert holding["position_state"] == "holding_confirmed"
+    assert holding["quantity"] == 2
+    assert holding["target_price"] == 72100
+    assert holding["stop_loss_price"] == 67900
+    assert holding["trailing_stop_pct"] == 1.5
+    assert holding["broker_order_no"] == "1234567890"
+    snapshot = continuous_runtime._order_state_snapshot_from_runner_state(state, now=datetime.fromisoformat("2026-06-05T09:31:00+09:00"))  # noqa: SLF001
+    assert snapshot["holdings"][0]["symbol"] == "005930"
+    assert snapshot["pending_orders"] == []
+    assert not any("/order-cash" in call["url"] for call in transport.calls)
+
+
 def test_tick_without_intent_or_reconciliation_does_not_call_kis_account_truth(tmp_path: Path, monkeypatch):
     _calendar(tmp_path, monkeypatch)
     env = _env()
@@ -314,6 +429,42 @@ def test_tick_without_intent_or_reconciliation_does_not_call_kis_account_truth(t
     assert payload["reconciliation_required"] is False
     assert payload["account_truth"]["source"] == "not_required_without_order_intent"
     assert payload["account_truth"]["broker_endpoint_called"] is False
+    assert transport.calls == []
+
+
+def test_submitted_history_only_does_not_keep_reconciliation_loop_alive(tmp_path: Path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    data_root = tmp_path / "data"
+    state_dir = data_root / "state"
+    state_dir.mkdir(parents=True)
+    (state_dir / "kis-paper-runner-state.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "kis_paper_runner_state/v0",
+                "pending_orders": [],
+                "holdings": [{"symbol": "005930", "position_state": "holding_confirmed", "quantity": 2}],
+                "active_exits": [],
+                "submitted_order_history": [{"symbol": "005930", "idempotency_key": "intent-done"}],
+                "consumed_intent_keys": ["intent-done"],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    env = _env()
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(data_root)
+    transport = FakeTransport()
+    adapter = KisPaperAdapter(env=env, transport=transport)
+
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=adapter,
+        at_kst="2026-06-05T09:30:00",
+    )
+
+    assert payload["status"] == "idle_no_order_intent"
+    assert payload["reconciliation_required"] is False
     assert transport.calls == []
 
 
@@ -443,6 +594,69 @@ def test_adapter_balance_summary_preserves_zero_pnl_value():
     assert summary["stock_eval_krw"] == 0
     assert summary["today_pnl_krw"] == 0
     assert summary["positions_count"] == 0
+
+
+def test_adapter_sanitizes_balance_positions_and_daily_fills_without_raw_payload():
+    balance_response = {
+        "http_status": 200,
+        "payload": {
+            "rt_cd": "0",
+            "output1": [
+                {
+                    "pdno": "005930",
+                    "prdt_name": "삼성전자",
+                    "hldg_qty": "2.0",
+                    "ord_psbl_qty": "1",
+                    "pchs_avg_pric": "70000.0",
+                    "prpr": "70500",
+                    "evlu_amt": "141000",
+                    "evlu_pfls_amt": "1000",
+                }
+            ],
+        },
+    }
+    fill_response = {
+        "http_status": 200,
+        "payload": {
+            "rt_cd": "0",
+            "output1": [
+                {
+                    "pdno": "005930",
+                    "sll_buy_dvsn_cd": "02",
+                    "odno": "1234567890",
+                    "tot_ccld_qty": "2",
+                    "ord_qty": "2",
+                    "rmn_qty": "0",
+                    "avg_prvs": "70000",
+                }
+            ],
+        },
+    }
+
+    positions = extractKisBalancePositionsPayload(balance_response)
+    fills = extractKisDailyFillRowsPayload(fill_response)
+
+    assert positions == [
+        {
+            "symbol": "005930",
+            "ticker": "005930",
+            "name": "삼성전자",
+            "quantity": 2,
+            "sellable_quantity": 1,
+            "average_price": 70000,
+            "current_price": 70500,
+            "eval_amount_krw": 141000,
+            "pnl_krw": 1000,
+            "source": "kis_balance_output1",
+        }
+    ]
+    assert fills[0]["symbol"] == "005930"
+    assert fills[0]["side"] == "buy"
+    assert fills[0]["order_no"] == "1234567890"
+    assert fills[0]["filled_quantity"] == 2
+    assert fills[0]["remaining_quantity"] == 0
+    rendered = json.dumps({"positions": positions, "fills": fills}, ensure_ascii=False)
+    assert "KIS_PAPER" not in rendered
 
 
 def test_adapter_realized_pnl_skips_paper_unsupported_endpoint():

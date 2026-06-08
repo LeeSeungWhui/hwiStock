@@ -15,7 +15,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, Mapping, Optional, Sequence
 
 DEFAULT_KIS_PAPER_BASE_URL = "https://openapivts.koreainvestment.com:29443"
 DEFAULT_KIS_WEBSOCKET_URL = "ws://ops.koreainvestment.com:31000"
@@ -128,6 +128,17 @@ def toIntOrNone(value: Any) -> Optional[int]:
         return None
 
 
+def firstStringByKeys(container: Mapping[str, Any], keys: Sequence[str]) -> str:
+    for key in keys:
+        value = container.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return ""
+
+
 def firstMapping(value: Any) -> Dict[str, Any]:
     if isinstance(value, Mapping):
         return dict(value)
@@ -154,6 +165,124 @@ def firstIntByKeys(container: Any, keys: tuple[str, ...]) -> Optional[int]:
             if nested is not None:
                 return nested
     return None
+
+
+def _payloadRows(response: Mapping[str, Any], key: str) -> list[Mapping[str, Any]]:
+    payload = response.get("payload") if isinstance(response.get("payload"), Mapping) else {}
+    rows = payload.get(key)
+    if isinstance(rows, Mapping):
+        return [rows]
+    if isinstance(rows, list):
+        return [row for row in rows if isinstance(row, Mapping)]
+    return []
+
+
+def _normalizeKisSide(row: Mapping[str, Any]) -> str:
+    raw = firstStringByKeys(
+        row,
+        (
+            "sll_buy_dvsn_cd",
+            "SLL_BUY_DVSN_CD",
+            "sll_buy_dvsn_name",
+            "ord_dvsn_name",
+            "side",
+        ),
+    ).lower()
+    if raw in {"02", "2", "buy", "b"} or "매수" in raw:
+        return "buy"
+    if raw in {"01", "1", "sell", "s"} or "매도" in raw:
+        return "sell"
+    return raw
+
+
+def extractKisBalancePositionsPayload(response: Mapping[str, Any]) -> list[Dict[str, Any]]:
+    positions: list[Dict[str, Any]] = []
+    for row in _payloadRows(response, "output1"):
+        symbol = firstStringByKeys(
+            row,
+            (
+                "pdno",
+                "PDNO",
+                "stck_shrn_iscd",
+                "mksc_shrn_iscd",
+                "isu_cd",
+                "code",
+                "symbol",
+            ),
+        )
+        if not symbol:
+            continue
+        quantity = firstIntByKeys(row, ("hldg_qty", "hold_qty", "evlu_qty", "qty", "quantity"))
+        average_price = firstIntByKeys(row, ("pchs_avg_pric", "pchs_avg_price", "avg_price", "average_price"))
+        current_price = firstIntByKeys(row, ("prpr", "stck_prpr", "now_pric", "cur_price", "current_price"))
+        sellable_quantity = firstIntByKeys(
+            row,
+            ("ord_psbl_qty", "sll_psbl_qty", "sell_psbl_qty", "ord_psbl_qty1", "sellable_quantity"),
+        )
+        eval_amount = firstIntByKeys(row, ("evlu_amt", "evlu_pfls_amt_smtl", "stock_eval_krw", "eval_amount_krw"))
+        pnl = firstIntByKeys(row, ("evlu_pfls_amt", "rlzt_pfls", "pnl_krw"))
+        positions.append(
+            {
+                "symbol": symbol,
+                "ticker": symbol,
+                "name": firstStringByKeys(row, ("prdt_name", "prdt_abrv_name", "hts_kor_isnm", "name")),
+                "quantity": quantity,
+                "sellable_quantity": sellable_quantity,
+                "average_price": average_price,
+                "current_price": current_price,
+                "eval_amount_krw": eval_amount,
+                "pnl_krw": pnl,
+                "source": "kis_balance_output1",
+            }
+        )
+    return positions[:50]
+
+
+def extractKisDailyFillRowsPayload(response: Mapping[str, Any]) -> list[Dict[str, Any]]:
+    fills: list[Dict[str, Any]] = []
+    for row in _payloadRows(response, "output1"):
+        symbol = firstStringByKeys(
+            row,
+            (
+                "pdno",
+                "PDNO",
+                "stck_shrn_iscd",
+                "mksc_shrn_iscd",
+                "isu_cd",
+                "code",
+                "symbol",
+            ),
+        )
+        order_no = firstStringByKeys(row, ("odno", "ODNO", "ord_no", "order_no"))
+        if not symbol and not order_no:
+            continue
+        filled_quantity = firstIntByKeys(row, ("tot_ccld_qty", "ccld_qty", "filled_qty", "filled_quantity"))
+        order_quantity = firstIntByKeys(row, ("ord_qty", "order_qty", "quantity"))
+        remaining_quantity = firstIntByKeys(row, ("rmn_qty", "unfilled_qty", "remaining_quantity"))
+        filled_price = firstIntByKeys(row, ("avg_prvs", "ccld_unpr", "avg_price", "filled_price"))
+        order_price = firstIntByKeys(row, ("ord_unpr", "order_price", "price"))
+        status = firstStringByKeys(row, ("ccld_dvsn_name", "ord_dvsn_name", "fill_status", "status"))
+        if not status:
+            if filled_quantity is not None and filled_quantity > 0 and (remaining_quantity in (None, 0)):
+                status = "filled"
+            elif remaining_quantity and remaining_quantity > 0:
+                status = "partially_filled_or_open"
+        fills.append(
+            {
+                "symbol": symbol,
+                "ticker": symbol,
+                "side": _normalizeKisSide(row),
+                "order_no": order_no,
+                "filled_quantity": filled_quantity,
+                "order_quantity": order_quantity,
+                "remaining_quantity": remaining_quantity,
+                "filled_price": filled_price,
+                "order_price": order_price,
+                "fill_status": status,
+                "source": "kis_daily_ccld_output1",
+            }
+        )
+    return fills[:100]
 
 
 def summarizeKisBalancePayload(response: Mapping[str, Any]) -> Dict[str, Any]:
@@ -497,6 +626,7 @@ class KisPaperAdapter:
         )
         result = sanitizeKisResponse(response, step="balance_inquire", row_count_key="output1")
         result["dashboard_account_summary"] = summarizeKisBalancePayload(response)
+        result["dashboard_positions"] = extractKisBalancePositionsPayload(response)
         return result
 
     def inquireBuyable(self, token: str, symbol: str, *, order_price: str = "") -> Dict[str, Any]:
@@ -556,7 +686,9 @@ class KisPaperAdapter:
             f"/uapi/domestic-stock/v1/trading/inquire-daily-ccld?{urllib.parse.urlencode(params)}",
             headers=self.authHeaders(token, "VTTC0081R"),
         )
-        return sanitizeKisResponse(response, step="daily_order_fill_inquire", row_count_key="output1")
+        result = sanitizeKisResponse(response, step="daily_order_fill_inquire", row_count_key="output1")
+        result["dashboard_daily_fills"] = extractKisDailyFillRowsPayload(response)
+        return result
 
     def inquireCancelableOrders(self, token: str, *, side: str = "all") -> Dict[str, Any]:
         del token, side

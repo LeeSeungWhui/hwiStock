@@ -997,7 +997,7 @@ def buildFlashTradeDocument(
             produced_at_kst=produced_at,
         )
 
-    held_symbols = _symbol_set_from_snapshot(portfolio, "holdings")
+    held_symbols = _symbol_set_from_snapshot(portfolio, "holdings") | _symbol_set_from_snapshot(order_state, "holdings")
     pending_symbols = _symbol_set_from_snapshot(order_state, "pending_orders")
     active_prior_symbols = _active_symbols_from_trade_documents(previous_docs, now_kst=produced_at)
     market_refs = [
@@ -1630,6 +1630,8 @@ def _build_position_action(
         "stop_loss": row.get("stop_loss") or stop_loss_price,
         "trailing_stop_pct": row.get("trailing_stop_pct"),
         "reason": reason,
+        "sell_allowed": position_state == "holding_confirmed",
+        "exit_blocked_reason": None if position_state == "holding_confirmed" else "fill_status_not_reconciled",
         "next_check": "다음 Flash에서 체결/보유 reconciliation과 KIS 현재가를 다시 확인",
         "portfolio_state_refs": [portfolio_ref, order_state_ref],
         "market_data_refs": _dedupe_strings(market_refs),
@@ -1659,6 +1661,22 @@ def _build_flash_position_actions(
         action = _build_position_action(
             row,
             position_state=_position_state_from_order_row(row),
+            market_rows=market_rows,
+            produced_at_kst=produced_at_kst,
+            portfolio_ref=portfolio_ref,
+            order_state_ref=order_state_ref,
+            market_refs=market_refs,
+        )
+        if action:
+            actions.append(action)
+            seen.add(symbol)
+    for row in _snapshot_rows(order_state_snapshot, "holdings"):
+        symbol = _row_symbol(row)
+        if not symbol or symbol in seen:
+            continue
+        action = _build_position_action(
+            row,
+            position_state="holding_confirmed",
             market_rows=market_rows,
             produced_at_kst=produced_at_kst,
             portfolio_ref=portfolio_ref,

@@ -1567,6 +1567,8 @@ def _default_portfolio_snapshot(now: datetime) -> Dict[str, Any]:
 def _default_order_state_snapshot(now: datetime, *, data_root: Path = DEFAULT_DATA_ROOT) -> Dict[str, Any]:
     state_path = data_root / "state" / "kis-paper-runner-state.json"
     pending_orders: list[Dict[str, Any]] = []
+    holdings: list[Dict[str, Any]] = []
+    active_exits: list[Dict[str, Any]] = []
     consumed_ids: list[str] = []
     if state_path.is_file():
         try:
@@ -1577,6 +1579,16 @@ def _default_order_state_snapshot(now: datetime, *, data_root: Path = DEFAULT_DA
             pending_orders = [
                 dict(row)
                 for row in (state.get("pending_orders") or [])
+                if isinstance(row, Mapping)
+            ]
+            holdings = [
+                dict(row)
+                for row in (state.get("holdings") or [])
+                if isinstance(row, Mapping)
+            ]
+            active_exits = [
+                dict(row)
+                for row in (state.get("active_exits") or [])
                 if isinstance(row, Mapping)
             ]
             consumed_ids = [
@@ -1591,7 +1603,8 @@ def _default_order_state_snapshot(now: datetime, *, data_root: Path = DEFAULT_DA
         "produced_at_kst": now.isoformat(),
         "source": "local_kis_paper_runner_state",
         "pending_orders": pending_orders,
-        "active_exits": [],
+        "holdings": holdings,
+        "active_exits": active_exits,
         "cooldowns": [],
         "consumed_trade_document_ids": consumed_ids,
         "credential_values_printed": False,

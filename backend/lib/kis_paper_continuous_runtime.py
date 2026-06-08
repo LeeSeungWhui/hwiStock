@@ -433,7 +433,7 @@ def resetContinuousPaperRunnerForTests() -> None:
 
 
 def _runner_state_requires_reconciliation(state: Mapping[str, Any]) -> bool:
-    for key in ("pending_orders", "ambiguous_submits", "submitted_order_history"):
+    for key in ("pending_orders", "ambiguous_submits"):
         rows = state.get(key) or []
         if any(isinstance(row, Mapping) for row in rows):
             return True
@@ -666,11 +666,29 @@ def _int_or_none(value: Any) -> Optional[int]:
         return None
 
 
+def _symbol_from_row(row: Mapping[str, Any]) -> str:
+    for key in ("symbol", "ticker", "pdno", "PDNO", "stck_shrn_iscd", "mksc_shrn_iscd", "isu_cd", "code"):
+        text = str(row.get(key) or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _positive_quantity_from_row(row: Mapping[str, Any]) -> int:
+    for key in ("quantity", "filled_quantity", "hldg_qty", "hold_qty", "evlu_qty", "qty"):
+        parsed = _int_or_none(row.get(key))
+        if parsed is not None and parsed > 0:
+            return parsed
+    return 0
+
+
 def _account_truth_from_steps(steps: Sequence[Mapping[str, Any]], *, produced_at: datetime) -> Dict[str, Any]:
     balance_summary: Dict[str, Any] = {}
     buyable_summary: Dict[str, Any] = {}
     sellable_summary: Dict[str, Any] = {}
     cancelable_summary: Dict[str, Any] = {}
+    positions: list[Dict[str, Any]] = []
+    daily_fills: list[Dict[str, Any]] = []
     balance_status = None
     buyable_status = None
     sellable_status = None
@@ -684,6 +702,12 @@ def _account_truth_from_steps(steps: Sequence[Mapping[str, Any]], *, produced_at
             balance_status = step.get("status")
             if isinstance(step.get("dashboard_account_summary"), Mapping):
                 balance_summary = dict(step["dashboard_account_summary"])
+            if isinstance(step.get("dashboard_positions"), list):
+                positions = [
+                    dict(row)
+                    for row in step["dashboard_positions"]
+                    if isinstance(row, Mapping)
+                ][:50]
         elif step.get("step") == "buyable_inquire_psbl_order":
             buyable_status = step.get("status")
             if isinstance(step.get("dashboard_buyable_summary"), Mapping):
@@ -700,6 +724,13 @@ def _account_truth_from_steps(steps: Sequence[Mapping[str, Any]], *, produced_at
             realized_status = step.get("status")
         elif step.get("step") == "holiday_inquire":
             holiday_status = step.get("status")
+        elif step.get("step") == "daily_order_fill_inquire":
+            if isinstance(step.get("dashboard_daily_fills"), list):
+                daily_fills = [
+                    dict(row)
+                    for row in step["dashboard_daily_fills"]
+                    if isinstance(row, Mapping)
+                ][:100]
     buyable_cash = _int_or_none(buyable_summary.get("buyable_cash_krw"))
     cash_balance = _int_or_none(balance_summary.get("cash_balance_krw"))
     total_eval = _int_or_none(balance_summary.get("total_eval_krw"))
@@ -729,8 +760,122 @@ def _account_truth_from_steps(steps: Sequence[Mapping[str, Any]], *, produced_at
         "effective_total_deposit_krw": total_eval,
         "current_holdings_count": positions_count,
         "positions_count": positions_count,
+        "positions": positions,
+        "daily_order_fills": daily_fills,
         "credential_values_printed": False,
         "raw_response_stored": False,
+    }
+
+
+def _reconcile_runner_state_from_account_truth(
+    state: Dict[str, Any],
+    account_truth: Mapping[str, Any],
+    *,
+    now: datetime,
+) -> Dict[str, Any]:
+    raw_positions = account_truth.get("positions") if isinstance(account_truth.get("positions"), list) else []
+    positions_by_symbol: Dict[str, Dict[str, Any]] = {}
+    for row in raw_positions:
+        if not isinstance(row, Mapping):
+            continue
+        symbol = _symbol_from_row(row)
+        quantity = _positive_quantity_from_row(row)
+        if symbol and quantity > 0:
+            positions_by_symbol[symbol] = dict(row)
+
+    pending_rows = [
+        dict(row)
+        for row in (state.get("pending_orders") or [])
+        if isinstance(row, Mapping)
+    ]
+    existing_holdings = [
+        dict(row)
+        for row in (state.get("holdings") or [])
+        if isinstance(row, Mapping)
+    ]
+    holdings_by_symbol = {
+        _symbol_from_row(row): dict(row)
+        for row in existing_holdings
+        if _symbol_from_row(row)
+    }
+
+    remaining_pending: list[Dict[str, Any]] = []
+    promoted_symbols: list[str] = []
+    for pending in pending_rows:
+        symbol = _symbol_from_row(pending)
+        side = str(pending.get("side") or "buy").strip().lower()
+        position = positions_by_symbol.get(symbol)
+        if not symbol or side == "sell" or not position:
+            remaining_pending.append(pending)
+            continue
+
+        quantity = _positive_quantity_from_row(position)
+        if quantity <= 0:
+            remaining_pending.append(pending)
+            continue
+
+        existing = holdings_by_symbol.get(symbol, {})
+        holding: Dict[str, Any] = {**existing, **pending}
+        holding.update(
+            {
+                "symbol": symbol,
+                "ticker": symbol,
+                "name": position.get("name") or pending.get("name") or pending.get("symbol_name") or symbol,
+                "side": "buy",
+                "quantity": quantity,
+                "sellable_quantity": position.get("sellable_quantity"),
+                "average_price": position.get("average_price") or pending.get("order_price") or pending.get("entry_price_limit"),
+                "current_price": position.get("current_price"),
+                "eval_amount_krw": position.get("eval_amount_krw"),
+                "pnl_krw": position.get("pnl_krw"),
+                "position_state": "holding_confirmed",
+                "order_state": "holding_confirmed",
+                "source": "kis_balance_reconciliation",
+                "confirmed_at_kst": existing.get("confirmed_at_kst") or now.isoformat(),
+                "last_reconciled_at_kst": now.isoformat(),
+                "pending_order_reconciled": True,
+                "reconciled_from_pending_order": True,
+            }
+        )
+        for key in (
+            "target_price",
+            "stop_loss_price",
+            "take_profit",
+            "stop_loss",
+            "trailing_stop_pct",
+            "idempotency_key",
+            "flash_trade_document_ref",
+            "broker_order_no",
+            "krx_forwarding_order_orgno",
+            "submitted_at_kst",
+            "action_source",
+            "intent_type",
+        ):
+            if holding.get(key) in (None, "") and pending.get(key) not in (None, ""):
+                holding[key] = pending.get(key)
+        holdings_by_symbol[symbol] = holding
+        promoted_symbols.append(symbol)
+
+    changed = bool(promoted_symbols) or len(remaining_pending) != len(pending_rows)
+    if changed:
+        state["pending_orders"] = remaining_pending
+        state["holdings"] = [
+            holdings_by_symbol[symbol]
+            for symbol in sorted(holdings_by_symbol)
+        ][:50]
+        state["last_reconciled_kst"] = now.isoformat()
+        state["last_updated_kst"] = now.isoformat()
+
+    return {
+        "step": "local_state_reconciliation",
+        "status": "pass" if changed else "skipped_no_confirmed_holding_match",
+        "source": "kis_balance_reconciliation",
+        "broker_endpoint_called": False,
+        "raw_response_stored": False,
+        "promoted_to_holdings_count": len(promoted_symbols),
+        "promoted_symbols": promoted_symbols,
+        "pending_remaining_count": len(remaining_pending),
+        "holdings_count": len(state.get("holdings") or []),
     }
 
 
@@ -1055,6 +1200,14 @@ def runContinuousPaperTick(
     )
     account_truth = _account_truth_from_steps(result["steps"], produced_at=reference_now)
     result["account_truth"] = account_truth
+    reconciliation_step = _reconcile_runner_state_from_account_truth(
+        local_state,
+        account_truth,
+        now=reference_now,
+    )
+    result["steps"].append(reconciliation_step)
+    if reconciliation_step.get("status") == "pass":
+        _write_runner_state(local_state, config, data_root=data_root)
 
     if intent:
         local_order_state = _order_state_snapshot_from_runner_state(local_state, now=now)
@@ -1287,6 +1440,8 @@ def _load_runner_state(config: Mapping[str, Any], *, data_root: Path) -> Dict[st
             "ambiguous_intent_keys": [],
             "ambiguous_submits": [],
             "pending_orders": [],
+            "holdings": [],
+            "active_exits": [],
             "submitted_order_history": [],
             "last_updated_kst": None,
         }
@@ -1304,7 +1459,22 @@ def _load_runner_state(config: Mapping[str, Any], *, data_root: Path) -> Dict[st
     state.setdefault("ambiguous_intent_keys", [])
     state.setdefault("ambiguous_submits", [])
     state.setdefault("pending_orders", [])
+    state.setdefault("holdings", [])
+    state.setdefault("active_exits", [])
     state.setdefault("submitted_order_history", [])
+    for key in (
+        "consumed_intent_keys",
+        "consumed_trade_document_ids",
+        "submitting_intent_keys",
+        "ambiguous_intent_keys",
+        "ambiguous_submits",
+        "pending_orders",
+        "holdings",
+        "active_exits",
+        "submitted_order_history",
+    ):
+        if not isinstance(state.get(key), list):
+            state[key] = []
     state["claim_intent_keys"] = sorted(_claim_keys_from_dir(data_root=data_root))
     return state
 
@@ -1429,7 +1599,16 @@ def _order_state_snapshot_from_runner_state(state: Mapping[str, Any], *, now: da
             for row in (state.get("pending_orders") or [])
             if isinstance(row, Mapping)
         ],
-        "active_exits": [],
+        "holdings": [
+            dict(row)
+            for row in (state.get("holdings") or [])
+            if isinstance(row, Mapping)
+        ],
+        "active_exits": [
+            dict(row)
+            for row in (state.get("active_exits") or [])
+            if isinstance(row, Mapping)
+        ],
         "cooldowns": [],
         "consumed_trade_document_ids": [
             str(item)
