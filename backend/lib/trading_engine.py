@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 import re
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
@@ -743,7 +744,7 @@ def generatePaperOrderIntentsFromFlashDocument(
             )
             continue
 
-        planned_cash = int(action.get("planned_order_cash_krw") or action.get("max_cash_krw") or 100_000)
+        planned_cash = _parse_positive_int(action.get("planned_order_cash_krw") or action.get("max_cash_krw") or 100_000)
         entry_zone = _normalize_entry_zone(action.get("entry_zone"))
         raw_order_price = _resolve_order_price(action_type, action, entry_zone)
         side = "buy" if action_type in {"WAIT_BUY", "BUY_NOW"} else "sell"
@@ -1094,14 +1095,25 @@ def normalizeKrxLimitPrice(price: Any, *, side: str = "buy") -> int:
 
 
 def _parse_positive_int(value: Any) -> int:
-    raw = str(value or "").strip().replace(",", "")
-    digits = "".join(ch for ch in raw if ch.isdigit())
-    if not digits:
+    if value is None or isinstance(value, bool):
+        return 0
+    raw = (
+        str(value)
+        .strip()
+        .replace(",", "")
+        .replace("₩", "")
+        .replace("원", "")
+        .strip()
+    )
+    if not raw:
         return 0
     try:
-        return int(digits)
-    except ValueError:
+        number = Decimal(raw)
+    except (InvalidOperation, ValueError):
         return 0
+    if not number.is_finite() or number <= 0:
+        return 0
+    return int(number)
 
 
 def _compact_timestamp(value: str) -> str:

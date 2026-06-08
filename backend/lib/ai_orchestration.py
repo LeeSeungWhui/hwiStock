@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 import re
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set
 
@@ -2332,14 +2333,25 @@ def _normalize_price_list(value: Any) -> List[int]:
 
 
 def _safe_positive_int(value: Any) -> int:
-    raw = str(value or "").strip().replace(",", "")
-    digits = "".join(ch for ch in raw if ch.isdigit())
-    if not digits:
+    if value is None or isinstance(value, bool):
+        return 0
+    raw = (
+        str(value)
+        .strip()
+        .replace(",", "")
+        .replace("₩", "")
+        .replace("원", "")
+        .strip()
+    )
+    if not raw:
         return 0
     try:
-        return int(digits)
-    except ValueError:
+        number = Decimal(raw)
+    except (InvalidOperation, ValueError):
         return 0
+    if not number.is_finite() or number <= 0:
+        return 0
+    return int(number)
 
 
 def _first_non_empty(*values: Any) -> Any:

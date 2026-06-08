@@ -982,6 +982,11 @@ def test_tick_auto_loads_next_fifo_intent_queue_and_persists_only_passed_order(t
         "side": "buy",
         "quantity": 1,
         "order_price": 70000,
+        "target_price": 72100,
+        "stop_loss_price": 67900,
+        "take_profit": 72100,
+        "stop_loss": 67900,
+        "trailing_stop_pct": 1.5,
         "venue_route": "KRX",
         "broker_adapter": "kis_paper",
         "available_cash_krw": 2_000_000,
@@ -1041,6 +1046,11 @@ def test_tick_consumes_same_flash_document_intents_individually(tmp_path, monkey
         "side": "buy",
         "quantity": 1,
         "order_price": 70000,
+        "target_price": 72100,
+        "stop_loss_price": 67900,
+        "take_profit": 72100,
+        "stop_loss": 67900,
+        "trailing_stop_pct": 1.5,
         "venue_route": "KRX",
         "broker_adapter": "kis_paper",
         "available_cash_krw": 2_000_000,
@@ -1055,6 +1065,10 @@ def test_tick_consumes_same_flash_document_intents_individually(tmp_path, monkey
         "idempotency_key": "intent-same-doc-2",
         "symbol": "000660",
         "order_price": 120000,
+        "target_price": 124000,
+        "stop_loss_price": 116500,
+        "take_profit": 124000,
+        "stop_loss": 116500,
     }
     (intent_dir / "paper-order-intents-latest.jsonl").write_text(
         json.dumps(first_intent, ensure_ascii=False)
@@ -1099,6 +1113,14 @@ def test_tick_consumes_same_flash_document_intents_individually(tmp_path, monkey
     assert "intent-same-doc-1" in state["consumed_intent_keys"]
     assert "intent-same-doc-2" in state["consumed_intent_keys"]
     assert "flash-same-doc" not in state["consumed_trade_document_ids"]
+    pending_by_symbol = {row["symbol"]: row for row in state["pending_orders"]}
+    assert pending_by_symbol["005930"]["target_price"] == 72100
+    assert pending_by_symbol["005930"]["stop_loss_price"] == 67900
+    assert pending_by_symbol["005930"]["take_profit"] == 72100
+    assert pending_by_symbol["005930"]["stop_loss"] == 67900
+    assert pending_by_symbol["005930"]["trailing_stop_pct"] == 1.5
+    assert pending_by_symbol["000660"]["target_price"] == 124000
+    assert pending_by_symbol["000660"]["stop_loss_price"] == 116500
     duplicate_preflight = continuous.evaluateIntentExecutionPreflight(
         second_intent,
         order_state_snapshot={
