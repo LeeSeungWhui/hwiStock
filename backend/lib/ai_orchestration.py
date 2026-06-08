@@ -276,6 +276,13 @@ def _dedupe_strings(values: Sequence[Any]) -> List[str]:
     return result
 
 
+def _string_list(value: Any) -> List[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item or "").strip()]
+    text = str(value or "").strip()
+    return [text] if text else []
+
+
 def _window_seconds(window: Optional[Mapping[str, Any]]) -> Optional[int]:
     if not isinstance(window, Mapping):
         return None
@@ -793,6 +800,102 @@ def buildNoTradeSentinel(
     }
 
 
+def buildProvisionalCompiledWatchFromMorningWatchlist(
+    morning_watchlist: Optional[Mapping[str, Any]],
+    *,
+    produced_at_kst: Optional[str] = None,
+    default_order_cash_krw: int = 100_000,
+) -> List[Dict[str, Any]]:
+    produced_at = produced_at_kst or _default_now_kst()
+    produced_dt = _parse_kst_timestamp(produced_at, "produced_at_kst", [])
+    valid_until = (produced_dt + timedelta(minutes=10)).isoformat() if produced_dt else produced_at
+    morning = deepcopy(dict(morning_watchlist or {}))
+    morning_ref = str(
+        morning.get("artifact_id")
+        or morning.get("watchlist_id")
+        or morning.get("safe_block_id")
+        or ""
+    ).strip()
+    candidates: List[Dict[str, Any]] = []
+    for item in morning.get("items") or []:
+        if not isinstance(item, Mapping):
+            continue
+        if str(item.get("stance") or "").strip() != "eligible_for_flash_review":
+            continue
+        symbol = str(item.get("ticker") or item.get("symbol") or "").strip()
+        if not (symbol.isdigit() and len(symbol) == 6):
+            continue
+        price = _safe_positive_int(
+            _first_non_empty(
+                item.get("entry_price_limit"),
+                item.get("entry_price_krw"),
+                item.get("price"),
+            )
+        )
+        entry_zone = _normalize_price_list(item.get("entry_zone") or item.get("entryZone"))
+        if not entry_zone and price > 0:
+            entry_zone = [price]
+        source_ids = _dedupe_strings(
+            [morning_ref]
+            + _string_list(item.get("source_refs"))
+            + _string_list(item.get("pro_refs"))
+        )
+        candidate_id = f"gpt_morning_{symbol}_{_compact_timestamp(produced_at)}_{len(candidates)+1}"
+        candidates.append(
+            {
+                "schema_version": COMPILED_WATCH_SCHEMA,
+                "artifact_id": f"art_watch_{candidate_id}",
+                "condition_card_id": f"condition_{candidate_id}",
+                "candidate_id": candidate_id,
+                "symbol": symbol,
+                "ticker": symbol,
+                "name": str(item.get("name") or item.get("symbol_name") or symbol),
+                "source_type": "gpt_morning_watchlist_provisional",
+                "source_ids": source_ids,
+                "created_at_kst": produced_at,
+                "valid_until_kst": valid_until,
+                "compiled_at_kst": produced_at,
+                "venue_route": "KRX",
+                "watch_state": "morning_watchlist_provisional",
+                "entry_intent": {
+                    "entry_zone": entry_zone,
+                    "entry_price_krw": price,
+                    "take_profit": _safe_positive_int(item.get("target_price") or item.get("take_profit")),
+                    "stop_loss": _safe_positive_int(item.get("stop_loss_price") or item.get("stop_loss")),
+                    "planned_order_cash_krw": _safe_positive_int(item.get("planned_order_cash_krw")) or default_order_cash_krw,
+                    "cancel_if_not_filled_until": valid_until,
+                },
+                "exit_plan": {
+                    "take_profit": _safe_positive_int(item.get("target_price") or item.get("take_profit")),
+                    "stop_loss": _safe_positive_int(item.get("stop_loss_price") or item.get("stop_loss")),
+                },
+                "watch_conditions": [
+                    {
+                        "watch_condition_id": f"{candidate_id}:gpt_morning",
+                        "type": "morning_watchlist_flash_review",
+                        "definition": {
+                            "thesis": str(item.get("thesis") or ""),
+                            "opening_trigger_conditions": _string_list(item.get("opening_trigger_conditions")),
+                            "invalidation_conditions": _string_list(item.get("invalidation_conditions")),
+                            "confidence": item.get("confidence"),
+                        },
+                    }
+                ],
+                "no_broker_call": True,
+                "non_executable": True,
+                "approved_adapter_enabled": False,
+                "requires_kis_confirmation_before_order": True,
+                "non_executable_until_kis_quote_confirmed": True,
+                "kis_quote_confirmed": False,
+                "krx_execution_quote_confirmed": False,
+                "paper_only": True,
+            }
+        )
+        if len(candidates) >= 5:
+            break
+    return candidates
+
+
 def buildFlashTradeDocument(
     *,
     pro_artifact: Optional[Mapping[str, Any]],
@@ -848,6 +951,16 @@ def buildFlashTradeDocument(
     portfolio = deepcopy(dict(portfolio_snapshot or {}))
     order_state = deepcopy(dict(order_state_snapshot or {}))
     previous_docs = [deepcopy(dict(doc)) for doc in (previous_trade_documents or [])]
+    candidate_universe_source = "kis_compiled_watch" if watch_rows else "none"
+    candidate_universe_warnings: List[str] = []
+    if not watch_rows:
+        watch_rows = buildProvisionalCompiledWatchFromMorningWatchlist(
+            morning,
+            produced_at_kst=produced_at,
+        )
+        if watch_rows:
+            candidate_universe_source = "gpt_morning_watchlist_provisional"
+            candidate_universe_warnings.append("kis_compiled_watch_empty_using_morning_watchlist_fallback")
 
     if not pro_artifact:
         return buildNoTradeSentinel(
@@ -856,11 +969,19 @@ def buildFlashTradeDocument(
             produced_at_kst=produced_at,
         )
     if not watch_rows:
-        return buildNoTradeSentinel(
+        sentinel = buildNoTradeSentinel(
             job_id="deepseek_flash_trade_document_10m",
             reason="missing_compiled_watch_candidate_universe",
             produced_at_kst=produced_at,
         )
+        sentinel.update(
+            {
+                "candidate_universe_source": "none",
+                "candidate_universe_count": 0,
+                "morning_watchlist_ref": morning_ref,
+            }
+        )
+        return sentinel
     if not portfolio and not order_state and not previous_docs:
         return buildNoTradeSentinel(
             job_id="deepseek_flash_trade_document_10m",
@@ -926,6 +1047,16 @@ def buildFlashTradeDocument(
         exit_plan = row.get("exit_plan") if isinstance(row.get("exit_plan"), Mapping) else {}
         provider_action_type = _normalize_flash_action_type(provider_action.get("action") or provider_action.get("stance"))
         action = provider_action_type or ("NO_TRADE" if conflict_reasons else "WAIT_BUY")
+        quote_confirmation = _candidate_kis_confirmation(row, provider_action, market_rows, symbol=symbol)
+        requires_kis_confirmation = bool(
+            row.get("requires_kis_confirmation_before_order") is True
+            or row.get("non_executable_until_kis_quote_confirmed") is True
+            or candidate_universe_source == "gpt_morning_watchlist_provisional"
+        )
+        downgraded_for_kis_confirmation = False
+        if action == "BUY_NOW" and requires_kis_confirmation and not quote_confirmation["quote_confirmed"]:
+            action = "WAIT_BUY"
+            downgraded_for_kis_confirmation = True
         if pro_low_utility and action == "BUY_NOW":
             action = "WAIT_BUY"
         if conflict_reasons and action in {"WAIT_BUY", "BUY_NOW"}:
@@ -1004,6 +1135,10 @@ def buildFlashTradeDocument(
             )
             if str(item).strip()
         ]
+        if requires_kis_confirmation and not quote_confirmation["quote_confirmed"]:
+            required_confirmations = _dedupe_strings(
+                required_confirmations + ["KIS KRX 현재가/호가 확인 후 BUY_NOW 재검토"]
+            )
         cancel_if = [
             str(item)
             for item in (
@@ -1079,8 +1214,24 @@ def buildFlashTradeDocument(
                 "required_confirmations": required_confirmations,
                 "cancel_if": cancel_if,
                 "risk_notes": [str(item) for item in provider_action.get("risk_notes") or [] if str(item).strip()],
-                "risk_flags": conflict_reasons,
+                "risk_flags": _dedupe_strings(
+                    conflict_reasons
+                    + (
+                        ["gpt_morning_fallback_buy_now_downgraded_until_kis_quote_confirmed"]
+                        if downgraded_for_kis_confirmation
+                        else []
+                    )
+                ),
                 "action_source": action_source_name,
+                "candidate_universe_source": candidate_universe_source,
+                "source_type": str(row.get("source_type") or candidate_universe_source),
+                "requires_kis_confirmation_before_order": requires_kis_confirmation,
+                "non_executable_until_kis_quote_confirmed": bool(
+                    requires_kis_confirmation and not quote_confirmation["quote_confirmed"]
+                ),
+                "kis_quote_confirmed": bool(quote_confirmation["quote_confirmed"]),
+                "krx_execution_quote_confirmed": bool(quote_confirmation["quote_confirmed"]),
+                "kis_orderbook_confirmed": bool(quote_confirmation["orderbook_confirmed"]),
                 "executable_intent_allowed": False,
                 "paper_only": True,
                 "no_live_order": True,
@@ -1133,6 +1284,8 @@ def buildFlashTradeDocument(
             str(row.get("artifact_id") or row.get("condition_card_id") or row.get("candidate_id") or "")
             for row in watch_rows
         ],
+        "candidate_universe_source": candidate_universe_source,
+        "candidate_universe_count": len(watch_rows),
         "candidate_universe_symbols": [str(row.get("symbol") or row.get("ticker") or "").strip() for row in watch_rows],
         "portfolio_snapshot_ref": portfolio_ref,
         "order_state_snapshot_ref": order_state_ref,
@@ -1161,7 +1314,8 @@ def buildFlashTradeDocument(
         "actions": actions,
         "no_trade_reasons": [],
         "global_risk_flags": ["pro_hourly_low_utility", "pro_context_low_utility"] if pro_low_utility else [],
-        "operator_notes": [],
+        "warnings": candidate_universe_warnings,
+        "operator_notes": candidate_universe_warnings,
         "analysis_language": "ko-KR",
         "max_holdings_after_trade": rp.MAX_SIMULTANEOUS_HOLDINGS,
         "max_cash_deployment_ratio": rp.MAX_CASH_DEPLOYMENT_RATIO,
@@ -1172,6 +1326,73 @@ def buildFlashTradeDocument(
         "ai_direct_order_allowed": False,
         "redaction_status": "sanitized",
     }
+
+
+def _candidate_kis_confirmation(
+    row: Mapping[str, Any],
+    provider_action: Mapping[str, Any],
+    market_rows: Sequence[Mapping[str, Any]],
+    *,
+    symbol: str,
+) -> Dict[str, bool]:
+    if row.get("kis_quote_confirmed") is True or row.get("krx_execution_quote_confirmed") is True:
+        return {
+            "quote_confirmed": True,
+            "orderbook_confirmed": bool(row.get("kis_orderbook_confirmed") or row.get("orderbook_confirmed")),
+        }
+    del provider_action
+    quote_confirmed = False
+    orderbook_confirmed = False
+    for market in market_rows:
+        for candidate in _iter_nested_market_rows(market):
+            row_symbol = _first_non_empty(
+                candidate.get("mksc_shrn_iscd"),
+                candidate.get("stck_shrn_iscd"),
+                candidate.get("pdno"),
+                candidate.get("stck_code"),
+                candidate.get("iscd"),
+                candidate.get("isu_cd"),
+                candidate.get("code"),
+            )
+            if str(row_symbol or "").strip() != symbol:
+                continue
+            price = _safe_positive_int(
+                _first_non_empty(
+                    candidate.get("stck_prpr"),
+                    candidate.get("prpr"),
+                    candidate.get("price"),
+                    candidate.get("last"),
+                    candidate.get("askp1"),
+                    candidate.get("bidp1"),
+                )
+            )
+            if price > 0:
+                quote_confirmed = True
+            if _safe_positive_int(candidate.get("askp1")) > 0 and _safe_positive_int(candidate.get("bidp1")) > 0:
+                orderbook_confirmed = True
+    return {"quote_confirmed": quote_confirmed, "orderbook_confirmed": orderbook_confirmed}
+
+
+def _iter_nested_market_rows(value: Any) -> List[Mapping[str, Any]]:
+    rows: List[Mapping[str, Any]] = []
+    if isinstance(value, Mapping):
+        if any(key in value for key in ("mksc_shrn_iscd", "stck_shrn_iscd", "pdno", "stck_code", "iscd", "isu_cd", "code")):
+            rows.append(value)
+        for key in ("rows_preview", "output", "output1", "output2", "items", "input_results"):
+            child = value.get(key)
+            if isinstance(child, list):
+                for item in child:
+                    rows.extend(_iter_nested_market_rows(item))
+            elif isinstance(child, Mapping):
+                rows.extend(_iter_nested_market_rows(child))
+        market_classes = value.get("market_classes")
+        if isinstance(market_classes, Mapping):
+            for child in market_classes.values():
+                rows.extend(_iter_nested_market_rows(child))
+    elif isinstance(value, list):
+        for item in value:
+            rows.extend(_iter_nested_market_rows(item))
+    return rows
 
 
 def validateProHourlyMarketAnalysis(
@@ -1414,6 +1635,12 @@ def validateFlashTradeDocument(
                 if confidence_float < 0 or confidence_float > 1:
                     errors.append(f"actions_item_{index}_confidence_invalid")
         if action_type in {"WAIT_BUY", "BUY_NOW"}:
+            provisional_without_kis_quote = (
+                action.get("requires_kis_confirmation_before_order") is True
+                and action.get("kis_quote_confirmed") is not True
+                and str(action.get("candidate_universe_source") or payload.get("candidate_universe_source") or "")
+                == "gpt_morning_watchlist_provisional"
+            )
             if side not in {"BUY"}:
                 errors.append(f"actions_item_{index}_side_buy_required")
             if action.get("valid_until_kst") in (None, ""):
@@ -1428,7 +1655,7 @@ def validateFlashTradeDocument(
                 errors.append(f"actions_item_{index}_source_refs_required")
             if not action.get("pro_refs"):
                 errors.append(f"actions_item_{index}_pro_refs_required")
-            if not action.get("market_data_refs"):
+            if not action.get("market_data_refs") and not provisional_without_kis_quote:
                 errors.append(f"actions_item_{index}_market_data_refs_required")
             ref_kind_count = sum(
                 1

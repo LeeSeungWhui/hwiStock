@@ -156,9 +156,22 @@ SAFE_MARKET_ROW_KEYS = (
     "mksc_shrn_iscd",
     "pdno",
     "stck_shrn_iscd",
+    "stck_code",
+    "iscd",
+    "isu_cd",
+    "code",
     "hts_kor_isnm",
     "prdt_abrv_name",
+    "prdt_name",
+    "kor_isnm",
+    "item_name",
+    "stck_kor_isnm",
     "stck_prpr",
+    "prpr",
+    "price",
+    "last",
+    "stck_clpr",
+    "close",
     "prdy_vrss",
     "prdy_ctrt",
     "acml_vol",
@@ -548,8 +561,7 @@ def _kis_market_read(
             "broker_order_surface": False,
             "raw_response_stored": False,
         }
-    request = getattr(adapter, "_request", None)
-    auth_headers = getattr(adapter, "_authHeaders", None)
+    request, auth_headers, request_boundary = _market_request_boundary(adapter)
     if callable(request) and callable(auth_headers):
         response = request(
             "GET",
@@ -557,21 +569,39 @@ def _kis_market_read(
             headers=auth_headers(token, tr_id),
         )
         result = _sanitize_kis_market_response(response, step=step)
+        result["endpoint_called"] = True
+        result["request_boundary"] = request_boundary
     else:
         fallback = getattr(adapter, fallback_method, None)
         result = dict(fallback(token, *fallback_args)) if callable(fallback) else {
             "step": step,
             "status": "blocked_adapter_missing_market_method",
+            "endpoint_called": False,
         }
-    result["endpoint_called"] = True
+        if callable(fallback):
+            result.setdefault("endpoint_called", True)
+            result.setdefault("request_boundary", f"fallback_{fallback_method}")
     result["broker_order_surface"] = False
     result["tr_id"] = tr_id
     result["raw_response_stored"] = False
     return result
 
 
+def _market_request_boundary(adapter: KisPaperAdapter) -> tuple[Any, Any, str]:
+    public_request = getattr(adapter, "requestBrokerJson", None)
+    public_auth_headers = getattr(adapter, "authHeaders", None)
+    if callable(public_request) and callable(public_auth_headers):
+        return public_request, public_auth_headers, "public_requestBrokerJson_authHeaders"
+    legacy_request = getattr(adapter, "_request", None)
+    legacy_auth_headers = getattr(adapter, "_authHeaders", None)
+    if callable(legacy_request) and callable(legacy_auth_headers):
+        return legacy_request, legacy_auth_headers, "legacy_private_request_authHeaders"
+    return None, None, "missing_request_boundary"
+
+
 def _program_trade_today(adapter: KisPaperAdapter, token: str, *, market_class: str) -> Dict[str, Any]:
-    if not hasattr(adapter, "_request"):
+    request, auth_headers, _request_boundary = _market_request_boundary(adapter)
+    if not callable(request) or not callable(auth_headers):
         fallback = getattr(adapter, "programTradeToday", None)
         if callable(fallback):
             return dict(fallback(token, market_class=market_class))
@@ -816,7 +846,7 @@ def _collect_one_signal_input(
             "row_count": len(rows_preview),
             "rows_preview": rows_preview[:10],
             "market_classes": {"K": krx, "Q": kosdaq},
-            "endpoint_called": True,
+            "endpoint_called": bool(krx.get("endpoint_called") or kosdaq.get("endpoint_called")),
             "broker_order_surface": False,
             "raw_response_stored": False,
         }
@@ -881,11 +911,11 @@ def buildCompiledWatchFromKisSnapshot(
     for source in _iter_market_rows(snapshot):
         row = dict(source.get("row") or {})
         input_id = str(source.get("input_id") or "kis_market").strip()
-        symbol = _first_present(row, "mksc_shrn_iscd", "stck_shrn_iscd", "pdno")
+        symbol = _first_present(row, "mksc_shrn_iscd", "stck_shrn_iscd", "pdno", "stck_code", "iscd", "isu_cd", "code")
         if not symbol or symbol in seen:
             continue
-        price = _parse_krw_price(_first_present(row, "stck_prpr", "askp1", "bidp1"))
-        name = _first_present(row, "hts_kor_isnm", "prdt_abrv_name") or symbol
+        price = _parse_krw_price(_first_present(row, "stck_prpr", "prpr", "price", "last", "stck_clpr", "close", "askp1", "bidp1"))
+        name = _first_present(row, "hts_kor_isnm", "prdt_abrv_name", "prdt_name", "kor_isnm", "item_name", "stck_kor_isnm") or symbol
         if not _is_candidate_row(input_id=input_id, symbol=symbol, name=name, price=price):
             continue
         seen.add(symbol)
@@ -905,6 +935,8 @@ def buildCompiledWatchFromKisSnapshot(
                 "ticker": symbol,
                 "name": name,
                 "source_ids": [str(snapshot.get("artifact_id") or "kis_market_snapshot"), input_id],
+                "source_type": "kis_compiled_watch",
+                "source_input_id": input_id,
                 "created_at_kst": now.isoformat(),
                 "valid_until_kst": valid_until,
                 "compiled_at_kst": now.isoformat(),
@@ -940,6 +972,9 @@ def buildCompiledWatchFromKisSnapshot(
                 "no_broker_call": True,
                 "non_executable": True,
                 "approved_adapter_enabled": False,
+                "kis_quote_confirmed": True,
+                "krx_execution_quote_confirmed": True,
+                "kis_orderbook_confirmed": bool(_parse_krw_price(_first_present(row, "askp1", "bidp1"))),
             }
         )
         if len(candidates) >= 5:

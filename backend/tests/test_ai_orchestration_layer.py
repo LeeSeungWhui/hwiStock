@@ -519,6 +519,131 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         self.assertIn("morning_watchlist_generated_before_trade_date", doc["morning_watchlist_warnings"])
         self.assertEqual(doc["actions"][0]["action"], "WAIT_BUY")
 
+    def testQa012FlashUsesKisCompiledWatchWhenAvailable(self):
+        doc = ao.buildFlashTradeDocument(
+            pro_artifact={"artifact_id": "art_pro_hourly_20260604_0900"},
+            recent_events=[{"source_event_id": KNOWN_SOURCE_IDS[0]}],
+            kis_market_snapshots=[{"artifact_id": "art_kis_snapshot_20260604_0905"}],
+            compiled_watch=[{"schema_version": "compiled_watch/v0", "symbol": "005930", "source_ids": KNOWN_SOURCE_IDS}],
+            portfolio_snapshot={"artifact_id": "art_portfolio_20260604_0905", "holdings": []},
+            order_state_snapshot={"artifact_id": "art_order_state_20260604_0905", "pending_orders": []},
+            morning_watchlist=_morning_watchlist(),
+            produced_at_kst=NOW_KST,
+        )
+
+        self.assertEqual(doc["candidate_universe_source"], "kis_compiled_watch")
+        self.assertEqual(doc["candidate_universe_count"], 1)
+        self.assertNotIn("kis_compiled_watch_empty_using_morning_watchlist_fallback", doc.get("warnings", []))
+
+    def testQa012FlashUsesGptMorningProvisionalUniverseWhenKisCompiledEmpty(self):
+        doc = ao.buildFlashTradeDocument(
+            pro_artifact={"artifact_id": "art_pro_hourly_20260604_0900"},
+            recent_events=[],
+            kis_market_snapshots=[],
+            compiled_watch=[],
+            portfolio_snapshot={"artifact_id": "art_portfolio_20260604_0905", "holdings": []},
+            order_state_snapshot={"artifact_id": "art_order_state_20260604_0905", "pending_orders": []},
+            morning_watchlist=_morning_watchlist(
+                items=[
+                    {
+                        "ticker": "005930",
+                        "name": "삼성전자",
+                        "stance": "eligible_for_flash_review",
+                        "thesis": "장전 후보",
+                        "source_refs": [KNOWN_SOURCE_IDS[0]],
+                    }
+                ]
+            ),
+            provider_actions=[
+                {
+                    "symbol": "005930",
+                    "action": "WAIT_BUY",
+                    "entry_price_limit": 70000,
+                    "target_price": 72100,
+                    "stop_loss_price": 67900,
+                    "planned_order_cash_krw": 100000,
+                    "confidence": 0.55,
+                }
+            ],
+            produced_at_kst=NOW_KST,
+        )
+        validation = ao.validateFlashTradeDocument(doc)
+
+        self.assertEqual(doc["document_kind"], "TRADE_ACTIONS")
+        self.assertEqual(doc["candidate_universe_source"], "gpt_morning_watchlist_provisional")
+        self.assertEqual(doc["candidate_universe_count"], 1)
+        self.assertIn("kis_compiled_watch_empty_using_morning_watchlist_fallback", doc["warnings"])
+        self.assertEqual(doc["actions"][0]["action_source"], "deepseek_flash_provider")
+        self.assertTrue(validation["ok"], msg=validation["errors"])
+
+    def testQa012NoTradeOnlyWhenBothKisAndMorningUniverseEmpty(self):
+        doc = ao.buildFlashTradeDocument(
+            pro_artifact={"artifact_id": "art_pro_hourly_20260604_0900"},
+            recent_events=[],
+            kis_market_snapshots=[],
+            compiled_watch=[],
+            portfolio_snapshot={"artifact_id": "art_portfolio_20260604_0905", "holdings": []},
+            order_state_snapshot={"artifact_id": "art_order_state_20260604_0905", "pending_orders": []},
+            morning_watchlist=_morning_watchlist(items=[]),
+            produced_at_kst=NOW_KST,
+        )
+
+        self.assertEqual(doc["document_kind"], "NO_TRADE")
+        self.assertEqual(doc["no_trade_reason"], "missing_compiled_watch_candidate_universe")
+        self.assertEqual(doc["candidate_universe_source"], "none")
+        self.assertEqual(doc["candidate_universe_count"], 0)
+
+    def testQa012GptFallbackWithoutKisQuoteDowngradesBuyNowToWaitBuy(self):
+        doc = ao.buildFlashTradeDocument(
+            pro_artifact={"artifact_id": "art_pro_hourly_20260604_0900"},
+            recent_events=[],
+            kis_market_snapshots=[],
+            compiled_watch=[],
+            portfolio_snapshot={"artifact_id": "art_portfolio_20260604_0905", "holdings": []},
+            order_state_snapshot={"artifact_id": "art_order_state_20260604_0905", "pending_orders": []},
+            morning_watchlist=_morning_watchlist(items=[{"ticker": "005930", "stance": "eligible_for_flash_review", "source_refs": [KNOWN_SOURCE_IDS[0]]}]),
+            provider_actions=[{"symbol": "005930", "action": "BUY_NOW", "entry_price_limit": 70000, "target_price": 72100, "stop_loss_price": 67900, "planned_order_cash_krw": 100000, "confidence": 0.8}],
+            produced_at_kst=NOW_KST,
+        )
+
+        action = doc["actions"][0]
+        self.assertEqual(action["action"], "WAIT_BUY")
+        self.assertTrue(action["requires_kis_confirmation_before_order"])
+        self.assertFalse(action["kis_quote_confirmed"])
+        self.assertIn("gpt_morning_fallback_buy_now_downgraded_until_kis_quote_confirmed", action["risk_flags"])
+
+    def testQa012GptFallbackWithKisQuoteAllowsValidBuyNow(self):
+        doc = ao.buildFlashTradeDocument(
+            pro_artifact={"artifact_id": "art_pro_hourly_20260604_0900"},
+            recent_events=[],
+            kis_market_snapshots=[
+                {
+                    "artifact_id": "art_kis_snapshot_20260604_0905",
+                    "input_results": [
+                        {
+                            "input_id": "krx_realtime_trade_price_ws",
+                            "rows_preview": [
+                                {"stck_shrn_iscd": "005930", "stck_prpr": "70000", "askp1": "70100", "bidp1": "70000"}
+                            ],
+                        }
+                    ],
+                }
+            ],
+            compiled_watch=[],
+            portfolio_snapshot={"artifact_id": "art_portfolio_20260604_0905", "holdings": []},
+            order_state_snapshot={"artifact_id": "art_order_state_20260604_0905", "pending_orders": []},
+            morning_watchlist=_morning_watchlist(items=[{"ticker": "005930", "stance": "eligible_for_flash_review", "source_refs": [KNOWN_SOURCE_IDS[0]]}]),
+            provider_actions=[{"symbol": "005930", "action": "BUY_NOW", "quantity": 1, "entry_price_limit": 70000, "target_price": 72100, "stop_loss_price": 67900, "planned_order_cash_krw": 100000, "confidence": 0.8}],
+            produced_at_kst=NOW_KST,
+        )
+        validation = ao.validateFlashTradeDocument(doc)
+
+        action = doc["actions"][0]
+        self.assertEqual(action["action"], "BUY_NOW")
+        self.assertTrue(action["kis_quote_confirmed"])
+        self.assertTrue(action["kis_orderbook_confirmed"])
+        self.assertTrue(validation["ok"], msg=validation["errors"])
+
     def testQa014DailyCloseReportRequiresSystemCalculatedPnL(self):
         invalid = ao.validateDailyCloseReport(
             {

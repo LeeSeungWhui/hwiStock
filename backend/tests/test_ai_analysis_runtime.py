@@ -1236,6 +1236,82 @@ def test_flash_forbids_buy_now_when_pro_context_low_utility():
     assert "pro_context_low_utility" in doc["global_risk_flags"]
 
 
+def test_flash_provider_called_with_morning_fallback_universe(tmp_path: Path, monkeypatch):
+    data_root = tmp_path / "data"
+    day = "2026-06-08"
+    calendar = tmp_path / "calendar.json"
+    _write_calendar(calendar, day=day, trading=True)
+    monkeypatch.setenv("HWISTOCK_CALENDAR_PATH", str(calendar))
+    _write_json(
+        data_root / "ai" / day / "pro-hourly-latest.json",
+        _pro_v1_payload(artifact_id="art_pro_hourly_20260608_0900"),
+    )
+    _write_json(
+        data_root / "morning-watchlist" / day / "morning-watchlist-latest.json",
+        {
+            "schema_version": "morning_watchlist/v1",
+            "artifact_id": "art_morning_watchlist_20260608_0715",
+            "target_trade_date_kst": day,
+            "generated_at_kst": "2026-06-08T07:15:00+09:00",
+            "items": [
+                {
+                    "ticker": "005930",
+                    "name": "삼성전자",
+                    "stance": "eligible_for_flash_review",
+                    "thesis": "장전 후보",
+                    "source_refs": ["event-1"],
+                    "confidence": 0.6,
+                }
+            ],
+            "market_open_plan": {"opening_bias": "selective_watch", "why": "테스트", "must_wait_for_market_confirmation": True},
+        },
+    )
+    calls: list[dict] = []
+
+    def _fake_deepseek(prompt, **kwargs):
+        calls.append({"prompt": prompt, "kwargs": kwargs})
+        return {
+            "http_status": 200,
+            "finish_reason": "stop",
+            "model": kwargs.get("model"),
+            "usage": {"completion_tokens": 10},
+            "text": json.dumps(
+                {
+                    "actions": [
+                        {
+                            "symbol": "005930",
+                            "action": "BUY_NOW",
+                            "entry_price_limit": 70000,
+                            "target_price": 72100,
+                            "stop_loss_price": 67900,
+                            "planned_order_cash_krw": 100000,
+                            "confidence": 0.8,
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+        }
+
+    monkeypatch.setattr(runtime, "_call_deepseek", _fake_deepseek)
+
+    artifact = runtime.run_flash_trade_document_once(
+        data_root=data_root,
+        at=datetime.fromisoformat("2026-06-08T09:10:00+09:00"),
+        model="deepseek-v4-flash",
+    )
+
+    assert calls
+    assert "005930" in calls[0]["prompt"]
+    assert artifact["provider_status"] == "ok"
+    assert artifact["candidate_universe_source"] == "gpt_morning_watchlist_provisional"
+    assert artifact["candidate_universe_count"] == 1
+    assert artifact["actions"][0]["action"] == "WAIT_BUY"
+    assert artifact["actions"][0]["kis_quote_confirmed"] is False
+    assert artifact["paper_intent_pipeline"]["accepted_count"] == 0
+    assert "kis_quote_confirmation_required_before_paper_intent" in artifact["paper_intent_pipeline"]["rejected_actions"][0]["reasons"]
+
+
 def _flash_v1_document(**action_overrides):
     action = {
         "action_id": "act_005930_0900_01",

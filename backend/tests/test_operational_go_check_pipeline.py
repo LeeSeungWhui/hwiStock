@@ -200,16 +200,75 @@ class FakeKisMarketAdapter:
         return {"step": "oauth_revoke", "status": "pass"}
 
 
-def test_unit013_kis_collector_calls_paper_read_and_builds_compiled_watch(tmp_path: Path):
-    calendar = tmp_path / "calendar.json"
+class FakePublicKisMarketAdapter:
+    def __init__(self):
+        self.requests = []
+        self.calls = []
+
+    def missingEnvKeys(self):
+        return []
+
+    def configSummary(self):
+        return {"paperDomainOnly": True, "env": {"credentialValuesPrinted": False}}
+
+    def issueTokenWithValue(self):
+        self.calls.append("token")
+        return {"step": "oauth_token", "status": "pass", "token_present": True}, "fake-token"
+
+    def issueWebsocketApprovalWithValue(self):
+        self.calls.append("approval")
+        return {"step": "websocket_approval", "status": "pass", "approval_key_present": True}, "fake-approval-key"
+
+    def authHeaders(self, token, tr_id):
+        self.calls.append(("auth", token, tr_id))
+        return {"authorization": f"Bearer {token}", "tr_id": tr_id}
+
+    def requestBrokerJson(self, method, path_or_url, *, headers=None, body=None):
+        self.requests.append({"method": method, "path": path_or_url, "headers": dict(headers or {}), "body": body})
+        return {
+            "http_status": 200,
+            "payload": {
+                "rt_cd": "0",
+                "msg_cd": "ok",
+                "output": [
+                    {
+                        "mksc_shrn_iscd": "000660",
+                        "hts_kor_isnm": "SK하이닉스",
+                        "stck_prpr": "180000",
+                        "data_rank": "1",
+                    }
+                ],
+            },
+        }
+
+    def revokeToken(self, token):
+        self.calls.append("revoke")
+        return {"step": "oauth_revoke", "status": "pass"}
+
+
+class FakeNoMarketMethodAdapter:
+    def missingEnvKeys(self):
+        return []
+
+    def issueTokenWithValue(self):
+        return {"step": "oauth_token", "status": "pass", "token_present": True}, "fake-token"
+
+    def issueWebsocketApprovalWithValue(self):
+        return {"step": "websocket_approval", "status": "pass", "approval_key_present": True}, "fake-approval-key"
+
+    def revokeToken(self, token):
+        return {"step": "oauth_revoke", "status": "pass"}
+
+
+def _write_trading_calendar(calendar: Path, day: str = "2026-06-05"):
     calendar.write_text(
         json.dumps(
             {
                 "validUntil": "2099-12-31T23:59:59+09:00",
                 "sourceAuthority": "unit_test_calendar",
                 "days": {
-                    "2026-06-05": {
-                        "dateKst": "2026-06-05",
+                    day: {
+                        "dateKst": day,
                         "isTradingDay": True,
                         "krx": {
                             "regularOpen": "09:00",
@@ -224,6 +283,11 @@ def test_unit013_kis_collector_calls_paper_read_and_builds_compiled_watch(tmp_pa
         ),
         encoding="utf-8",
     )
+
+
+def test_unit013_kis_collector_calls_paper_read_and_builds_compiled_watch(tmp_path: Path):
+    calendar = tmp_path / "calendar.json"
+    _write_trading_calendar(calendar)
     adapter = FakeKisMarketAdapter()
     payload = kis_collector.collectKisMarketDataOnce(
         env={
@@ -243,6 +307,86 @@ def test_unit013_kis_collector_calls_paper_read_and_builds_compiled_watch(tmp_pa
     assert first["schema_version"] == "compiled_watch/v0"
     assert first["entry_intent"]["entry_zone"]
     assert "order-cash" not in " ".join(map(str, adapter.calls))
+
+
+def test_rest_market_read_uses_public_requestBrokerJson_authHeaders(tmp_path: Path):
+    calendar = tmp_path / "calendar.json"
+    _write_trading_calendar(calendar)
+    adapter = FakePublicKisMarketAdapter()
+
+    payload = kis_collector.collectKisMarketDataOnce(
+        env={
+            "HWISTOCK_KIS_MARKET_READ_NETWORK_ENABLED": "true",
+            "HWISTOCK_KIS_MIN_CALL_GAP_SEC": "0",
+            "HWISTOCK_KIS_SIGNAL_INPUTS": "rest_volume_rank",
+            "HWISTOCK_CALENDAR_PATH": str(calendar),
+        },
+        adapter=adapter,
+        at=datetime.fromisoformat("2026-06-05T09:30:00+09:00"),
+    )
+
+    row = payload["input_results"][0]
+    assert row["status"] == "pass"
+    assert row["endpoint_called"] is True
+    assert row["request_boundary"] == "public_requestBrokerJson_authHeaders"
+    assert row["tr_id"] == "FHPST01710000"
+    assert "blocked_adapter_missing_market_method" not in json.dumps(payload, ensure_ascii=False)
+    assert any("/uapi/domestic-stock/v1/quotations/volume-rank" in call["path"] for call in adapter.requests)
+    assert adapter.requests[0]["headers"]["tr_id"] == "FHPST01710000"
+
+
+def test_rest_volume_rank_rows_build_compiled_watch_candidates():
+    compiled = kis_collector.buildCompiledWatchFromKisSnapshot(
+        {
+            "artifact_id": "art_kis_snapshot_rank_rows",
+            "input_results": [
+                {
+                    "input_id": "rest_volume_rank",
+                    "status": "pass",
+                    "endpoint_called": True,
+                    "row_count": 1,
+                    "rows_preview": [
+                        {
+                            "mksc_shrn_iscd": "000660",
+                            "hts_kor_isnm": "SK하이닉스",
+                            "stck_prpr": "180000",
+                            "data_rank": "1",
+                        }
+                    ],
+                }
+            ],
+        },
+        config={"default_order_cash_krw": 120_000, "position_size_pct": 8},
+        at=datetime.fromisoformat("2026-06-05T09:30:00+09:00"),
+    )
+
+    assert compiled["candidate_count"] == 1
+    candidate = compiled["items"][0]
+    assert candidate["symbol"] == "000660"
+    assert candidate["source_type"] == "kis_compiled_watch"
+    assert candidate["entry_intent"]["entry_price_krw"] == 180000
+    assert candidate["entry_intent"]["planned_order_cash_krw"] == 120000
+    assert candidate["kis_quote_confirmed"] is True
+
+
+def test_missing_market_method_does_not_mark_endpoint_called(tmp_path: Path):
+    calendar = tmp_path / "calendar.json"
+    _write_trading_calendar(calendar)
+
+    payload = kis_collector.collectKisMarketDataOnce(
+        env={
+            "HWISTOCK_KIS_MARKET_READ_NETWORK_ENABLED": "true",
+            "HWISTOCK_KIS_MIN_CALL_GAP_SEC": "0",
+            "HWISTOCK_KIS_SIGNAL_INPUTS": "rest_volume_rank",
+            "HWISTOCK_CALENDAR_PATH": str(calendar),
+        },
+        adapter=FakeNoMarketMethodAdapter(),
+        at=datetime.fromisoformat("2026-06-05T09:30:00+09:00"),
+    )
+
+    row = payload["input_results"][0]
+    assert row["status"] == "blocked_adapter_missing_market_method"
+    assert row["endpoint_called"] is False
 
 
 def test_unit013_kis_collector_weekend_safe_skips_without_transport(tmp_path: Path):
@@ -302,6 +446,97 @@ def test_unit013_flash_document_to_intent_requires_compiled_universe_and_refs():
     assert intent["order_price"] == 10000
     assert intent["quantity"] == 10
     assert intent["broker_endpoint_called"] is False
+
+
+def test_flash_valid_buy_now_generates_paper_order_intent():
+    doc = ao.buildFlashTradeDocument(
+        pro_artifact={"artifact_id": "art_pro_hourly_20260605_0900"},
+        recent_events=[{"source_event_id": "naver:news:1"}],
+        kis_market_snapshots=[{"artifact_id": "art_kis_snapshot_20260605_0939"}],
+        compiled_watch=[_compiled_watch("005930")],
+        portfolio_snapshot={"artifact_id": "art_portfolio_20260605_0939", "holdings": []},
+        order_state_snapshot={"artifact_id": "art_order_state_20260605_0939", "pending_orders": []},
+        provider_actions=[
+            {
+                "symbol": "005930",
+                "action": "BUY_NOW",
+                "quantity": 10,
+                "entry_price_limit": 10000,
+                "target_price": 10500,
+                "stop_loss_price": 9800,
+                "planned_order_cash_krw": 100000,
+                "confidence": 0.8,
+                "thesis": "KIS 후보와 소스가 일치한 BUY_NOW",
+                "why_now": "거래대금 후보 확인",
+            }
+        ],
+        produced_at_kst=NOW,
+    )
+    validation = ao.validateFlashTradeDocument(doc, compiled_watch=[_compiled_watch("005930")])
+    assert validation["ok"], validation["errors"]
+
+    pipeline = engine.generatePaperOrderIntentsFromFlashDocument(
+        validation["document"],
+        compiled_watch=[_compiled_watch("005930")],
+        portfolio_snapshot={"artifact_id": "art_portfolio_20260605_0939", "holdings": []},
+        order_state_snapshot={"artifact_id": "art_order_state_20260605_0939", "pending_orders": []},
+        now_kst=NOW,
+    )
+
+    assert pipeline["accepted_count"] == 1
+    intent = pipeline["accepted_intents"][0]
+    assert intent["action"] == "BUY_NOW"
+    assert intent["action_source"] == "deepseek_flash_provider"
+    assert intent["entry_price_limit"] == 10000
+    assert intent["target_price"] == 10500
+    assert intent["stop_loss_price"] == 9800
+    assert intent["paper_only"] is True
+    assert intent["broker_adapter"] == "kis_paper"
+    assert intent["venue_route"] == "KRX"
+
+
+def test_gpt_fallback_without_kis_quote_rejects_paper_intent_even_after_wait_buy_downgrade():
+    morning = {
+        "schema_version": "morning_watchlist/v1",
+        "artifact_id": "art_morning_watchlist_20260605_0715",
+        "items": [{"ticker": "005930", "stance": "eligible_for_flash_review", "source_refs": ["naver:news:1"]}],
+    }
+    doc = ao.buildFlashTradeDocument(
+        pro_artifact={"artifact_id": "art_pro_hourly_20260605_0900"},
+        recent_events=[],
+        kis_market_snapshots=[],
+        compiled_watch=[],
+        portfolio_snapshot={"artifact_id": "art_portfolio_20260605_0939", "holdings": []},
+        order_state_snapshot={"artifact_id": "art_order_state_20260605_0939", "pending_orders": []},
+        morning_watchlist=morning,
+        provider_actions=[
+            {
+                "symbol": "005930",
+                "action": "BUY_NOW",
+                "entry_price_limit": 10000,
+                "target_price": 10500,
+                "stop_loss_price": 9800,
+                "planned_order_cash_krw": 100000,
+                "confidence": 0.8,
+            }
+        ],
+        produced_at_kst=NOW,
+    )
+    assert doc["actions"][0]["action"] == "WAIT_BUY"
+
+    pipeline = engine.generatePaperOrderIntentsFromFlashDocument(
+        doc,
+        compiled_watch=ao.buildProvisionalCompiledWatchFromMorningWatchlist(
+            morning,
+            produced_at_kst=NOW,
+        ),
+        portfolio_snapshot={"holdings": []},
+        order_state_snapshot={"pending_orders": []},
+        now_kst=NOW,
+    )
+
+    assert pipeline["accepted_count"] == 0
+    assert "kis_quote_confirmation_required_before_paper_intent" in pipeline["rejected_actions"][0]["reasons"]
 
 
 def test_flash_document_ignores_expired_previous_wait_buy_documents():
@@ -409,6 +644,7 @@ def _disable_dashboard_account_network(monkeypatch):
     monkeypatch.setenv("HWISTOCK_DASHBOARD_ACCOUNT_READ_ENABLED", "false")
     monkeypatch.setenv("KIS_PAPER_ACCOUNT_NO", "12345678")
     monkeypatch.setenv("KIS_PAPER_ACCOUNT_PRODUCT_CODE", "01")
+    monkeypatch.delenv("HWISTOCK_CALENDAR_PATH", raising=False)
 
 
 def test_unit015_operator_snapshot_is_read_only_and_exposes_local_account_summary(tmp_path: Path, monkeypatch):
@@ -459,7 +695,7 @@ def test_unit015_operator_snapshot_is_read_only_and_exposes_local_account_summar
     assert snapshot["readinessTruth"]["paperObservationAccepted"] is False
     assert snapshot["readinessTruth"]["operationalTradingReadiness"] is False
     assert "paper_order_loop_disabled" in snapshot["readinessTruth"]["blockers"]
-    assert "blocked_calendar_day_missing" in snapshot["readinessTruth"]["blockers"]
+    assert "blocked_source_unconfigured" in snapshot["readinessTruth"]["blockers"]
     assert "paper_orders_not_submitted" in snapshot["readinessTruth"]["evidenceGaps"]
 
     report = operator_console.writeObservationReport(

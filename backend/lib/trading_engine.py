@@ -704,6 +704,11 @@ def generatePaperOrderIntentsFromFlashDocument(
         if action_type in {"SELL", "SELL_NOW", "WAIT_SELL"}:
             reasons.append("sell_exit_intent_deferred_to_unit_014_realtime_exit")
         if action_type in {"WAIT_BUY", "BUY_NOW"}:
+            if (
+                action.get("requires_kis_confirmation_before_order") is True
+                and action.get("kis_quote_confirmed") is not True
+            ):
+                reasons.append("kis_quote_confirmation_required_before_paper_intent")
             if not action.get("source_refs"):
                 reasons.append("source_refs_required")
             if not action.get("market_data_refs"):
@@ -772,6 +777,7 @@ def generatePaperOrderIntentsFromFlashDocument(
             "intent_id": idempotency_key,
             "idempotency_key": idempotency_key,
             "producer": "trade_document_intent_pipeline",
+            "intent_type": "flash_buy_entry" if action_type == "BUY_NOW" else "flash_wait_buy_entry",
             "created_at_kst": produced_at,
             "valid_until_kst": action.get("cancel_if_not_filled_until") or document.get("valid_until") or produced_at,
             "flash_trade_document_ref": document.get("artifact_id"),
@@ -784,6 +790,7 @@ def generatePaperOrderIntentsFromFlashDocument(
             "ticker": symbol,
             "side": side,
             "action": action_type,
+            "action_source": str(action.get("action_source") or "flash_trade_document"),
             "venue_route": "KRX",
             "broker_adapter": "kis_paper",
             "base_url_alias": "kis_paper_vts",
@@ -791,6 +798,9 @@ def generatePaperOrderIntentsFromFlashDocument(
             "order_division": "00",
             "order_price": order_price,
             "price": order_price,
+            "entry_price_limit": order_price,
+            "target_price": _parse_positive_int(action.get("target_price") or action.get("take_profit")),
+            "stop_loss_price": _parse_positive_int(action.get("stop_loss_price") or action.get("stop_loss")),
             "quantity": int(quantity),
             "entry_zone": entry_zone,
             "take_profit": action.get("take_profit"),
@@ -1032,6 +1042,7 @@ def _resolve_order_price(action_type: str, action: Mapping[str, Any], entry_zone
     explicit = _parse_positive_int(
         action.get("order_price")
         or action.get("price")
+        or action.get("entry_price_limit")
         or action.get("entry_price_krw")
         or action.get("current_price")
     )

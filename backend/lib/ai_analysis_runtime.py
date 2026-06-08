@@ -1750,14 +1750,18 @@ def run_flash_trade_document_once(
     selected_model = model or os.getenv("HWISTOCK_DEEPSEEK_MODEL", ao.DEEPSEEK_FLASH_MODEL)
     provider: Optional[Dict[str, Any]] = None
     provider_json: Dict[str, Any] = {}
-    if pro_artifact and compiled_watch and (events or kis_snapshots):
+    flash_candidate_universe = compiled_watch or ao.buildProvisionalCompiledWatchFromMorningWatchlist(
+        morning_watchlist,
+        produced_at_kst=now.isoformat(),
+    )
+    if pro_artifact and flash_candidate_universe and (events or kis_snapshots or morning_watchlist):
         try:
             provider = _call_deepseek(
                 _build_flash_prompt(
                     pro_artifact=pro_artifact,
                     events=events,
                     kis_snapshots=kis_snapshots,
-                    compiled_watch=compiled_watch,
+                    compiled_watch=flash_candidate_universe,
                     portfolio=portfolio,
                     order_state=order_state,
                     produced_at_kst=now.isoformat(),
@@ -1810,14 +1814,14 @@ def run_flash_trade_document_once(
             provider_json=provider_json,
             calendar_context=calendar_context,
         )
-    validation = ao.validateFlashTradeDocument(artifact, compiled_watch=compiled_watch)
+    validation = ao.validateFlashTradeDocument(artifact, compiled_watch=flash_candidate_universe)
     artifact = validation["document"]
     artifact["validation_errors"] = validation["errors"]
     artifact = _with_quality_metadata(artifact)
     if artifact.get("validation_status") == "accepted":
         pipeline = trading_engine.generatePaperOrderIntentsFromFlashDocument(
             artifact,
-            compiled_watch=compiled_watch,
+            compiled_watch=flash_candidate_universe,
             portfolio_snapshot=portfolio,
             order_state_snapshot=order_state,
             existing_intents=_read_existing_intents(data_root, at=now),

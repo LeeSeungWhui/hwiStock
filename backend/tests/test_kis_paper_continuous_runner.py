@@ -17,7 +17,9 @@ baseDir = os.path.dirname(os.path.dirname(__file__))
 if baseDir not in sys.path:
     sys.path.insert(0, baseDir)
 
+from lib import ai_orchestration as ao  # noqa: E402
 from lib import paper_trading_ledger as ledger  # noqa: E402
+from lib import trading_engine as engine  # noqa: E402
 from lib.kis_paper_token_cache import loadKisPaperAccessToken  # noqa: E402
 from service import HwiStockRunnerService as base_runner  # noqa: E402
 from service import kis_paper_continuous_runner as continuous  # noqa: E402
@@ -1023,6 +1025,77 @@ def test_tick_auto_loads_next_fifo_intent_queue_and_persists_only_passed_order(t
     assert "intent-queue-1" in state["consumed_intent_keys"]
     assert "intent-queue-2" not in state["consumed_intent_keys"]
     assert state["pending_orders"][0]["symbol"] == "005930"
+
+
+def test_runner_consumes_flash_buy_intent_and_reaches_cash_order_step_with_fake_transport(tmp_path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    data_root = tmp_path / "data"
+    doc = ao.buildFlashTradeDocument(
+        pro_artifact={"artifact_id": "art_pro_hourly_20260605_0900"},
+        recent_events=[{"source_event_id": "event-1"}],
+        kis_market_snapshots=[{"artifact_id": "art_kis_snapshot_20260605_0930"}],
+        compiled_watch=[
+            {
+                "schema_version": "compiled_watch/v0",
+                "symbol": "005930",
+                "source_ids": ["event-1"],
+                "entry_intent": {"entry_zone": [70000], "take_profit": 72100, "stop_loss": 67900, "planned_order_cash_krw": 100000},
+                "valid_until_kst": "2026-06-05T09:40:00+09:00",
+            }
+        ],
+        portfolio_snapshot={"artifact_id": "art_portfolio_20260605_0930", "holdings": []},
+        order_state_snapshot={"artifact_id": "art_order_state_20260605_0930", "pending_orders": []},
+        provider_actions=[
+            {
+                "symbol": "005930",
+                "action": "BUY_NOW",
+                "quantity": 1,
+                "entry_price_limit": 70000,
+                "target_price": 72100,
+                "stop_loss_price": 67900,
+                "planned_order_cash_krw": 100000,
+                "confidence": 0.8,
+            }
+        ],
+        produced_at_kst="2026-06-05T09:30:00+09:00",
+    )
+    pipeline = engine.generatePaperOrderIntentsFromFlashDocument(
+        doc,
+        compiled_watch=[{"symbol": "005930"}],
+        portfolio_snapshot={"artifact_id": "art_portfolio_20260605_0930", "holdings": []},
+        order_state_snapshot={"artifact_id": "art_order_state_20260605_0930", "pending_orders": []},
+        now_kst="2026-06-05T09:30:00+09:00",
+    )
+    assert pipeline["accepted_count"] == 1
+    intent = pipeline["accepted_intents"][0]
+    assert intent["action_source"] == "deepseek_flash_provider"
+    assert intent["paper_only"] is True
+    assert intent["broker_adapter"] == "kis_paper"
+    assert intent["venue_route"] == "KRX"
+
+    intent_dir = data_root / "intents" / "2026-06-05"
+    intent_dir.mkdir(parents=True)
+    (intent_dir / "paper-order-intents-latest.jsonl").write_text(
+        json.dumps(intent, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    env = _env()
+    env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _mark_order_grade_source(env)
+    _order_approval(tmp_path, env)
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(data_root)
+    transport = FakeTransport()
+    adapter = KisPaperAdapter(env=env, transport=transport)
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=adapter,
+        at_kst="2026-06-05T09:30:00",
+    )
+
+    assert payload["intent_source"] == "next_intent_queue_exit_priority_fifo"
+    assert any(step.get("step") == "cash_order" and step.get("status") == "pass" for step in payload["steps"])
+    assert any("/order-cash" in call["url"] for call in transport.calls)
 
 
 def test_tick_prioritizes_exit_sell_intent_before_entry_fifo(tmp_path, monkeypatch):
