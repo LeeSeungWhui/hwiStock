@@ -59,6 +59,51 @@ def _flash_doc(symbol: str = "005930"):
     )
 
 
+def _flash_doc_with_position_sell(*, order_window_open: bool = True):
+    return {
+        "schema_version": "flash_trade_document/v1",
+        "artifact_id": "art_flash_tdoc_20260605_0940",
+        "artifact_type": "flash_trade_document",
+        "bucket_id": "20260605T0940",
+        "document_kind": "POSITION_MANAGEMENT",
+        "produced_at_kst": NOW,
+        "source_refs": ["naver:news:1"],
+        "market_context_refs": ["market_context:flash"],
+        "portfolio_snapshot_ref": "art_portfolio_20260605_0939",
+        "order_state_snapshot_ref": "art_order_state_20260605_0939",
+        "market_context": {"broker_order_open": order_window_open},
+        "actions": [],
+        "position_actions": [
+            {
+                "symbol": "005930",
+                "ticker": "005930",
+                "position_state": "holding_confirmed",
+                "action": "SELL_NOW",
+                "entry_time_kst": "2026-06-05T09:09:00+09:00",
+                "holding_age_seconds": 1860,
+                "holding_age_minutes": 31,
+                "target_price": 10500,
+                "stop_loss_price": 9800,
+                "current_price": 10020,
+                "entry_price": 10000,
+                "quantity": 10,
+                "sellable_quantity": 10,
+                "unrealized_pnl_pct": 0.002,
+                "time_exit_status": "hard_max_exceeded",
+                "time_exit_reason": "hard_max_hold_exceeded",
+                "sell_allowed": True,
+                "order_window_open": order_window_open,
+                "exit_blocked_reason": None,
+                "portfolio_state_refs": ["art_portfolio_20260605_0939", "art_order_state_20260605_0939"],
+                "market_data_refs": ["art_kis_snapshot_20260605_0939"],
+                "kis_market_refs": ["art_kis_snapshot_20260605_0939"],
+                "paper_only": True,
+                "no_live_order": True,
+            }
+        ],
+    }
+
+
 def test_unit013_kis_collector_is_mode_aware_and_blocks_extra_endpoint():
     config = kis_collector.loadKisSignalCollectorConfig(
         {"HWISTOCK_KIS_SIGNAL_INPUTS": "rest_volume_rank,order-cash"}
@@ -848,6 +893,49 @@ def test_position_management_action_does_not_create_paper_intent():
 
     assert pipeline["accepted_count"] == 0
     assert "position_management_action_not_entry" in pipeline["rejected_actions"][0]["reasons"]
+
+
+def test_time_stop_sell_intent_has_paper_only_kis_paper_krx():
+    doc = _flash_doc_with_position_sell(order_window_open=True)
+    pipeline = engine.generatePaperOrderIntentsFromFlashDocument(
+        doc,
+        compiled_watch=[_compiled_watch("005930")],
+        portfolio_snapshot={"holdings": [{"symbol": "005930", "quantity": 10, "sellable_quantity": 10}]},
+        order_state_snapshot={"pending_orders": [], "active_exits": []},
+        now_kst=NOW,
+    )
+
+    assert pipeline["accepted_count"] == 1
+    intent = pipeline["accepted_intents"][0]
+    assert intent["side"] == "sell"
+    assert intent["action"] == "SELL_NOW"
+    assert intent["intent_type"] == "position_time_stop_exit"
+    assert intent["venue_route"] == "KRX"
+    assert intent["broker_adapter"] == "kis_paper"
+    assert intent["base_url_alias"] == "kis_paper_vts"
+    assert intent["order_division"] == "00"
+    assert intent["quantity"] == 10
+    assert intent["sellable_quantity"] == 10
+    assert intent["planned_order_cash_krw"] == 0
+    assert intent["estimated_order_cash_krw"] == intent["quantity"] * intent["order_price"]
+    assert intent["paper_only"] is True
+    assert intent["no_live_order"] is True
+    assert intent["broker_endpoint_called"] is False
+    assert intent["order_cancel_modify_called"] is False
+
+
+def test_time_stop_does_not_create_sell_when_order_window_closed():
+    doc = _flash_doc_with_position_sell(order_window_open=False)
+    pipeline = engine.generatePaperOrderIntentsFromFlashDocument(
+        doc,
+        compiled_watch=[_compiled_watch("005930")],
+        portfolio_snapshot={"holdings": [{"symbol": "005930", "quantity": 10, "sellable_quantity": 10}]},
+        order_state_snapshot={"pending_orders": [], "active_exits": []},
+        now_kst=NOW,
+    )
+
+    assert pipeline["accepted_count"] == 0
+    assert "krx_order_session_not_open" in pipeline["rejected_actions"][0]["reasons"]
 
 
 def test_unit014_execution_preflight_idempotency_and_realtime_exit():

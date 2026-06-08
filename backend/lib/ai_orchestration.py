@@ -980,25 +980,44 @@ def buildFlashTradeDocument(
             produced_at_kst=produced_at,
         )
     if not watch_rows:
-        sentinel = buildNoTradeSentinel(
-            job_id="deepseek_flash_trade_document_10m",
-            reason="missing_compiled_watch_candidate_universe",
+        preview_market_refs = [
+            str(row.get("artifact_id") or row.get("snapshot_id") or "").strip()
+            for row in market_rows
+            if str(row.get("artifact_id") or row.get("snapshot_id") or "").strip()
+        ]
+        preview_position_actions = _build_flash_position_actions(
+            portfolio_snapshot=portfolio,
+            order_state_snapshot=order_state,
+            market_rows=market_rows,
             produced_at_kst=produced_at,
+            portfolio_ref=str(portfolio.get("artifact_id") or portfolio.get("snapshot_id") or "art_portfolio_fixture").strip(),
+            order_state_ref=str(order_state.get("artifact_id") or order_state.get("snapshot_id") or "art_order_state_fixture").strip(),
+            market_refs=preview_market_refs,
+            broker_order_open=bool(produced_dt and rp.isOrderWindowOpen(produced_dt, investment_mode=mode)),
         )
-        sentinel.update(
-            {
-                "candidate_universe_source": "none",
-                "candidate_universe_count": 0,
-                "morning_watchlist_ref": morning_ref,
-            }
-        )
-        return sentinel
+        if preview_position_actions:
+            candidate_universe_warnings.append("candidate_universe_empty_position_management_only")
+        else:
+            sentinel = buildNoTradeSentinel(
+                job_id="deepseek_flash_trade_document_10m",
+                reason="missing_compiled_watch_candidate_universe",
+                produced_at_kst=produced_at,
+            )
+            sentinel.update(
+                {
+                    "candidate_universe_source": "none",
+                    "candidate_universe_count": 0,
+                    "morning_watchlist_ref": morning_ref,
+                }
+            )
+            return sentinel
     if not portfolio and not order_state and not previous_docs:
-        return buildNoTradeSentinel(
+        sentinel = buildNoTradeSentinel(
             job_id="deepseek_flash_trade_document_10m",
             reason="missing_portfolio_or_order_state_context",
             produced_at_kst=produced_at,
         )
+        return sentinel
 
     held_symbols = _symbol_set_from_snapshot(portfolio, "holdings") | _symbol_set_from_snapshot(order_state, "holdings")
     pending_symbols = _symbol_set_from_snapshot(order_state, "pending_orders")
@@ -1289,13 +1308,6 @@ def buildFlashTradeDocument(
             }
         )
 
-    if not actions:
-        return buildNoTradeSentinel(
-            job_id="deepseek_flash_trade_document_10m",
-            reason="no_valid_compiled_watch_symbols",
-            produced_at_kst=produced_at,
-        )
-
     position_actions = _build_flash_position_actions(
         portfolio_snapshot=portfolio,
         order_state_snapshot=order_state,
@@ -1304,7 +1316,14 @@ def buildFlashTradeDocument(
         portfolio_ref=portfolio_ref,
         order_state_ref=order_state_ref,
         market_refs=market_refs,
+        broker_order_open=broker_order_open,
     )
+    if not actions and not position_actions:
+        return buildNoTradeSentinel(
+            job_id="deepseek_flash_trade_document_10m",
+            reason="no_valid_compiled_watch_symbols",
+            produced_at_kst=produced_at,
+        )
     entry_actions_present = any(action.get("action") in (FLASH_BUY_ACTIONS | FLASH_SELL_ACTIONS) for action in actions)
     management_actions_present = any(action.get("action") in FLASH_MANAGEMENT_ACTIONS for action in actions) or bool(position_actions)
     document_kind = (
@@ -1587,6 +1606,173 @@ def _position_state_from_order_row(row: Mapping[str, Any]) -> str:
     return "pending_order"
 
 
+def _holding_window_minutes() -> Dict[str, int]:
+    cfg = sr.loadStrategyRiskConfig()
+    hold = cfg.get("holding_window_minutes") if isinstance(cfg.get("holding_window_minutes"), Mapping) else {}
+    return {
+        "hypothesis_min_minutes": _safe_positive_int((hold or {}).get("hypothesis_min")) or 10,
+        "hypothesis_max_minutes": _safe_positive_int((hold or {}).get("hypothesis_max")) or 20,
+        "hard_max_minutes": _safe_positive_int((hold or {}).get("hard_max")) or 30,
+    }
+
+
+def _position_time_reference(row: Mapping[str, Any], *, position_state: str) -> Optional[str]:
+    if position_state == "holding_confirmed":
+        value = _first_non_empty(
+            row.get("filled_at_kst"),
+            row.get("confirmed_at_kst"),
+            row.get("entry_time_kst"),
+            row.get("submitted_at_kst"),
+            row.get("created_at_kst"),
+        )
+    else:
+        value = _first_non_empty(row.get("submitted_at_kst"), row.get("created_at_kst"), row.get("entry_time_kst"))
+    return str(value).strip() if value not in (None, "") else None
+
+
+def _age_seconds_from_kst(value: Optional[str], *, produced_at_kst: str, label: str) -> int:
+    if not value:
+        return 0
+    errors: List[str] = []
+    started = _parse_kst_timestamp(value, label, errors)
+    produced = _parse_kst_timestamp(produced_at_kst, "produced_at_kst", errors)
+    if not started or not produced:
+        return 0
+    return max(0, int((produced - started).total_seconds()))
+
+
+def _position_entry_price(row: Mapping[str, Any]) -> int:
+    return _safe_positive_int(
+        _first_non_empty(
+            row.get("average_price"),
+            row.get("avg_price"),
+            row.get("average_entry_price"),
+            row.get("entry_price"),
+            row.get("entry_price_limit"),
+            row.get("order_price"),
+            row.get("price"),
+        )
+    )
+
+
+def _position_sellable_quantity(row: Mapping[str, Any]) -> int:
+    account_truth = row.get("trading_account_truth") if isinstance(row.get("trading_account_truth"), Mapping) else {}
+    return _safe_positive_int(
+        _first_non_empty(
+            row.get("sellable_quantity"),
+            row.get("ord_psbl_qty"),
+            account_truth.get("sellable_quantity") if isinstance(account_truth, Mapping) else None,
+        )
+    )
+
+
+def _position_sellable_status(row: Mapping[str, Any]) -> str:
+    account_truth = row.get("trading_account_truth") if isinstance(row.get("trading_account_truth"), Mapping) else {}
+    return str(
+        _first_non_empty(
+            row.get("sellable_status"),
+            account_truth.get("sellable_status") if isinstance(account_truth, Mapping) else None,
+            "",
+        )
+    ).strip().lower()
+
+
+def _position_quantity(row: Mapping[str, Any]) -> int:
+    return _safe_positive_int(
+        _first_non_empty(
+            row.get("quantity"),
+            row.get("qty"),
+            row.get("holding_qty"),
+            row.get("hldg_qty"),
+            row.get("ord_psbl_qty"),
+        )
+    )
+
+
+def _unrealized_pnl_pct(*, current_price: int, entry_price: int) -> Optional[float]:
+    if current_price <= 0 or entry_price <= 0:
+        return None
+    return round((current_price - entry_price) / entry_price, 6)
+
+
+def _price_progress_to_target_pct(*, current_price: int, entry_price: int, target_price: int) -> Optional[float]:
+    if current_price <= 0 or entry_price <= 0 or target_price <= entry_price:
+        return None
+    progress = (current_price - entry_price) / (target_price - entry_price)
+    return round(max(0.0, min(progress, 1.0)), 6)
+
+
+def _is_sideways_holding(
+    *,
+    holding_age_minutes: int,
+    hold_window: Mapping[str, int],
+    current_price: int,
+    entry_price: int,
+    target_price: int,
+    stop_loss_price: int,
+    unrealized_pnl_pct: Optional[float],
+    price_progress_to_target_pct: Optional[float],
+    fresh_positive_confirmation: bool,
+) -> bool:
+    if fresh_positive_confirmation:
+        return False
+    if holding_age_minutes < int(hold_window.get("hypothesis_min_minutes") or 10):
+        return False
+    if current_price <= 0 or entry_price <= 0 or target_price <= 0 or stop_loss_price <= 0:
+        return False
+    if not (stop_loss_price < current_price < target_price):
+        return False
+    if unrealized_pnl_pct is None or abs(unrealized_pnl_pct) >= 0.005:
+        return False
+    progress = 0.0 if price_progress_to_target_pct is None else float(price_progress_to_target_pct)
+    return progress < 0.25
+
+
+def _trailing_stop_hit(row: Mapping[str, Any], *, current_price: int, entry_price: int) -> bool:
+    try:
+        trailing_stop_pct = Decimal(str(row.get("trailing_stop_pct") or "0"))
+    except (InvalidOperation, ValueError):
+        trailing_stop_pct = Decimal("0")
+    if trailing_stop_pct <= 0 or current_price <= 0:
+        return False
+    high_price = _safe_positive_int(
+        _first_non_empty(row.get("highest_price"), row.get("high_price"), row.get("session_high_price"), entry_price)
+    )
+    if high_price <= 0:
+        return False
+    trigger = Decimal(high_price) * (Decimal("1") - trailing_stop_pct / Decimal("100"))
+    return Decimal(current_price) <= trigger
+
+
+def _sell_execution_blockers(
+    *,
+    position_state: str,
+    current_price: int,
+    quantity: int,
+    sellable_quantity: int,
+    sellable_status: str,
+    broker_order_open: bool,
+) -> List[str]:
+    blockers: List[str] = []
+    if position_state != "holding_confirmed":
+        blockers.append("fill_status_not_reconciled")
+    if current_price <= 0:
+        blockers.append("missing_krx_quote")
+    if not broker_order_open:
+        blockers.append("order_window_closed")
+    if sellable_status and sellable_status not in {"pass", "ok", "available", "confirmed"}:
+        blockers.append("sellable_truth_not_pass")
+    if sellable_quantity <= 0:
+        blockers.append("missing_sellable_truth")
+    elif quantity > 0 and sellable_quantity < quantity:
+        blockers.append("sellable_quantity_insufficient")
+    return _dedupe_strings(blockers)
+
+
+def _blocked_exit_action(*, blockers: Sequence[str]) -> str:
+    return "WAIT_SELL" if blockers else "SELL_NOW"
+
+
 def _build_position_action(
     row: Mapping[str, Any],
     *,
@@ -1596,40 +1782,143 @@ def _build_position_action(
     portfolio_ref: str,
     order_state_ref: str,
     market_refs: Sequence[Any],
+    broker_order_open: bool,
 ) -> Optional[Dict[str, Any]]:
     symbol = _row_symbol(row)
     if not symbol:
         return None
+    hold_window = _holding_window_minutes()
+    entry_time_kst = _position_time_reference(row, position_state=position_state)
+    age_seconds = _age_seconds_from_kst(entry_time_kst, produced_at_kst=produced_at_kst, label="entry_time_kst")
+    reconciliation_age_seconds = age_seconds if position_state != "holding_confirmed" else 0
+    holding_age_seconds = age_seconds if position_state == "holding_confirmed" else 0
+    holding_age_minutes = holding_age_seconds // 60
+    reconciliation_age_minutes = reconciliation_age_seconds // 60
     current_price = _kis_current_price_for_symbol(market_rows, symbol=symbol)
     target_price = _safe_positive_int(row.get("target_price") or row.get("take_profit"))
     stop_loss_price = _safe_positive_int(row.get("stop_loss_price") or row.get("stop_loss"))
-    action = "WAIT_ORDER_RECONCILIATION" if position_state == "submitted_unreconciled" else "HOLD_EXISTING_POSITION"
-    reason = "주문 접수됨, 체결/보유 반영 확인 대기" if position_state == "submitted_unreconciled" else "기존 보유/주문 상태 관리"
-    if current_price > 0 and (
-        (target_price > 0 and current_price >= target_price)
-        or (stop_loss_price > 0 and current_price <= stop_loss_price)
-    ):
-        action = "EXIT_REVIEW"
-        reason = "KIS 현재가가 익절/손절 기준에 닿아 청산 검토 필요"
-    elif current_price <= 0:
-        reason = f"{reason}; KIS 현재가 부재로 SELL_NOW 금지"
+    entry_price = _position_entry_price(row)
+    quantity = _position_quantity(row)
+    sellable_quantity = _position_sellable_quantity(row)
+    sellable_status = _position_sellable_status(row)
+    pnl_pct = _unrealized_pnl_pct(current_price=current_price, entry_price=entry_price)
+    progress_pct = _price_progress_to_target_pct(
+        current_price=current_price,
+        entry_price=entry_price,
+        target_price=target_price,
+    )
+    fresh_positive_confirmation = bool(row.get("fresh_positive_confirmation") or row.get("fresh_confirmation_positive"))
+    sideways = _is_sideways_holding(
+        holding_age_minutes=holding_age_minutes,
+        hold_window=hold_window,
+        current_price=current_price,
+        entry_price=entry_price,
+        target_price=target_price,
+        stop_loss_price=stop_loss_price,
+        unrealized_pnl_pct=pnl_pct,
+        price_progress_to_target_pct=progress_pct,
+        fresh_positive_confirmation=fresh_positive_confirmation,
+    )
+    blockers = _sell_execution_blockers(
+        position_state=position_state,
+        current_price=current_price,
+        quantity=quantity,
+        sellable_quantity=sellable_quantity,
+        sellable_status=sellable_status,
+        broker_order_open=broker_order_open,
+    )
+    sell_allowed = not blockers
+    action = "HOLD_EXISTING_POSITION"
+    reason = "기존 보유 상태 관리"
+    time_exit_status = "active"
+    time_exit_reason = "none"
+    warnings: List[str] = []
+
+    if position_state != "holding_confirmed":
+        action = "WAIT_ORDER_RECONCILIATION"
+        reason = "주문 접수됨, 체결/보유 반영 확인 대기"
+        time_exit_status = "reconciliation_active"
+        time_exit_reason = "none"
+        if reconciliation_age_minutes >= 5:
+            warnings.append("stale_unreconciled_order")
+            time_exit_status = "reconciliation_stale"
+            time_exit_reason = "stale_unreconciled_order"
+        if reconciliation_age_minutes >= 10:
+            time_exit_status = "reconciliation_timeout_review"
+            time_exit_reason = "reconciliation_timeout_review"
+        sell_allowed = False
+        blockers = ["fill_status_not_reconciled"]
+    else:
+        target_hit = current_price > 0 and target_price > 0 and current_price >= target_price
+        stop_hit = current_price > 0 and stop_loss_price > 0 and current_price <= stop_loss_price
+        trailing_hit = _trailing_stop_hit(row, current_price=current_price, entry_price=entry_price)
+        if target_hit:
+            time_exit_reason = "target_price_hit"
+            action = _blocked_exit_action(blockers=blockers)
+            reason = "KIS 현재가가 익절 기준에 닿아 청산 후보"
+        elif stop_hit:
+            time_exit_reason = "stop_loss_hit"
+            action = _blocked_exit_action(blockers=blockers)
+            reason = "KIS 현재가가 손절 기준에 닿아 청산 후보"
+        elif trailing_hit:
+            time_exit_reason = "trailing_stop_hit"
+            action = _blocked_exit_action(blockers=blockers)
+            reason = "KIS 현재가가 trailing stop 기준에 닿아 청산 후보"
+        elif holding_age_minutes >= hold_window["hard_max_minutes"]:
+            time_exit_status = "hard_max_exceeded"
+            time_exit_reason = "hard_max_hold_exceeded"
+            action = _blocked_exit_action(blockers=blockers)
+            reason = "보유 hard max 30분 초과로 청산 후보"
+        elif holding_age_minutes >= hold_window["hypothesis_max_minutes"] and sideways:
+            time_exit_status = "stale_sideways"
+            time_exit_reason = "stale_after_20m"
+            action = _blocked_exit_action(blockers=blockers)
+            reason = "20분 초과 횡보 보유로 청산 후보"
+        elif holding_age_minutes >= hold_window["hypothesis_min_minutes"] and sideways:
+            time_exit_status = "hypothesis_window"
+            time_exit_reason = "sideways_after_hypothesis_window"
+            action = "EXIT_REVIEW"
+            reason = "10분 이상 횡보 보유로 EXIT_REVIEW"
+        elif current_price <= 0:
+            reason = f"{reason}; KIS 현재가 부재로 SELL_NOW 금지"
+
+    exit_blocked_reason = ";".join(blockers) if action in {"WAIT_SELL", "SELL_NOW"} and blockers else None
+    if action == "SELL_NOW" and blockers:
+        action = "WAIT_SELL"
+        exit_blocked_reason = ";".join(blockers)
     return {
         "symbol": symbol,
         "ticker": symbol,
         "name": str(row.get("name") or row.get("symbol_name") or symbol),
         "position_state": position_state,
         "action": action,
+        "entry_time_kst": entry_time_kst,
+        "holding_age_seconds": holding_age_seconds,
+        "holding_age_minutes": holding_age_minutes,
+        "reconciliation_age_seconds": reconciliation_age_seconds,
+        "reconciliation_age_minutes": reconciliation_age_minutes,
+        "hold_window": hold_window,
         "target_price": target_price,
         "stop_loss_price": stop_loss_price,
         "current_price": current_price,
-        "quantity": _safe_positive_int(row.get("quantity")),
+        "entry_price": entry_price,
+        "quantity": quantity,
+        "sellable_quantity": sellable_quantity,
+        "sellable_status": sellable_status or None,
         "entry_price_limit": _safe_positive_int(row.get("entry_price_limit") or row.get("order_price") or row.get("price")),
         "take_profit": row.get("take_profit") or target_price,
         "stop_loss": row.get("stop_loss") or stop_loss_price,
         "trailing_stop_pct": row.get("trailing_stop_pct"),
+        "unrealized_pnl_pct": pnl_pct,
+        "price_progress_to_target_pct": progress_pct,
+        "sideways_detected": sideways,
+        "time_exit_status": time_exit_status,
+        "time_exit_reason": time_exit_reason,
         "reason": reason,
-        "sell_allowed": position_state == "holding_confirmed",
-        "exit_blocked_reason": None if position_state == "holding_confirmed" else "fill_status_not_reconciled",
+        "warnings": _dedupe_strings(warnings),
+        "sell_allowed": sell_allowed,
+        "order_window_open": bool(broker_order_open),
+        "exit_blocked_reason": exit_blocked_reason if exit_blocked_reason is not None else (None if position_state == "holding_confirmed" else "fill_status_not_reconciled"),
         "next_check": "다음 Flash에서 체결/보유 reconciliation과 KIS 현재가를 다시 확인",
         "portfolio_state_refs": [portfolio_ref, order_state_ref],
         "market_data_refs": _dedupe_strings(market_refs),
@@ -1649,6 +1938,7 @@ def _build_flash_position_actions(
     portfolio_ref: str,
     order_state_ref: str,
     market_refs: Sequence[Any],
+    broker_order_open: bool,
 ) -> List[Dict[str, Any]]:
     actions: List[Dict[str, Any]] = []
     seen: Set[str] = set()
@@ -1664,6 +1954,7 @@ def _build_flash_position_actions(
             portfolio_ref=portfolio_ref,
             order_state_ref=order_state_ref,
             market_refs=market_refs,
+            broker_order_open=broker_order_open,
         )
         if action:
             actions.append(action)
@@ -1680,6 +1971,7 @@ def _build_flash_position_actions(
             portfolio_ref=portfolio_ref,
             order_state_ref=order_state_ref,
             market_refs=market_refs,
+            broker_order_open=broker_order_open,
         )
         if action:
             actions.append(action)
@@ -1696,6 +1988,7 @@ def _build_flash_position_actions(
             portfolio_ref=portfolio_ref,
             order_state_ref=order_state_ref,
             market_refs=market_refs,
+            broker_order_open=broker_order_open,
         )
         if action:
             actions.append(action)

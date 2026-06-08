@@ -159,6 +159,51 @@ def _kis_snapshot(symbol="005930", price=10100, artifact_id="art_kis_snapshot_20
     }
 
 
+def _position_management_doc(*, holding=None, pending=None, price=10020, produced_at_kst=NOW_KST):
+    return ao.buildFlashTradeDocument(
+        pro_artifact={"artifact_id": "art_pro_hourly_20260604_0900"},
+        recent_events=[{"source_event_id": "event-general"}],
+        kis_market_snapshots=[_kis_snapshot(price=price)],
+        compiled_watch=[_compiled_flash_watch()],
+        portfolio_snapshot={"artifact_id": "art_portfolio_20260604_0905", "holdings": []},
+        order_state_snapshot={
+            "artifact_id": "art_order_state_20260604_0905",
+            "pending_orders": pending or [],
+            "holdings": holding or [],
+        },
+        morning_watchlist=_morning_watchlist(),
+        produced_at_kst=produced_at_kst,
+    )
+
+
+def _holding_row(**overrides):
+    payload = {
+        "symbol": "005930",
+        "position_state": "holding_confirmed",
+        "quantity": 10,
+        "entry_time_kst": "2026-06-04T09:00:00+09:00",
+        "entry_price": 10000,
+        "entry_price_limit": 10000,
+        "target_price": 10500,
+        "stop_loss_price": 9800,
+        "take_profit": 10500,
+        "stop_loss": 9800,
+        "trailing_stop_pct": 1.2,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _sellable_holding_row(**overrides):
+    payload = _holding_row(
+        sellable_quantity=10,
+        sellable_status="pass",
+        trading_account_truth={"sellable_quantity": 10, "sellable_status": "pass"},
+    )
+    payload.update(overrides)
+    return payload
+
+
 def _ai_recommendation(**overrides):
     payload = {
         "schema_version": "ai_recommendation/v0",
@@ -461,7 +506,7 @@ class AiOrchestrationLayerTests(unittest.TestCase):
             compiled_watch=compiled_watch,
             portfolio_snapshot={"artifact_id": "art_portfolio_20260604_0905", "holdings": []},
             order_state_snapshot={"artifact_id": "art_order_state_20260604_0905", "pending_orders": []},
-            morning_watchlist=_morning_watchlist(),
+            morning_watchlist=_morning_watchlist(items=[]),
             produced_at_kst=NOW_KST,
         )
         self.assertEqual(doc["schema_version"], "flash_trade_document/v1")
@@ -702,7 +747,7 @@ class AiOrchestrationLayerTests(unittest.TestCase):
                     }
                 ],
             },
-            morning_watchlist=_morning_watchlist(),
+            morning_watchlist=_morning_watchlist(items=[]),
             produced_at_kst=NOW_KST,
         )
 
@@ -757,12 +802,172 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         position_action = doc["position_actions"][0]
         self.assertEqual(position_action["symbol"], "005930")
         self.assertEqual(position_action["position_state"], "holding_confirmed")
-        self.assertEqual(position_action["action"], "EXIT_REVIEW")
-        self.assertTrue(position_action["sell_allowed"])
-        self.assertIsNone(position_action["exit_blocked_reason"])
+        self.assertEqual(position_action["action"], "WAIT_SELL")
+        self.assertFalse(position_action["sell_allowed"])
+        self.assertIn("missing_sellable_truth", position_action["exit_blocked_reason"])
         self.assertEqual(position_action["current_price"], 9700)
         validation = ao.validateFlashTradeDocument(doc)
         self.assertTrue(validation["ok"], msg=validation["errors"])
+
+    def test_holding_under_10m_holds_when_no_target_stop(self):
+        doc = _position_management_doc(
+            holding=[
+                _holding_row(
+                    entry_time_kst="2026-06-04T09:00:00+09:00",
+                    target_price=0,
+                    stop_loss_price=0,
+                    take_profit=0,
+                    stop_loss=0,
+                )
+            ],
+            price=10010,
+        )
+
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["action"], "HOLD_EXISTING_POSITION")
+        self.assertEqual(position_action["holding_age_minutes"], 5)
+        self.assertEqual(position_action["time_exit_status"], "active")
+        self.assertEqual(position_action["time_exit_reason"], "none")
+
+    def test_holding_12m_sideways_creates_exit_review(self):
+        doc = _position_management_doc(
+            holding=[_holding_row(entry_time_kst="2026-06-04T08:53:00+09:00")],
+            price=10020,
+        )
+
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["holding_age_minutes"], 12)
+        self.assertTrue(position_action["sideways_detected"])
+        self.assertEqual(position_action["action"], "EXIT_REVIEW")
+        self.assertEqual(position_action["time_exit_status"], "hypothesis_window")
+        self.assertEqual(position_action["time_exit_reason"], "sideways_after_hypothesis_window")
+
+    def test_holding_22m_sideways_creates_wait_sell_or_sell_candidate(self):
+        doc = _position_management_doc(
+            holding=[_holding_row(entry_time_kst="2026-06-04T08:43:00+09:00")],
+            price=10020,
+        )
+
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["holding_age_minutes"], 22)
+        self.assertEqual(position_action["action"], "WAIT_SELL")
+        self.assertEqual(position_action["time_exit_status"], "stale_sideways")
+        self.assertEqual(position_action["time_exit_reason"], "stale_after_20m")
+        self.assertIn("missing_sellable_truth", position_action["exit_blocked_reason"])
+
+    def test_holding_31m_creates_hard_max_sell_now_when_sell_truth_available(self):
+        doc = _position_management_doc(
+            holding=[_sellable_holding_row(entry_time_kst="2026-06-04T08:34:00+09:00")],
+            price=10020,
+        )
+
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["holding_age_minutes"], 31)
+        self.assertEqual(position_action["action"], "SELL_NOW")
+        self.assertTrue(position_action["sell_allowed"])
+        self.assertIsNone(position_action["exit_blocked_reason"])
+        self.assertEqual(position_action["time_exit_status"], "hard_max_exceeded")
+        self.assertEqual(position_action["time_exit_reason"], "hard_max_hold_exceeded")
+
+    def test_holding_31m_without_sell_truth_wait_sell_with_blocker(self):
+        doc = _position_management_doc(
+            holding=[_holding_row(entry_time_kst="2026-06-04T08:34:00+09:00")],
+            price=10020,
+        )
+
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["holding_age_minutes"], 31)
+        self.assertEqual(position_action["action"], "WAIT_SELL")
+        self.assertFalse(position_action["sell_allowed"])
+        self.assertIn("missing_sellable_truth", position_action["exit_blocked_reason"])
+        self.assertEqual(position_action["time_exit_reason"], "hard_max_hold_exceeded")
+
+    def test_holding_exit_management_survives_empty_compiled_watch(self):
+        doc = ao.buildFlashTradeDocument(
+            pro_artifact={"artifact_id": "art_pro_hourly_20260604_0900"},
+            recent_events=[{"source_event_id": "event-general"}],
+            kis_market_snapshots=[_kis_snapshot(price=10020)],
+            compiled_watch=[],
+            portfolio_snapshot={"artifact_id": "art_portfolio_20260604_0905", "holdings": []},
+            order_state_snapshot={
+                "artifact_id": "art_order_state_20260604_0905",
+                "pending_orders": [],
+                "holdings": [_sellable_holding_row(entry_time_kst="2026-06-04T08:34:00+09:00")],
+            },
+            morning_watchlist=_morning_watchlist(items=[]),
+            produced_at_kst=NOW_KST,
+        )
+
+        self.assertEqual(doc["document_kind"], "POSITION_MANAGEMENT")
+        self.assertEqual(doc["actions"], [])
+        self.assertEqual(doc["position_actions"][0]["action"], "SELL_NOW")
+        self.assertEqual(doc["position_actions"][0]["time_exit_reason"], "hard_max_hold_exceeded")
+
+    def test_submitted_unreconciled_older_than_10m_is_reconciliation_timeout_not_no_trade(self):
+        doc = _position_management_doc(
+            pending=[
+                {
+                    "symbol": "005930",
+                    "action": "WAIT_BUY",
+                    "submitted_at_kst": "2026-06-04T08:54:00+09:00",
+                    "entry_price_limit": 10000,
+                    "target_price": 10500,
+                    "stop_loss_price": 9800,
+                    "quantity": 10,
+                }
+            ],
+            price=10020,
+        )
+
+        self.assertEqual(doc["document_kind"], "POSITION_MANAGEMENT")
+        self.assertNotEqual(doc["actions"][0]["action"], "NO_TRADE")
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["position_state"], "submitted_unreconciled")
+        self.assertEqual(position_action["action"], "WAIT_ORDER_RECONCILIATION")
+        self.assertEqual(position_action["time_exit_status"], "reconciliation_timeout_review")
+        self.assertEqual(position_action["time_exit_reason"], "reconciliation_timeout_review")
+        self.assertIn("stale_unreconciled_order", position_action["warnings"])
+
+    def test_pending_order_age_not_counted_as_holding_age(self):
+        doc = _position_management_doc(
+            pending=[
+                {
+                    "symbol": "005930",
+                    "action": "WAIT_BUY",
+                    "submitted_at_kst": "2026-06-04T08:54:00+09:00",
+                    "entry_price_limit": 10000,
+                    "quantity": 10,
+                }
+            ],
+            price=10020,
+        )
+
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["holding_age_seconds"], 0)
+        self.assertEqual(position_action["holding_age_minutes"], 0)
+        self.assertGreaterEqual(position_action["reconciliation_age_minutes"], 10)
+
+    def test_target_hit_before_time_stop_creates_sell_now(self):
+        doc = _position_management_doc(
+            holding=[_sellable_holding_row(entry_time_kst="2026-06-04T09:00:00+09:00")],
+            price=10500,
+        )
+
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["holding_age_minutes"], 5)
+        self.assertEqual(position_action["action"], "SELL_NOW")
+        self.assertEqual(position_action["time_exit_reason"], "target_price_hit")
+
+    def test_stop_hit_before_time_stop_creates_sell_now(self):
+        doc = _position_management_doc(
+            holding=[_sellable_holding_row(entry_time_kst="2026-06-04T09:00:00+09:00")],
+            price=9700,
+        )
+
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["holding_age_minutes"], 5)
+        self.assertEqual(position_action["action"], "SELL_NOW")
+        self.assertEqual(position_action["time_exit_reason"], "stop_loss_hit")
 
     def testPriorTradeDocumentStillValidProducesHoldExistingNotNoTrade(self):
         doc = ao.buildFlashTradeDocument(

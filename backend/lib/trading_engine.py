@@ -884,6 +884,164 @@ def generatePaperOrderIntentsFromFlashDocument(
         accepted.append(intent)
         active_keys.add(idempotency_key)
 
+    for index, position_action in enumerate(document.get("position_actions") or []):
+        if not isinstance(position_action, Mapping):
+            continue
+        action_type = str(position_action.get("action") or "").strip()
+        if action_type != "SELL_NOW":
+            continue
+        symbol = str(position_action.get("ticker") or position_action.get("symbol") or "").strip()
+        idempotency_key = str(
+            position_action.get("idempotency_key")
+            or f"{document.get('artifact_id') or 'flash'}:{document.get('bucket_id') or ''}:{symbol}:SELL_NOW"
+        ).strip()
+        market_context = document.get("market_context") if isinstance(document.get("market_context"), Mapping) else {}
+        order_window_open = position_action.get("order_window_open")
+        if order_window_open is None:
+            order_window_open = market_context.get("broker_order_open")
+        sellable_quantity = _parse_positive_int(
+            position_action.get("sellable_quantity")
+            or (
+                position_action.get("trading_account_truth", {}).get("sellable_quantity")
+                if isinstance(position_action.get("trading_account_truth"), Mapping)
+                else None
+            )
+        )
+        requested_quantity = _parse_positive_int(position_action.get("quantity")) or sellable_quantity
+        current_price = _parse_positive_int(position_action.get("current_price") or position_action.get("order_price"))
+        market_refs = list(position_action.get("market_data_refs") or position_action.get("kis_market_refs") or [])
+        reasons: List[str] = []
+        if not symbol:
+            reasons.append("ticker_required")
+        if str(position_action.get("position_state") or "").strip() != "holding_confirmed":
+            reasons.append("position_not_confirmed_for_sell")
+        if position_action.get("sell_allowed") is not True:
+            reasons.append("sell_not_allowed")
+        if not idempotency_key:
+            reasons.append("idempotency_key_required")
+        if idempotency_key in active_keys:
+            reasons.append("duplicate_active_intent")
+        if current_price <= 0:
+            reasons.append("krx_quote_required_for_sell_intent")
+        if not market_refs:
+            reasons.append("market_data_refs_required")
+        if sellable_quantity <= 0:
+            reasons.append("sellable_quantity_truth_required")
+        if requested_quantity <= 0:
+            reasons.append("sell_quantity_must_be_positive")
+        elif sellable_quantity > 0 and requested_quantity > sellable_quantity:
+            reasons.append("sellable_quantity_insufficient")
+        if order_window_open is not True:
+            reasons.append("krx_order_session_not_open")
+        if position_action.get("exit_blocked_reason"):
+            reasons.append(str(position_action.get("exit_blocked_reason")))
+
+        if reasons:
+            rejected.append(
+                {
+                    "position_action_index": index,
+                    "ticker": symbol,
+                    "action": action_type,
+                    "reasons": sorted(set(reasons)),
+                    "paper_order_intent_created": False,
+                }
+            )
+            continue
+
+        raw_order_price = current_price
+        order_price = normalizeKrxLimitPrice(raw_order_price, side="sell")
+        if order_price <= 0:
+            rejected.append(
+                {
+                    "position_action_index": index,
+                    "ticker": symbol,
+                    "action": action_type,
+                    "reasons": ["order_price_required_for_paper_intent"],
+                    "paper_order_intent_created": False,
+                }
+            )
+            continue
+        quantity = min(int(requested_quantity), int(sellable_quantity))
+        if quantity <= 0:
+            rejected.append(
+                {
+                    "position_action_index": index,
+                    "ticker": symbol,
+                    "action": action_type,
+                    "reasons": ["sell_quantity_must_be_positive"],
+                    "paper_order_intent_created": False,
+                }
+            )
+            continue
+        tick_size = krxTickSizeForPrice(raw_order_price)
+        time_exit_reason = str(position_action.get("time_exit_reason") or "")
+        intent_type = (
+            "position_time_stop_exit"
+            if time_exit_reason in {"stale_after_20m", "hard_max_hold_exceeded", "sideways_after_hypothesis_window"}
+            else "position_price_stop_exit"
+        )
+        intent = {
+            "schema_version": PAPER_ORDER_INTENT_SCHEMA_VERSION,
+            "artifact_id": f"art_intent_{_compact_timestamp(produced_at)}_{symbol}_{len(accepted)+1}",
+            "artifact_type": "paper_order_intent",
+            "intent_id": idempotency_key,
+            "idempotency_key": idempotency_key,
+            "producer": "trade_document_intent_pipeline",
+            "intent_type": intent_type,
+            "created_at_kst": produced_at,
+            "valid_until_kst": position_action.get("valid_until_kst") or document.get("valid_until") or produced_at,
+            "flash_trade_document_ref": document.get("artifact_id"),
+            "source_refs": list(position_action.get("source_refs") or document.get("source_refs") or []),
+            "symbol_source_refs": list(position_action.get("symbol_source_refs") or []),
+            "market_context_refs": list(position_action.get("market_context_refs") or document.get("market_context_refs") or []),
+            "market_data_refs": market_refs,
+            "kis_market_refs": list(position_action.get("kis_market_refs") or market_refs),
+            "portfolio_snapshot_ref": (document.get("portfolio_snapshot_ref") or "art_portfolio_fixture"),
+            "order_state_snapshot_ref": (document.get("order_state_snapshot_ref") or "art_order_state_fixture"),
+            "authoritative_refs_verified_at_kst": produced_at,
+            "symbol": symbol,
+            "ticker": symbol,
+            "side": "sell",
+            "action": "SELL_NOW",
+            "action_source": "flash_position_actions",
+            "venue_route": "KRX",
+            "broker_adapter": "kis_paper",
+            "base_url_alias": "kis_paper_vts",
+            "order_type": "limit",
+            "order_division": "00",
+            "order_price": order_price,
+            "price": order_price,
+            "raw_order_price": raw_order_price,
+            "krx_tick_size": tick_size,
+            "order_price_adjusted_to_krx_tick": raw_order_price != order_price,
+            "target_price": _parse_positive_int(position_action.get("target_price") or position_action.get("take_profit")),
+            "stop_loss_price": _parse_positive_int(position_action.get("stop_loss_price") or position_action.get("stop_loss")),
+            "quantity": quantity,
+            "sellable_quantity": sellable_quantity,
+            "entry_price": _parse_positive_int(position_action.get("entry_price") or position_action.get("entry_price_limit")),
+            "take_profit": position_action.get("take_profit"),
+            "stop_loss": position_action.get("stop_loss"),
+            "trailing_stop_pct": position_action.get("trailing_stop_pct"),
+            "time_exit_status": position_action.get("time_exit_status"),
+            "time_exit_reason": position_action.get("time_exit_reason"),
+            "holding_age_seconds": position_action.get("holding_age_seconds"),
+            "holding_age_minutes": position_action.get("holding_age_minutes"),
+            "planned_order_cash_krw": 0,
+            "estimated_order_cash_krw": quantity * int(order_price),
+            "reservation": {
+                "cash_reserved_krw": 0,
+                "holding_slot_reserved": False,
+                "sellable_quantity_reserved": quantity,
+            },
+            "risk_gate_status": "passed",
+            "paper_only": True,
+            "no_live_order": True,
+            "broker_endpoint_called": False,
+            "order_cancel_modify_called": False,
+        }
+        accepted.append(intent)
+        active_keys.add(idempotency_key)
+
     return {
         "schema_version": "paper_intent_pipeline_result/v0",
         "ok": bool(accepted) or bool(rejected),
