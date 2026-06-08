@@ -23,8 +23,10 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 try:
     from lib import strategy_risk as sr
+    from lib import runtime_policy as rp
 except ImportError:  # pragma: no cover - fallback for package-style imports
     from backend.lib import strategy_risk as sr
+    from backend.lib import runtime_policy as rp
 
 KST = timezone(timedelta(hours=9))
 
@@ -761,7 +763,6 @@ def generatePaperOrderIntentsFromFlashDocument(
             )
             continue
 
-        planned_cash = _parse_positive_int(action.get("planned_order_cash_krw") or action.get("max_cash_krw") or 100_000)
         entry_zone = _normalize_entry_zone(action.get("entry_zone"))
         raw_order_price = _resolve_order_price(action_type, action, entry_zone)
         side = "buy" if action_type in {"WAIT_BUY", "BUY_NOW"} else "sell"
@@ -774,6 +775,24 @@ def generatePaperOrderIntentsFromFlashDocument(
                     "action": action_type,
                     "reasons": ["order_price_required_for_paper_intent"],
                     "paper_order_intent_created": False,
+                }
+            )
+            continue
+        cash_plan = _resolve_planned_order_cash(action, portfolio, order_state)
+        planned_cash = int(cash_plan["planned_order_cash_krw"])
+        if planned_cash <= 0:
+            rejected.append(
+                {
+                    "index": index,
+                    "ticker": symbol,
+                    "action": action_type,
+                    "reasons": ["planned_cash_not_available_after_dynamic_sizing"],
+                    "paper_order_intent_created": False,
+                    "sizing_basis": cash_plan["sizing_basis"],
+                    "position_size_pct": cash_plan["position_size_pct"],
+                    "effective_total_deposit_krw": cash_plan["effective_total_deposit_krw"],
+                    "exposure_room_krw": cash_plan["exposure_room_krw"],
+                    "cash_room_krw": cash_plan["cash_room_krw"],
                 }
             )
             continue
@@ -835,14 +854,26 @@ def generatePaperOrderIntentsFromFlashDocument(
             "take_profit": action.get("take_profit"),
             "stop_loss": action.get("stop_loss"),
             "trailing_stop_pct": action.get("trailing_stop_pct"),
+            "position_size_pct": cash_plan["position_size_pct"],
+            "sizing_basis": cash_plan["sizing_basis"],
+            "planned_order_cash_source": cash_plan["planned_order_cash_source"],
+            "sizing_basis_capital_krw": cash_plan["sizing_basis_capital_krw"],
+            "requested_order_cash_krw": cash_plan["requested_order_cash_krw"],
+            "risk_overlay_capital_krw": cash_plan["risk_overlay_capital_krw"],
+            "effective_total_deposit_krw": cash_plan["effective_total_deposit_krw"],
             "planned_order_cash_krw": planned_cash,
             "estimated_order_cash_krw": int(quantity) * int(order_price),
-            "available_cash_krw": int(action.get("available_cash_krw") or portfolio.get("available_cash_krw") or 2_000_000),
+            "available_cash_krw": cash_plan["available_cash_krw"],
+            "current_position_value_krw": cash_plan["current_position_value_krw"],
+            "pending_buy_notional_krw": cash_plan["pending_buy_notional_krw"],
             "current_holdings_count": int(action.get("current_holdings_count") or len(held)),
             "reservation": {
                 "cash_reserved_krw": int(quantity) * int(order_price),
                 "holding_slot_reserved": side == "buy",
                 "minimum_cash_reserve_ratio": 0.25,
+                "cash_room_krw": cash_plan["cash_room_krw"],
+                "exposure_room_krw": cash_plan["exposure_room_krw"],
+                "requested_order_cash_krw": cash_plan["requested_order_cash_krw"],
             },
             "risk_gate_status": "passed",
             "paper_only": True,
@@ -1054,6 +1085,138 @@ def _symbol_set_from_snapshot(snapshot: Mapping[str, Any], key: str) -> set[str]
         if symbol:
             symbols.add(symbol)
     return symbols
+
+
+def _snapshot_notional(row: Mapping[str, Any]) -> int:
+    for key in (
+        "estimated_order_cash_krw",
+        "planned_order_cash_krw",
+        "notional_krw",
+        "market_value_krw",
+        "current_value_krw",
+        "evaluated_amount_krw",
+        "stock_eval_krw",
+        "stock_eval_amount_krw",
+    ):
+        value = _parse_positive_int(row.get(key))
+        if value > 0:
+            return value
+    quantity = _parse_positive_int(row.get("quantity") or row.get("qty") or row.get("holding_qty"))
+    price = _parse_positive_int(
+        row.get("order_price")
+        or row.get("current_price")
+        or row.get("price")
+        or row.get("average_price")
+        or row.get("avg_price")
+    )
+    if quantity > 0 and price > 0:
+        return quantity * price
+    return 0
+
+
+def _sum_snapshot_notional(snapshot: Mapping[str, Any], key: str, *, side: Optional[str] = None) -> int:
+    rows = snapshot.get(key)
+    if isinstance(rows, Mapping):
+        iterable = rows.values()
+    elif isinstance(rows, Sequence) and not isinstance(rows, (str, bytes, bytearray)):
+        iterable = rows
+    else:
+        iterable = []
+    total = 0
+    for row in iterable:
+        if not isinstance(row, Mapping):
+            continue
+        if side and str(row.get("side") or "buy").lower() != side:
+            continue
+        total += _snapshot_notional(row)
+    return total
+
+
+def _resolve_effective_total_deposit_krw(portfolio: Mapping[str, Any]) -> int:
+    risk_overlay = _parse_positive_int(portfolio.get("risk_overlay_capital_krw")) or rp.DEFAULT_RISK_OVERLAY_CAPITAL_KRW
+    total = _parse_positive_int(
+        portfolio.get("effective_total_deposit_krw")
+        or portfolio.get("total_deposit_krw")
+        or portfolio.get("total_eval_krw")
+        or portfolio.get("total_capital_krw")
+        or portfolio.get("available_cash_krw")
+    )
+    if total <= 0:
+        total = risk_overlay
+    return min(total, risk_overlay)
+
+
+def _resolve_current_position_value_krw(portfolio: Mapping[str, Any]) -> int:
+    explicit = _parse_positive_int(
+        portfolio.get("current_position_value_krw")
+        or portfolio.get("stock_eval_krw")
+        or portfolio.get("stock_eval_amount_krw")
+    )
+    if explicit > 0:
+        return explicit
+    return _sum_snapshot_notional(portfolio, "holdings")
+
+
+def _resolve_pending_buy_notional_krw(order_state: Mapping[str, Any]) -> int:
+    explicit = _parse_positive_int(order_state.get("pending_buy_notional_krw"))
+    if explicit > 0:
+        return explicit
+    return _sum_snapshot_notional(order_state, "pending_orders", side="buy")
+
+
+def _resolve_available_cash_krw(action: Mapping[str, Any], portfolio: Mapping[str, Any], effective_base: int) -> int:
+    return (
+        _parse_positive_int(action.get("available_cash_krw"))
+        or _parse_positive_int(portfolio.get("available_cash_krw") or portfolio.get("buyable_cash_krw") or portfolio.get("cash_balance_krw"))
+        or effective_base
+    )
+
+
+def _resolve_planned_order_cash(
+    action: Mapping[str, Any],
+    portfolio: Mapping[str, Any],
+    order_state: Mapping[str, Any],
+) -> Dict[str, Any]:
+    effective_base = _resolve_effective_total_deposit_krw(portfolio)
+    risk_overlay = _parse_positive_int(portfolio.get("risk_overlay_capital_krw")) or rp.DEFAULT_RISK_OVERLAY_CAPITAL_KRW
+    available_cash = _resolve_available_cash_krw(action, portfolio, effective_base)
+    current_position_value = _resolve_current_position_value_krw(portfolio)
+    pending_buy_notional = _resolve_pending_buy_notional_krw(order_state)
+    reserve_floor = int(effective_base * 0.25)
+    cash_room = max(0, available_cash - reserve_floor)
+    max_deployable = int(effective_base * rp.MAX_CASH_DEPLOYMENT_RATIO)
+    exposure_room = max(0, max_deployable - current_position_value - pending_buy_notional)
+    position_size_pct = _parse_positive_int(
+        action.get("position_size_pct")
+        or action.get("position_size_percent")
+        or action.get("allocation_pct")
+    )
+
+    if position_size_pct > 0:
+        requested_cash = int(effective_base * position_size_pct / 100)
+        cash_source = "position_size_pct"
+        sizing_basis = "position_size_pct_of_effective_total_deposit"
+    else:
+        requested_cash = 0
+        cash_source = "missing_position_size_pct"
+        sizing_basis = "position_size_pct_required"
+
+    planned_cash = min(requested_cash, cash_room, exposure_room) if requested_cash > 0 else 0
+    return {
+        "planned_order_cash_krw": planned_cash,
+        "requested_order_cash_krw": requested_cash,
+        "planned_order_cash_source": cash_source,
+        "sizing_basis": sizing_basis,
+        "position_size_pct": position_size_pct,
+        "sizing_basis_capital_krw": effective_base,
+        "effective_total_deposit_krw": effective_base,
+        "risk_overlay_capital_krw": risk_overlay,
+        "available_cash_krw": available_cash,
+        "current_position_value_krw": current_position_value,
+        "pending_buy_notional_krw": pending_buy_notional,
+        "cash_room_krw": cash_room,
+        "exposure_room_krw": exposure_room,
+    }
 
 
 def _normalize_entry_zone(value: Any) -> List[int]:

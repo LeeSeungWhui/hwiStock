@@ -1360,7 +1360,7 @@ def test_runner_consumes_flash_buy_intent_and_reaches_cash_order_step_with_fake_
                 "schema_version": "compiled_watch/v0",
                 "symbol": "005930",
                 "source_ids": ["event-1"],
-                "entry_intent": {"entry_zone": [70000], "take_profit": 72100, "stop_loss": 67900, "planned_order_cash_krw": 100000},
+                "entry_intent": {"entry_zone": [70000], "take_profit": 72100, "stop_loss": 67900, "position_size_pct": 10},
                 "valid_until_kst": "2026-06-05T09:40:00+09:00",
             }
         ],
@@ -1374,7 +1374,7 @@ def test_runner_consumes_flash_buy_intent_and_reaches_cash_order_step_with_fake_
                 "entry_price_limit": 70000,
                 "target_price": 72100,
                 "stop_loss_price": 67900,
-                "planned_order_cash_krw": 100000,
+                "position_size_pct": 10,
                 "confidence": 0.8,
             }
         ],

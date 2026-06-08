@@ -41,7 +41,6 @@ def _compiled_watch(symbol: str = "005930"):
             "stop_loss": 9800,
             "trailing_stop_pct": 1.2,
             "position_size_pct": 20,
-            "planned_order_cash_krw": 100000,
         },
         "exit_plan": {"stop_loss": 9800, "take_profit": 10500, "trailing_stop_pct": 1.2},
         "valid_until_kst": "2026-06-05T09:50:00+09:00",
@@ -356,7 +355,7 @@ def test_rest_volume_rank_rows_build_compiled_watch_candidates():
                 }
             ],
         },
-        config={"default_order_cash_krw": 120_000, "position_size_pct": 8},
+        config={"position_size_pct": 8},
         at=datetime.fromisoformat("2026-06-05T09:30:00+09:00"),
     )
 
@@ -365,8 +364,41 @@ def test_rest_volume_rank_rows_build_compiled_watch_candidates():
     assert candidate["symbol"] == "000660"
     assert candidate["source_type"] == "kis_compiled_watch"
     assert candidate["entry_intent"]["entry_price_krw"] == 180000
-    assert candidate["entry_intent"]["planned_order_cash_krw"] == 120000
+    assert candidate["entry_intent"]["position_size_pct"] == 8
+    assert candidate["entry_intent"]["sizing_basis"] == "position_size_pct"
+    assert "planned_order_cash_krw" not in candidate["entry_intent"]
     assert candidate["kis_quote_confirmed"] is True
+
+
+def test_rest_volume_rank_default_sizing_uses_ratio_not_cash_default():
+    compiled = kis_collector.buildCompiledWatchFromKisSnapshot(
+        {
+            "artifact_id": "art_kis_snapshot_rank_rows",
+            "input_results": [
+                {
+                    "input_id": "rest_volume_rank",
+                    "status": "pass",
+                    "endpoint_called": True,
+                    "row_count": 1,
+                    "rows_preview": [
+                        {
+                            "mksc_shrn_iscd": "000660",
+                            "hts_kor_isnm": "SK하이닉스",
+                            "stck_prpr": "180000",
+                            "data_rank": "1",
+                        }
+                    ],
+                }
+            ],
+        },
+        config={"position_size_pct": 10},
+        at=datetime.fromisoformat("2026-06-05T09:30:00+09:00"),
+    )
+
+    candidate = compiled["items"][0]
+    assert candidate["entry_intent"]["position_size_pct"] == 10
+    assert candidate["entry_intent"]["sizing_basis"] == "position_size_pct"
+    assert "planned_order_cash_krw" not in candidate["entry_intent"]
 
 
 def test_missing_market_method_does_not_mark_endpoint_called(tmp_path: Path):
@@ -444,8 +476,114 @@ def test_unit013_flash_document_to_intent_requires_compiled_universe_and_refs():
     assert intent["order_state_snapshot_ref"].startswith("art_order_state")
     assert intent["order_division"] == "00"
     assert intent["order_price"] == 10000
-    assert intent["quantity"] == 10
+    assert intent["position_size_pct"] == 20
+    assert intent["sizing_basis"] == "position_size_pct_of_effective_total_deposit"
+    assert intent["planned_order_cash_source"] == "position_size_pct"
+    assert intent["sizing_basis_capital_krw"] == 2_000_000
+    assert intent["planned_order_cash_krw"] == 400_000
+    assert intent["quantity"] == 40
     assert intent["broker_endpoint_called"] is False
+
+
+def test_paper_intent_sizing_uses_position_pct_ratio_not_absolute_cash():
+    watch = _compiled_watch("005930")
+    watch["entry_intent"]["position_size_pct"] = 10
+    doc = ao.buildFlashTradeDocument(
+        pro_artifact={"artifact_id": "art_pro_hourly_20260605_0900"},
+        recent_events=[{"source_event_id": "naver:news:1"}],
+        kis_market_snapshots=[{"artifact_id": "art_kis_snapshot_20260605_0939"}],
+        compiled_watch=[watch],
+        portfolio_snapshot={
+            "artifact_id": "art_portfolio_20260605_0939",
+            "available_cash_krw": 2_000_000,
+            "total_capital_krw": 2_000_000,
+            "holdings": [],
+        },
+        order_state_snapshot={"artifact_id": "art_order_state_20260605_0939", "pending_orders": []},
+        provider_actions=[
+            {
+                "symbol": "005930",
+                "action": "BUY_NOW",
+                "entry_price_limit": 10_000,
+                "target_price": 10_500,
+                "stop_loss_price": 9_800,
+                "planned_order_cash_krw": 100_000,
+                "confidence": 0.8,
+                "thesis": "비율 산정 회귀 테스트",
+                "why_now": "KIS 후보와 소스가 일치",
+            }
+        ],
+        produced_at_kst=NOW,
+    )
+
+    pipeline = engine.generatePaperOrderIntentsFromFlashDocument(
+        doc,
+        compiled_watch=[watch],
+        portfolio_snapshot={"available_cash_krw": 2_000_000, "total_capital_krw": 2_000_000, "holdings": []},
+        order_state_snapshot={"pending_orders": []},
+        now_kst=NOW,
+    )
+
+    assert pipeline["accepted_count"] == 1
+    intent = pipeline["accepted_intents"][0]
+    assert intent["planned_order_cash_source"] == "position_size_pct"
+    assert intent["position_size_pct"] == 10
+    assert intent["planned_order_cash_krw"] == 200_000
+    assert intent["quantity"] == 20
+    assert intent["estimated_order_cash_krw"] == 200_000
+
+
+def test_paper_intent_ratio_sizing_respects_dynamic_exposure_room():
+    watch = _compiled_watch("005930")
+    watch["entry_intent"]["position_size_pct"] = 20
+    doc = ao.buildFlashTradeDocument(
+        pro_artifact={"artifact_id": "art_pro_hourly_20260605_0900"},
+        recent_events=[{"source_event_id": "naver:news:1"}],
+        kis_market_snapshots=[{"artifact_id": "art_kis_snapshot_20260605_0939"}],
+        compiled_watch=[watch],
+        portfolio_snapshot={
+            "artifact_id": "art_portfolio_20260605_0939",
+            "available_cash_krw": 700_000,
+            "total_capital_krw": 2_000_000,
+            "current_position_value_krw": 1_400_000,
+            "holdings": [],
+        },
+        order_state_snapshot={"artifact_id": "art_order_state_20260605_0939", "pending_orders": []},
+        provider_actions=[
+            {
+                "symbol": "005930",
+                "action": "BUY_NOW",
+                "entry_price_limit": 10_000,
+                "target_price": 10_500,
+                "stop_loss_price": 9_800,
+                "confidence": 0.8,
+                "thesis": "노출 룸 캡 회귀 테스트",
+                "why_now": "KIS 후보와 소스가 일치",
+            }
+        ],
+        produced_at_kst=NOW,
+    )
+
+    pipeline = engine.generatePaperOrderIntentsFromFlashDocument(
+        doc,
+        compiled_watch=[watch],
+        portfolio_snapshot={
+            "available_cash_krw": 700_000,
+            "total_capital_krw": 2_000_000,
+            "current_position_value_krw": 1_400_000,
+            "holdings": [],
+        },
+        order_state_snapshot={"pending_orders": []},
+        now_kst=NOW,
+    )
+
+    assert pipeline["accepted_count"] == 1
+    intent = pipeline["accepted_intents"][0]
+    assert intent["requested_order_cash_krw"] == 400_000
+    assert intent["planned_order_cash_krw"] == 100_000
+    assert intent["quantity"] == 10
+    assert intent["reservation"]["exposure_room_krw"] == 100_000
+    assert intent["reservation"]["cash_room_krw"] == 200_000
 
 
 def test_flash_valid_buy_now_generates_paper_order_intent():
@@ -622,7 +760,7 @@ def test_paper_intent_decimal_price_strings_do_not_expand_order_price_or_quantit
     intent = pipeline["accepted_intents"][0]
     assert intent["raw_order_price"] == 9303
     assert intent["order_price"] == 9300
-    assert intent["quantity"] == 10
+    assert intent["quantity"] == 43
     assert intent["target_price"] == 9630
     assert intent["stop_loss_price"] == 9069
 

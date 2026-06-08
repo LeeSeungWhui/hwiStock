@@ -575,7 +575,7 @@ def test_flash_runtime_uses_exact_10m_window_and_provider_actions(tmp_path: Path
                         "entry_zone": [10000, 10100],
                         "take_profit": 10500,
                         "stop_loss": 9800,
-                        "planned_order_cash_krw": 100000,
+                        "position_size_pct": 10,
                     },
                     "valid_until_kst": "2026-06-08T09:10:00+09:00",
                 }
@@ -647,7 +647,12 @@ def test_flash_runtime_uses_exact_10m_window_and_provider_actions(tmp_path: Path
     assert result["actions"][0]["entry_price_limit"] == 10200
     assert result["actions"][0]["target_price"] == 11000
     assert result["actions"][0]["stop_loss_price"] == 9900
+    assert result["actions"][0]["position_size_pct"] == 10
+    assert result["actions"][0]["planned_order_cash_krw"] == 0
     assert result["paper_intent_pipeline"]["accepted_count"] == 1
+    intent = result["paper_intent_pipeline"]["accepted_intents"][0]
+    assert intent["planned_order_cash_source"] == "position_size_pct"
+    assert intent["planned_order_cash_krw"] == 200000
 
 
 def _pro_v1_payload(**overrides):

@@ -812,7 +812,7 @@ def buildProvisionalCompiledWatchFromMorningWatchlist(
     morning_watchlist: Optional[Mapping[str, Any]],
     *,
     produced_at_kst: Optional[str] = None,
-    default_order_cash_krw: int = 100_000,
+    default_position_size_pct: int = 10,
 ) -> List[Dict[str, Any]]:
     produced_at = produced_at_kst or _default_now_kst()
     produced_dt = _parse_kst_timestamp(produced_at, "produced_at_kst", [])
@@ -843,6 +843,16 @@ def buildProvisionalCompiledWatchFromMorningWatchlist(
         entry_zone = _normalize_price_list(item.get("entry_zone") or item.get("entryZone"))
         if not entry_zone and price > 0:
             entry_zone = [price]
+        position_size_pct = _safe_positive_int(item.get("position_size_pct")) or default_position_size_pct
+        entry_intent = {
+            "entry_zone": entry_zone,
+            "entry_price_krw": price,
+            "take_profit": _safe_positive_int(item.get("target_price") or item.get("take_profit")),
+            "stop_loss": _safe_positive_int(item.get("stop_loss_price") or item.get("stop_loss")),
+            "position_size_pct": position_size_pct,
+            "sizing_basis": "position_size_pct",
+            "cancel_if_not_filled_until": valid_until,
+        }
         source_ids = _dedupe_strings(
             [morning_ref]
             + _string_list(item.get("source_refs"))
@@ -865,14 +875,7 @@ def buildProvisionalCompiledWatchFromMorningWatchlist(
                 "compiled_at_kst": produced_at,
                 "venue_route": "KRX",
                 "watch_state": "morning_watchlist_provisional",
-                "entry_intent": {
-                    "entry_zone": entry_zone,
-                    "entry_price_krw": price,
-                    "take_profit": _safe_positive_int(item.get("target_price") or item.get("take_profit")),
-                    "stop_loss": _safe_positive_int(item.get("stop_loss_price") or item.get("stop_loss")),
-                    "planned_order_cash_krw": _safe_positive_int(item.get("planned_order_cash_krw")) or default_order_cash_krw,
-                    "cancel_if_not_filled_until": valid_until,
-                },
+                "entry_intent": entry_intent,
                 "exit_plan": {
                     "take_profit": _safe_positive_int(item.get("target_price") or item.get("take_profit")),
                     "stop_loss": _safe_positive_int(item.get("stop_loss_price") or item.get("stop_loss")),
@@ -1226,12 +1229,7 @@ def buildFlashTradeDocument(
                 "confidence": confidence,
                 "urgency": urgency,
                 "position_size_pct": _first_non_empty(provider_action.get("position_size_pct"), entry_intent.get("position_size_pct")),
-                "planned_order_cash_krw": _safe_positive_int(
-                    provider_action.get("planned_order_cash_krw")
-                    or provider_action.get("max_cash_krw")
-                    or entry_intent.get("planned_order_cash_krw")
-                    or row.get("planned_order_cash_krw")
-                ),
+                "planned_order_cash_krw": 0,
                 "max_cash_deployment_ratio": rp.MAX_CASH_DEPLOYMENT_RATIO,
                 "source_refs": source_ref_values,
                 "symbol_source_refs": symbol_source_ref_values,
@@ -2038,6 +2036,7 @@ def validateFlashTradeDocument(
             if action_type == "BUY_NOW" and (
                 _safe_positive_int(action.get("quantity")) <= 0
                 and _safe_positive_int(action.get("planned_order_cash_krw")) <= 0
+                and _safe_positive_int(action.get("position_size_pct")) <= 0
             ):
                 errors.append(f"actions_item_{index}_buy_now_size_required")
             if not action.get("portfolio_state_refs"):

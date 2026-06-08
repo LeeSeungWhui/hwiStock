@@ -298,7 +298,6 @@ def loadKisSignalCollectorConfig(env: Optional[Mapping[str, str]] = None) -> Dic
         "forbidden_transport": "order/cancel/modify/balance/buyable",
         "sample_symbol": str(source.get("HWISTOCK_KIS_HEALTH_SYMBOL", "005930")).strip() or "005930",
         "min_call_gap_sec": _float_env(source, "HWISTOCK_KIS_MIN_CALL_GAP_SEC", 1.35),
-        "default_order_cash_krw": _int_env(source, "HWISTOCK_PAPER_DEFAULT_ORDER_CASH_KRW", 100_000),
         "position_size_pct": _int_env(source, "HWISTOCK_PAPER_DEFAULT_POSITION_SIZE_PCT", 10),
     }
 
@@ -905,7 +904,6 @@ def buildCompiledWatchFromKisSnapshot(
     seen: set[str] = set()
     candidates: list[Dict[str, Any]] = []
     valid_until = (now + timedelta(minutes=10)).replace(microsecond=0).isoformat()
-    default_cash = int(source_config.get("default_order_cash_krw") or 100_000)
     position_size_pct = int(source_config.get("position_size_pct") or 10)
 
     for source in _iter_market_rows(snapshot):
@@ -925,6 +923,16 @@ def buildCompiledWatchFromKisSnapshot(
         take_profit = max(price + 1, int(price * 1.03))
         rank = _first_present(row, "data_rank", "rank") or str(len(candidates) + 1)
         candidate_id = f"kis_{input_id}_{symbol}_{now.strftime('%H%M%S')}"
+        entry_intent = {
+            "entry_zone": [lower, upper],
+            "entry_price_krw": price,
+            "take_profit": take_profit,
+            "stop_loss": stop_loss,
+            "trailing_stop_pct": 1.2,
+            "position_size_pct": position_size_pct,
+            "sizing_basis": "position_size_pct",
+            "cancel_if_not_filled_until": valid_until,
+        }
         candidates.append(
             {
                 "schema_version": "compiled_watch/v0",
@@ -954,16 +962,7 @@ def buildCompiledWatchFromKisSnapshot(
                     }
                 ],
                 "risk_refs": ["HWISTOCK-MOD-001", "HWISTOCK-UNIT-013"],
-                "entry_intent": {
-                    "entry_zone": [lower, upper],
-                    "entry_price_krw": price,
-                    "take_profit": take_profit,
-                    "stop_loss": stop_loss,
-                    "trailing_stop_pct": 1.2,
-                    "position_size_pct": position_size_pct,
-                    "planned_order_cash_krw": default_cash,
-                    "cancel_if_not_filled_until": valid_until,
-                },
+                "entry_intent": entry_intent,
                 "exit_plan": {
                     "take_profit": take_profit,
                     "stop_loss": stop_loss,
