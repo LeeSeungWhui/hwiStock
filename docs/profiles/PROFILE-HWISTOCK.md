@@ -306,6 +306,12 @@ summary or whole-project prompt.
   order loop may submit approved paper orders without per-order human approval.
   The runner must still fail closed on token/account/balance/buyable,
   KRX-session, duplicate-lock, evidence-write, submit-result, or crash blockers.
+- Daily paper approval rollover: systemd-launched paper runner ticks execute
+  `ops/systemd/ensure_paper_order_approval.py` before the runner. The helper
+  reuses only an existing paper-experiment approval with the same operator run
+  id and writes a date-stamped `valid_for_date_kst` file, so stale prior-day
+  approval paths do not block the next trading day while live-money scope stays
+  forbidden.
 - Broker-provided adapter API mode: KIS KRX-adapter path only
   under explicit unit/smoke or `paper_experiment` session approval; NXT/SOR stay
   disabled or explicit-fallback-only until later broker-account/support-confirmation

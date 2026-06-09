@@ -253,6 +253,10 @@ Current truth after the Pro critique:
 - `paper_order_loop_enabled: true` only when `HWISTOCK_OPERATION_MODE =
   paper_experiment`, `HWISTOCK_KIS_PAPER_ORDER_ENABLED = true`, and the
   approval file/date/caps/source/calendar checks pass;
+- The user systemd paper runner refreshes the approval file path through
+  `ops/systemd/ensure_paper_order_approval.py` before each tick, carrying
+  forward only the same approved paper run id into a KST date-stamped approval
+  file.
 - `live_money_trading_ready: not_applicable`;
 - `production_quality_ready: partial_non_blocking`;
 - `operational_readiness: false` only for final operation acceptance, not as a

@@ -6,6 +6,7 @@ No real KIS network call is made; tests use an injected fake transport.
 from __future__ import annotations
 
 from datetime import datetime
+import importlib.util
 import json
 import os
 import sys
@@ -217,6 +218,16 @@ def _order_approval(tmp_path: Path, env: dict, *, run_id: str = "approved-order-
 
 def _mark_order_grade_source(env: dict) -> None:
     env["HWISTOCK_MARKET_DATA_SOURCE"] = "kis_market_mode_aware"
+
+
+def _load_approval_helper_module():
+    helper_path = Path(__file__).resolve().parents[2] / "ops" / "systemd" / "ensure_paper_order_approval.py"
+    spec = importlib.util.spec_from_file_location("ensure_paper_order_approval", helper_path)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_token_cache_uses_request_broker_json_adapter_without_private_request(tmp_path: Path):
@@ -473,6 +484,7 @@ def test_systemd_runner_enables_paper_experiment_orders_with_session_gate():
     service_text = service_path.read_text(encoding="utf-8")
     assert "EnvironmentFile=-/home/hwi/.config/hwistock/runtime-mode.env" in service_text
     assert "source ops/systemd/load_runtime_mode_env.sh" in service_text
+    assert "ensure_paper_order_approval.py --emit-env --update-runtime-env" in service_text
     assert 'HWISTOCK_OPERATION_MODE="${HWISTOCK_OPERATION_MODE:-paper_experiment}"' in service_text
     assert "--allow-paper-orders" in service_text
     assert "Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=true" in service_text
@@ -767,6 +779,65 @@ def test_order_flag_requires_operator_approval_file(tmp_path, monkeypatch):
     status = continuous.evaluateContinuousPaperRunnerStatus(env=env, at_kst="2026-06-05T09:30:00")
     assert status["paperExperimentReady"] is True
     assert status["paperExperimentReadiness"]["blockers"] == []
+
+
+def test_daily_paper_order_approval_rollover_updates_date_and_runtime_env(tmp_path, monkeypatch, capsys):
+    env = {"HWISTOCK_OPERATION_MODE": "paper_experiment", "HWISTOCK_KIS_PAPER_ORDER_ENABLED": "true"}
+    old_path = _order_approval(tmp_path, env)
+    _mark_order_grade_source(env)
+    env["HWISTOCK_CALENDAR_PATH"] = str(_calendar(tmp_path, monkeypatch))
+    runtime_env = tmp_path / "runtime-mode.env"
+    runtime_env.write_text(
+        "\n".join(
+            [
+                "HWISTOCK_OPERATION_MODE=paper_experiment",
+                "HWISTOCK_KIS_PAPER_ORDER_ENABLED=true",
+                f"HWISTOCK_OPERATOR_APPROVED_ORDER_RUN_ID={env['HWISTOCK_OPERATOR_APPROVED_ORDER_RUN_ID']}",
+                f"HWISTOCK_ORDER_APPROVAL_FILE={old_path}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("HWISTOCK_MAX_DAILY_PAPER_ORDERS", "20")
+    monkeypatch.setenv("HWISTOCK_MAX_PAPER_NOTIONAL_KRW", "2000000")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "ensure_paper_order_approval.py",
+            "--date-kst",
+            "2026-06-10",
+            "--emit-env",
+            "--update-runtime-env",
+            str(runtime_env),
+        ],
+    )
+
+    helper = _load_approval_helper_module()
+    assert helper.main() == 0
+
+    emitted = capsys.readouterr()
+    daily_path = tmp_path / "paper-20260610.approval.json"
+    assert daily_path.is_file()
+    assert f"export HWISTOCK_ORDER_APPROVAL_FILE={daily_path}" in emitted.out
+    assert f"HWISTOCK_ORDER_APPROVAL_FILE={daily_path}" in runtime_env.read_text(encoding="utf-8")
+    payload = json.loads(daily_path.read_text(encoding="utf-8"))
+    assert payload["valid_for_date_kst"] == "2026-06-10"
+    assert payload["approved_order_run_id"] == env["HWISTOCK_OPERATOR_APPROVED_ORDER_RUN_ID"]
+    assert payload["live_money_scope"] == "not_applicable"
+
+    env["HWISTOCK_ORDER_APPROVAL_FILE"] = str(daily_path)
+    approval = continuous_runtime.loadPaperOrderApproval(
+        env,
+        requested=True,
+        now=datetime.fromisoformat("2026-06-10T09:30:00+09:00"),
+        operation_mode="paper_experiment",
+    )
+    assert approval["approved"] is True
+    assert approval["reason"] == "operator_order_approval_verified"
 
 
 def test_order_approval_rejects_weekday_calendar_fallback(tmp_path, monkeypatch):
