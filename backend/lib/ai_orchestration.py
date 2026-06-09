@@ -1608,6 +1608,38 @@ def _kis_current_price_for_symbol(market_rows: Sequence[Mapping[str, Any]], *, s
     return 0
 
 
+def _position_snapshot_current_price(row: Mapping[str, Any], *, quantity: int) -> tuple[int, str]:
+    account_truth = row.get("trading_account_truth") if isinstance(row.get("trading_account_truth"), Mapping) else {}
+    direct_price = _safe_positive_int(
+        _first_non_empty(
+            row.get("current_price"),
+            row.get("cur_price"),
+            row.get("last_price"),
+            row.get("stck_prpr"),
+            row.get("prpr"),
+            row.get("price"),
+            account_truth.get("current_price") if isinstance(account_truth, Mapping) else None,
+            account_truth.get("cur_price") if isinstance(account_truth, Mapping) else None,
+            account_truth.get("stck_prpr") if isinstance(account_truth, Mapping) else None,
+        )
+    )
+    if direct_price > 0:
+        return direct_price, "position_snapshot_current_price"
+    eval_amount = _safe_positive_int(
+        _first_non_empty(
+            row.get("eval_amount_krw"),
+            row.get("evaluation_amount_krw"),
+            row.get("stock_eval_krw"),
+            row.get("evlu_amt"),
+            account_truth.get("eval_amount_krw") if isinstance(account_truth, Mapping) else None,
+            account_truth.get("evlu_amt") if isinstance(account_truth, Mapping) else None,
+        )
+    )
+    if eval_amount > 0 and quantity > 0:
+        return max(1, int(Decimal(eval_amount) / Decimal(quantity))), "position_snapshot_eval_amount_per_quantity"
+    return 0, "missing"
+
+
 def _position_state_from_order_row(row: Mapping[str, Any]) -> str:
     explicit = str(row.get("position_state") or row.get("order_state") or row.get("state") or row.get("status") or "").strip().lower()
     if explicit in {"submitted_unreconciled", "order_submitted_fill_status_unknown"}:
@@ -1882,11 +1914,14 @@ def _build_position_action(
     holding_age_seconds = age_seconds if position_state == "holding_confirmed" else 0
     holding_age_minutes = holding_age_seconds // 60
     reconciliation_age_minutes = reconciliation_age_seconds // 60
-    current_price = _kis_current_price_for_symbol(market_rows, symbol=symbol)
+    quantity = _position_quantity(row)
+    market_current_price = _kis_current_price_for_symbol(market_rows, symbol=symbol)
+    fallback_current_price, fallback_current_price_source = _position_snapshot_current_price(row, quantity=quantity)
+    current_price = market_current_price or fallback_current_price
+    current_price_source = "kis_market_snapshot" if market_current_price > 0 else fallback_current_price_source
     target_price = _safe_positive_int(row.get("target_price") or row.get("take_profit"))
     stop_loss_price = _safe_positive_int(row.get("stop_loss_price") or row.get("stop_loss"))
     entry_price = _position_entry_price(row)
-    quantity = _position_quantity(row)
     sellable_quantity = _position_sellable_quantity(row)
     sellable_status = _position_sellable_status(row)
     sellable_truth = _normalize_position_sellable_truth(
@@ -1927,6 +1962,8 @@ def _build_position_action(
     time_exit_status = "active"
     time_exit_reason = "none"
     warnings: List[str] = []
+    if market_current_price <= 0 and fallback_current_price > 0:
+        warnings.append("kis_quote_missing_using_position_snapshot_price")
 
     if position_state != "holding_confirmed":
         action = "WAIT_ORDER_RECONCILIATION"
@@ -1995,6 +2032,7 @@ def _build_position_action(
         "target_price": target_price,
         "stop_loss_price": stop_loss_price,
         "current_price": current_price,
+        "current_price_source": current_price_source,
         "entry_price": entry_price,
         "quantity": quantity,
         "sellable_quantity": sellable_quantity,

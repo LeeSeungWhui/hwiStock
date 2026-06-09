@@ -257,6 +257,14 @@ Current truth after the Pro critique:
   `ops/systemd/ensure_paper_order_approval.py` before each tick, carrying
   forward only the same approved paper run id into a KST date-stamped approval
   file.
+- The paper experiment now has a read-only quality monitor,
+  `backend/service/paper_operation_quality_monitor.py`, with user-systemd
+  unit/timer templates under `ops/systemd/user/`. It writes
+  `data/evidence/YYYY-MM-DD/paper-operation-quality-latest.json` and turns the
+  next-session checks into explicit P0 conditions: empty candidate universe
+  after `09:10 KST`, Flash universe safe-block, non-percent BUY sizing, exit
+  trigger without `SELL_NOW`/sell intent, SELL blocked by sellable truth, and
+  sibling intents blocked as an already-consumed trade document.
 - `live_money_trading_ready: not_applicable`;
 - `production_quality_ready: partial_non_blocking`;
 - `operational_readiness: false` only for final operation acceptance, not as a

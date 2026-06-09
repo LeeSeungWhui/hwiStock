@@ -1696,6 +1696,19 @@ def test_unit015_operator_snapshot_maps_runtime_artifacts_to_dashboard_rows(tmp_
         json.dumps({"event": "runner_once"}, ensure_ascii=False),
         encoding="utf-8",
     )
+    (tmp_path / "evidence" / "2026-06-05" / "paper-operation-quality-latest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "paper_operation_quality/v0",
+                "event": "paper_operation_quality_check",
+                "produced_at_kst": "2026-06-05T19:10:09+09:00",
+                "status": "warn",
+                "p0_conditions": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
 
     safe_unit = tmp_path / "hwistock-kis-paper-runner.service"
     safe_unit.write_text(

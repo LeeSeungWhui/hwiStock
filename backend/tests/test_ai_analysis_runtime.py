@@ -69,6 +69,71 @@ def _capture_deepseek_request(monkeypatch) -> list[dict]:
     return captured
 
 
+def test_default_order_state_snapshot_merges_latest_runner_account_truth_prices(tmp_path: Path):
+    state_dir = tmp_path / "state"
+    state_dir.mkdir(parents=True)
+    (state_dir / "kis-paper-runner-state.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "kis_paper_runner_state/v0",
+                "pending_orders": [],
+                "holdings": [
+                    {
+                        "symbol": "005930",
+                        "quantity": 2,
+                        "sellable_quantity": 2,
+                        "average_price": 70000,
+                        "current_price": 70000,
+                        "target_price": 72100,
+                        "stop_loss_price": 67900,
+                        "position_state": "holding_confirmed",
+                    }
+                ],
+                "active_exits": [],
+                "consumed_intent_keys": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    evidence_dir = tmp_path / "evidence" / "2026-06-10"
+    evidence_dir.mkdir(parents=True)
+    (evidence_dir / "kis-paper-continuous-latest.json").write_text(
+        json.dumps(
+            {
+                "account_truth": {
+                    "positions": [
+                        {
+                            "symbol": "005930",
+                            "name": "삼성전자",
+                            "quantity": 2,
+                            "sellable_quantity": 2,
+                            "average_price": 70000,
+                            "current_price": 70500,
+                            "eval_amount_krw": 141000,
+                            "pnl_krw": 1000,
+                            "source": "kis_balance_output1",
+                        }
+                    ]
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    snapshot = runtime._default_order_state_snapshot(  # noqa: SLF001
+        datetime.fromisoformat("2026-06-10T09:35:00+09:00"),
+        data_root=tmp_path,
+    )
+
+    holding = snapshot["holdings"][0]
+    assert holding["current_price"] == 70500
+    assert holding["eval_amount_krw"] == 141000
+    assert holding["target_price"] == 72100
+    assert holding["trading_account_truth"]["current_price"] == 70500
+
+
 def _write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")

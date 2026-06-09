@@ -1,0 +1,14 @@
+# hwiStock read-only paper-operation quality monitor tick.
+# No broker, no KIS, no AI provider, and no orders. Writes quality evidence.
+
+[Unit]
+Description=hwiStock paper-operation quality monitor tick
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/data/workspace/My/hwiStock
+EnvironmentFile=-/home/hwi/.config/hwistock/runtime-mode.env
+ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-paper-operation-quality -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && source ops/systemd/load_runtime_mode_env.sh && python backend/service/paper_operation_quality_monitor.py --write-evidence'
+NoNewPrivileges=true

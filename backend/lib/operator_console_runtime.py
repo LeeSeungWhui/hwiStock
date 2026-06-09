@@ -95,6 +95,7 @@ def latestRuntimePaths(root: Path, day: str) -> Dict[str, Optional[str]]:
         "flashTradeDocument": root / "trade-documents" / day / "flash-trade-document-latest.json",
         "kisMarket": root / "kis-market" / day / "kis-market-snapshot-latest.json",
         "kisPaperRunner": root / "evidence" / day / "kis-paper-continuous-latest.json",
+        "paperOperationQuality": root / "evidence" / day / "paper-operation-quality-latest.json",
         "runner": root / "evidence" / day / "runner-latest.json",
     }
     return {
@@ -115,6 +116,7 @@ def buildArtifactFreshness(
         "flashTradeDocument": 15 * 60,
         "kisMarket": 4 * 60,
         "kisPaperRunner": 8 * 60,
+        "paperOperationQuality": 8 * 60,
         "runner": 8 * 60,
     }
     rows: Dict[str, Any] = {}

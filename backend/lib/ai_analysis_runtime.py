@@ -1564,6 +1564,55 @@ def _default_portfolio_snapshot(now: datetime) -> Dict[str, Any]:
     }
 
 
+def _read_latest_account_truth_positions(data_root: Path, *, day: str) -> list[Dict[str, Any]]:
+    runner_path = data_root / "evidence" / day / "kis-paper-continuous-latest.json"
+    payload = _read_json_artifact(runner_path)
+    if not isinstance(payload, Mapping):
+        return []
+    account_truth = payload.get("account_truth") if isinstance(payload.get("account_truth"), Mapping) else {}
+    positions = account_truth.get("positions") if isinstance(account_truth.get("positions"), list) else []
+    return [dict(row) for row in positions if isinstance(row, Mapping)]
+
+
+def _merge_order_state_holdings_with_account_truth(
+    holdings: list[Dict[str, Any]],
+    account_positions: Sequence[Mapping[str, Any]],
+) -> list[Dict[str, Any]]:
+    merged_by_symbol: Dict[str, Dict[str, Any]] = {}
+    for row in holdings:
+        symbol = str(row.get("symbol") or row.get("ticker") or row.get("pdno") or "").strip()
+        if symbol:
+            merged_by_symbol[symbol] = dict(row)
+    for position in account_positions:
+        symbol = str(position.get("symbol") or position.get("ticker") or position.get("pdno") or "").strip()
+        if not symbol:
+            continue
+        existing = merged_by_symbol.get(symbol, {})
+        merged_by_symbol[symbol] = {
+            **existing,
+            "symbol": symbol,
+            "ticker": symbol,
+            "name": position.get("name") or existing.get("name") or symbol,
+            "quantity": position.get("quantity") or existing.get("quantity"),
+            "sellable_quantity": position.get("sellable_quantity") or existing.get("sellable_quantity"),
+            "average_price": position.get("average_price") or existing.get("average_price"),
+            "current_price": position.get("current_price") or existing.get("current_price"),
+            "eval_amount_krw": position.get("eval_amount_krw") or existing.get("eval_amount_krw"),
+            "pnl_krw": position.get("pnl_krw") or existing.get("pnl_krw"),
+            "position_state": "holding_confirmed",
+            "order_state": "holding_confirmed",
+            "source": "kis_paper_runner_account_truth",
+            "trading_account_truth": {
+                "sellable_quantity": position.get("sellable_quantity"),
+                "sellable_status": position.get("sellable_status") or "none",
+                "current_price": position.get("current_price"),
+                "eval_amount_krw": position.get("eval_amount_krw"),
+                "source": position.get("source") or "kis_paper_runner_account_truth",
+            },
+        }
+    return [merged_by_symbol[symbol] for symbol in sorted(merged_by_symbol)][:50]
+
+
 def _default_order_state_snapshot(now: datetime, *, data_root: Path = DEFAULT_DATA_ROOT) -> Dict[str, Any]:
     state_path = data_root / "state" / "kis-paper-runner-state.json"
     pending_orders: list[Dict[str, Any]] = []
@@ -1602,6 +1651,8 @@ def _default_order_state_snapshot(now: datetime, *, data_root: Path = DEFAULT_DA
                 for item in (state.get("consumed_trade_document_ids") or [])
                 if str(item).strip()
             ]
+    account_positions = _read_latest_account_truth_positions(data_root, day=now.date().isoformat())
+    holdings = _merge_order_state_holdings_with_account_truth(holdings, account_positions)
     return {
         "schema_version": "order_state_snapshot/v0",
         "artifact_id": f"art_order_state_local_snapshot_{now.strftime('%Y%m%d_%H%M%S')}",

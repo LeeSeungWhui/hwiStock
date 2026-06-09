@@ -900,6 +900,48 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         self.assertTrue(position_action["fallback_used"])
         self.assertIsNone(position_action["exit_blocked_reason"])
 
+    def test_sell_now_uses_position_snapshot_price_when_market_quote_missing(self):
+        doc = _position_management_doc(
+            holding=[
+                _balance_fallback_holding_row(
+                    entry_time_kst="2026-06-04T08:34:00+09:00",
+                    current_price=10020,
+                )
+            ],
+            price=0,
+        )
+
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["action"], "SELL_NOW")
+        self.assertEqual(position_action["current_price"], 10020)
+        self.assertEqual(position_action["current_price_source"], "position_snapshot_current_price")
+        self.assertIn("kis_quote_missing_using_position_snapshot_price", position_action["warnings"])
+        self.assertIsNone(position_action["exit_blocked_reason"])
+
+    def test_sell_now_uses_eval_amount_per_quantity_when_market_quote_missing(self):
+        doc = _position_management_doc(
+            holding=[
+                _balance_fallback_holding_row(
+                    entry_time_kst="2026-06-04T08:34:00+09:00",
+                    quantity=3,
+                    sellable_quantity=3,
+                    trading_account_truth={
+                        "sellable_quantity": 3,
+                        "sellable_status": "none",
+                        "source": "kis_balance_output1",
+                        "eval_amount_krw": 30060,
+                    },
+                )
+            ],
+            price=0,
+        )
+
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["action"], "SELL_NOW")
+        self.assertEqual(position_action["current_price"], 10020)
+        self.assertEqual(position_action["current_price_source"], "position_snapshot_eval_amount_per_quantity")
+        self.assertIsNone(position_action["exit_blocked_reason"])
+
     def test_sell_now_allowed_with_provider_unsupported_and_balance_position_fallback(self):
         doc = _position_management_doc(
             holding=[

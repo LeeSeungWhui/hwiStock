@@ -1,0 +1,15 @@
+# hwiStock paper-operation quality monitor timer.
+# Read-only, no provider/broker calls. Persistent=false avoids after-hours backlog noise.
+
+[Unit]
+Description=hwiStock paper-operation quality monitor during paper KRX order window
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 09..14:00/5:00
+OnCalendar=Mon..Fri *-*-* 15:00:00
+AccuracySec=20s
+Persistent=false
+Unit=hwistock-paper-operation-quality.service
+
+[Install]
+WantedBy=timers.target

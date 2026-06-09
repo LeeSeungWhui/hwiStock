@@ -973,6 +973,32 @@ def _reconcile_runner_state_from_account_truth(
         for row in existing_holdings
         if _symbol_from_row(row)
     }
+    refreshed_symbols: list[str] = []
+    for symbol, position in positions_by_symbol.items():
+        existing = holdings_by_symbol.get(symbol)
+        if not existing:
+            continue
+        refreshed: Dict[str, Any] = dict(existing)
+        refreshed.update(
+            {
+                "symbol": symbol,
+                "ticker": symbol,
+                "name": position.get("name") or existing.get("name") or symbol,
+                "quantity": position.get("quantity") or existing.get("quantity"),
+                "sellable_quantity": position.get("sellable_quantity"),
+                "average_price": position.get("average_price") or existing.get("average_price"),
+                "current_price": position.get("current_price"),
+                "eval_amount_krw": position.get("eval_amount_krw"),
+                "pnl_krw": position.get("pnl_krw"),
+                "position_state": "holding_confirmed",
+                "order_state": "holding_confirmed",
+                "source": "kis_balance_reconciliation",
+                "last_reconciled_at_kst": now.isoformat(),
+            }
+        )
+        if refreshed != existing:
+            holdings_by_symbol[symbol] = refreshed
+            refreshed_symbols.append(symbol)
 
     remaining_pending: list[Dict[str, Any]] = []
     promoted_symbols: list[str] = []
@@ -1031,7 +1057,7 @@ def _reconcile_runner_state_from_account_truth(
         holdings_by_symbol[symbol] = holding
         promoted_symbols.append(symbol)
 
-    changed = bool(promoted_symbols) or len(remaining_pending) != len(pending_rows)
+    changed = bool(promoted_symbols) or bool(refreshed_symbols) or len(remaining_pending) != len(pending_rows)
     if changed:
         state["pending_orders"] = remaining_pending
         state["holdings"] = [
@@ -1049,6 +1075,8 @@ def _reconcile_runner_state_from_account_truth(
         "raw_response_stored": False,
         "promoted_to_holdings_count": len(promoted_symbols),
         "promoted_symbols": promoted_symbols,
+        "refreshed_holdings_count": len(refreshed_symbols),
+        "refreshed_symbols": refreshed_symbols,
         "pending_remaining_count": len(remaining_pending),
         "holdings_count": len(state.get("holdings") or []),
     }

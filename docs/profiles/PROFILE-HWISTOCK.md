@@ -218,6 +218,16 @@ mode the loader forcibly pins executable routing to `krx_only` and NXT disabled.
    relevant close. Paper/mock mode targets the post-KRX-close summary after
    `15:30 KST`; future live mode targets `20:00 KST`. Daily reports explain
    system-calculated results and must not calculate PnL in AI prose.
+7. `paper_operation_quality_monitor` is a read-only local JSON monitor for the
+   paper experiment. It writes
+   `data/evidence/YYYY-MM-DD/paper-operation-quality-latest.json` and checks the
+   next-session P0 signals from the first paper run: candidate universe is still
+   empty after `09:10 KST`, Flash is safe-blocked before provider use because
+   the universe is missing, BUY sizing falls back to absolute cash instead of
+   `position_size_pct`, exit triggers do not become `SELL_NOW`/sell intents, the
+   runner blocks SELL on sellable-truth, or sibling intents are blocked as an
+   already-consumed trade document. It never calls brokers, KIS, AI providers,
+   or browser automation.
 
 ChatGPT Pro remains optional external review through local Codex CLI
 browser-use when available; it is not required for the runtime loop to stay

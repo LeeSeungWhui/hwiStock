@@ -422,6 +422,54 @@ def test_reconciliation_promotes_pending_buy_to_holding_from_kis_balance(tmp_pat
     assert not any("/order-cash" in call["url"] for call in transport.calls)
 
 
+def test_reconciliation_refreshes_existing_holding_price_from_kis_balance():
+    state = {
+        "schema_version": "kis_paper_runner_state/v0",
+        "pending_orders": [],
+        "holdings": [
+            {
+                "symbol": "005930",
+                "quantity": 2,
+                "sellable_quantity": 2,
+                "average_price": 70000,
+                "current_price": 70000,
+                "target_price": 72100,
+                "stop_loss_price": 67900,
+                "position_state": "holding_confirmed",
+            }
+        ],
+    }
+    account_truth = {
+        "positions": [
+            {
+                "symbol": "005930",
+                "name": "삼성전자",
+                "quantity": 2,
+                "sellable_quantity": 2,
+                "average_price": 70000,
+                "current_price": 70500,
+                "eval_amount_krw": 141000,
+                "pnl_krw": 1000,
+            }
+        ]
+    }
+
+    step = continuous_runtime._reconcile_runner_state_from_account_truth(  # noqa: SLF001
+        state,
+        account_truth,
+        now=datetime.fromisoformat("2026-06-05T09:30:00+09:00"),
+    )
+
+    assert step["status"] == "pass"
+    assert step["promoted_to_holdings_count"] == 0
+    assert step["refreshed_holdings_count"] == 1
+    assert step["refreshed_symbols"] == ["005930"]
+    assert state["holdings"][0]["current_price"] == 70500
+    assert state["holdings"][0]["eval_amount_krw"] == 141000
+    assert state["holdings"][0]["target_price"] == 72100
+    assert state["last_reconciled_kst"] == "2026-06-05T09:30:00+09:00"
+
+
 def test_tick_without_intent_or_reconciliation_does_not_call_kis_account_truth(tmp_path: Path, monkeypatch):
     _calendar(tmp_path, monkeypatch)
     env = _env()
