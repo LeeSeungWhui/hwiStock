@@ -470,6 +470,114 @@ def test_reconciliation_refreshes_existing_holding_price_from_kis_balance():
     assert state["last_reconciled_kst"] == "2026-06-05T09:30:00+09:00"
 
 
+def test_reconciliation_closes_filled_sell_and_removes_stale_absent_holding():
+    state = {
+        "schema_version": "kis_paper_runner_state/v0",
+        "pending_orders": [
+            {
+                "symbol": "126640",
+                "side": "sell",
+                "quantity": 53,
+                "broker_order_no": "0000026317",
+                "submitted_at_kst": "2026-06-10T12:50:16+09:00",
+            },
+            {
+                "symbol": "189400",
+                "side": "sell",
+                "quantity": 3,
+                "broker_order_no": "0000026319",
+                "submitted_at_kst": "2026-06-10T12:50:16+09:00",
+            },
+        ],
+        "holdings": [
+            {
+                "symbol": "126640",
+                "quantity": 53,
+                "sellable_quantity": 53,
+                "position_state": "holding_confirmed",
+            },
+            {
+                "symbol": "189400",
+                "quantity": 3,
+                "sellable_quantity": 0,
+                "position_state": "holding_confirmed",
+            },
+            {
+                "symbol": "040350",
+                "quantity": 10,
+                "sellable_quantity": 10,
+                "position_state": "holding_confirmed",
+            },
+        ],
+        "submitted_order_history": [
+            {
+                "symbol": "126640",
+                "side": "sell",
+                "quantity": 53,
+                "broker_order_no": "0000026317",
+            },
+            {
+                "symbol": "189400",
+                "side": "sell",
+                "quantity": 3,
+                "broker_order_no": "0000026319",
+            },
+        ],
+    }
+    account_truth = {
+        "balance_status": "pass",
+        "positions": [
+            {
+                "symbol": "189400",
+                "quantity": 3,
+                "sellable_quantity": 0,
+                "current_price": 25025,
+            }
+        ],
+        "daily_order_fills": [
+            {
+                "symbol": "189400",
+                "side": "sell",
+                "order_no": "0000026319",
+                "quantity": 3,
+                "order_quantity": 3,
+                "filled_quantity": 0,
+                "remaining_quantity": 3,
+                "filled_price": 0,
+                "order_price": 25050,
+            },
+            {
+                "symbol": "126640",
+                "side": "sell",
+                "order_no": "0000026317",
+                "order_quantity": 53,
+                "filled_quantity": 53,
+                "remaining_quantity": 0,
+                "filled_price": 4430,
+                "order_price": 4430,
+            },
+        ],
+    }
+
+    step = continuous_runtime._reconcile_runner_state_from_account_truth(  # noqa: SLF001
+        state,
+        account_truth,
+        now=datetime.fromisoformat("2026-06-10T13:05:49+09:00"),
+    )
+
+    assert step["status"] == "pass"
+    assert step["closed_sell_symbols"] == ["126640"]
+    assert step["stale_removed_symbols"] == ["040350"]
+    assert step["reconciled_sell_order_numbers"] == ["0000026317"]
+    assert [row["symbol"] for row in state["pending_orders"]] == ["189400"]
+    assert [row["symbol"] for row in state["holdings"]] == ["189400"]
+    history_by_symbol = {row["symbol"]: row for row in state["submitted_order_history"]}
+    assert history_by_symbol["126640"]["filled_quantity"] == 53
+    assert history_by_symbol["126640"]["remaining_quantity"] == 0
+    assert history_by_symbol["126640"]["filled_price"] == 4430
+    assert "filled_quantity" not in history_by_symbol["189400"]
+
+
 def test_tick_without_intent_or_reconciliation_does_not_call_kis_account_truth(tmp_path: Path, monkeypatch):
     _calendar(tmp_path, monkeypatch)
     env = _env()
