@@ -107,6 +107,9 @@ def sanitizeKisResponse(
         else "warn",
         "raw_response_stored": False,
     }
+    for message_key in ("msg1", "message", "rt_msg"):
+        if payload.get(message_key) is not None:
+            result[message_key] = payload.get(message_key)
     if row_count_key:
         result["row_count"] = len(rows) if isinstance(rows, list) else (1 if isinstance(rows, Mapping) else 0)
     elif isinstance(out, list):

@@ -46,6 +46,8 @@ class FakeTransport:
         invalid_balance_once=False,
         balance_positions=None,
         daily_fills=None,
+        cancel_status="pass",
+        cancel_error_payload=None,
     ):
         self.calls = []
         self.order_status = order_status
@@ -54,6 +56,8 @@ class FakeTransport:
         self.invalid_balance_returned = False
         self.balance_positions = balance_positions if balance_positions is not None else [{"pdno": "005930"}, {"pdno": "000660"}]
         self.daily_fills = daily_fills if daily_fills is not None else [{"row": 1}]
+        self.cancel_status = cancel_status
+        self.cancel_error_payload = dict(cancel_error_payload or {})
 
     def requestJson(self, method, url, *, headers=None, body=None, timeout=20):
         self.calls.append({"method": method, "url": url, "headers": dict(headers or {}), "body": dict(body or {}) if body else None})
@@ -72,6 +76,14 @@ class FakeTransport:
                 },
             }
         if "/uapi/domestic-stock/v1/trading/order-rvsecncl" in url:
+            if self.cancel_status != "pass":
+                payload = {
+                    "rt_cd": "1",
+                    "msg_cd": "cancel_rejected",
+                    "msg1": "취소 요청이 거절되었습니다",
+                }
+                payload.update(self.cancel_error_payload)
+                return {"http_status": 200, "payload": payload}
             return {
                 "http_status": 200,
                 "payload": {
@@ -684,6 +696,214 @@ def test_tick_cancels_previous_timing_unfilled_pending_order(tmp_path: Path, mon
     history = {row["broker_order_no"]: row for row in state["submitted_order_history"]}
     assert history["0000001111"]["order_state"] == "cancelled"
     assert history["0000001111"]["cancel_reason"] == "previous_timing_unfilled_order"
+
+
+def test_tick_terminal_cleans_previous_day_unfilled_pending_without_broker_cancel(tmp_path: Path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    data_root = tmp_path / "data"
+    state_dir = data_root / "state"
+    state_dir.mkdir(parents=True)
+    (state_dir / "kis-paper-runner-state.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "kis_paper_runner_state/v0",
+                "pending_orders": [
+                    {
+                        "symbol": "005930",
+                        "side": "sell",
+                        "quantity": 10,
+                        "remaining_quantity": 10,
+                        "order_price": 70500,
+                        "broker_order_no": "0000002222",
+                        "krx_forwarding_order_orgno": "00123",
+                        "submitted_at_kst": "2026-06-04T14:50:15+09:00",
+                        "idempotency_key": "previous-day-sell-1",
+                    }
+                ],
+                "holdings": [
+                    {
+                        "symbol": "005930",
+                        "quantity": 10,
+                        "sellable_quantity": 10,
+                        "position_state": "holding_confirmed",
+                    }
+                ],
+                "submitted_order_history": [
+                    {
+                        "symbol": "005930",
+                        "side": "sell",
+                        "quantity": 10,
+                        "broker_order_no": "0000002222",
+                        "submitted_at_kst": "2026-06-04T14:50:15+09:00",
+                        "idempotency_key": "previous-day-sell-1",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    env = _env()
+    env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _mark_order_grade_source(env)
+    _order_approval(tmp_path, env)
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(data_root)
+    transport = FakeTransport(
+        balance_positions=[
+            {
+                "pdno": "005930",
+                "prdt_name": "삼성전자",
+                "hldg_qty": "10",
+                "ord_psbl_qty": "10",
+                "pchs_avg_pric": "70000",
+                "prpr": "70400",
+            }
+        ],
+        daily_fills=[],
+    )
+
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=KisPaperAdapter(env=env, transport=transport),
+        at_kst="2026-06-05T09:20:01",
+    )
+
+    cancel_step = [
+        step for step in payload["steps"]
+        if step.get("step") == "previous_timing_pending_order_cancellation"
+    ][-1]
+    assert cancel_step["status"] == "pass"
+    assert cancel_step["broker_endpoint_called"] is False
+    assert cancel_step["order_cancel_modify_called"] is False
+    assert cancel_step["cancelled_count"] == 0
+    assert cancel_step["terminal_cleanup_count"] == 1
+    assert cancel_step["terminal_cleanup_order_numbers"] == ["0000002222"]
+    assert cancel_step["terminal_cleanup_symbols"] == ["005930"]
+    assert cancel_step["cancel_results"][0]["status"] == "terminal_cleanup"
+    assert cancel_step["cancel_results"][0]["reason"] == "previous_day_unfilled_order_not_active"
+    assert [call for call in transport.calls if "/order-rvsecncl" in call["url"]] == []
+    state = json.loads((state_dir / "kis-paper-runner-state.json").read_text(encoding="utf-8"))
+    assert state["pending_orders"] == []
+    assert state["terminal_orders"][0]["symbol"] == "005930"
+    assert state["terminal_orders"][0]["order_state"] == "broker_expired_or_not_found"
+    assert state["terminal_orders"][0]["local_cleanup_reason"] == "previous_day_unfilled_order_not_active"
+    assert state["terminal_orders"][0]["requires_runner_cancel"] is False
+    history = {row["broker_order_no"]: row for row in state["submitted_order_history"]}
+    assert history["0000002222"]["order_state"] == "broker_expired_or_not_found"
+    assert history["0000002222"]["local_cleanup_reason"] == "previous_day_unfilled_order_not_active"
+
+
+def test_tick_terminal_cleans_cancel_failure_when_broker_order_not_found(tmp_path: Path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    data_root = tmp_path / "data"
+    state_dir = data_root / "state"
+    state_dir.mkdir(parents=True)
+    (state_dir / "kis-paper-runner-state.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "kis_paper_runner_state/v0",
+                "pending_orders": [
+                    {
+                        "symbol": "005930",
+                        "side": "sell",
+                        "quantity": 10,
+                        "remaining_quantity": 10,
+                        "order_price": 70500,
+                        "broker_order_no": "0000003333",
+                        "krx_forwarding_order_orgno": "00123",
+                        "submitted_at_kst": "2026-06-05T09:10:15+09:00",
+                        "idempotency_key": "same-day-sell-1",
+                    }
+                ],
+                "holdings": [
+                    {
+                        "symbol": "005930",
+                        "quantity": 10,
+                        "sellable_quantity": 10,
+                        "position_state": "holding_confirmed",
+                    }
+                ],
+                "submitted_order_history": [
+                    {
+                        "symbol": "005930",
+                        "side": "sell",
+                        "quantity": 10,
+                        "broker_order_no": "0000003333",
+                        "submitted_at_kst": "2026-06-05T09:10:15+09:00",
+                        "idempotency_key": "same-day-sell-1",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    env = _env()
+    env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _mark_order_grade_source(env)
+    _order_approval(tmp_path, env)
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(data_root)
+    transport = FakeTransport(
+        cancel_status="warn",
+        cancel_error_payload={
+            "msg_cd": "APBK0999",
+            "msg1": "원주문번호가 존재하지 않습니다",
+        },
+        balance_positions=[
+            {
+                "pdno": "005930",
+                "prdt_name": "삼성전자",
+                "hldg_qty": "10",
+                "ord_psbl_qty": "10",
+                "pchs_avg_pric": "70000",
+                "prpr": "70400",
+            }
+        ],
+        daily_fills=[
+            {
+                "pdno": "005930",
+                "sll_buy_dvsn_cd": "01",
+                "odno": "0000003333",
+                "ord_qty": "10",
+                "tot_ccld_qty": "0",
+                "rmn_qty": "10",
+                "ord_unpr": "70500",
+            }
+        ],
+    )
+
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=KisPaperAdapter(env=env, transport=transport),
+        at_kst="2026-06-05T09:20:01",
+    )
+
+    cancel_step = [
+        step for step in payload["steps"]
+        if step.get("step") == "previous_timing_pending_order_cancellation"
+    ][-1]
+    assert cancel_step["status"] == "pass"
+    assert cancel_step["broker_endpoint_called"] is True
+    assert cancel_step["order_cancel_modify_called"] is True
+    assert cancel_step["cancelled_count"] == 0
+    assert cancel_step["terminal_cleanup_count"] == 1
+    assert cancel_step["failed_count"] == 0
+    assert cancel_step["terminal_cleanup_order_numbers"] == ["0000003333"]
+    cancel_calls = [call for call in transport.calls if "/order-rvsecncl" in call["url"]]
+    assert len(cancel_calls) == 1
+    assert cancel_calls[0]["body"]["ORGN_ODNO"] == "0000003333"
+    state = json.loads((state_dir / "kis-paper-runner-state.json").read_text(encoding="utf-8"))
+    assert state["pending_orders"] == []
+    assert state["terminal_orders"][0]["symbol"] == "005930"
+    assert state["terminal_orders"][0]["order_state"] == "broker_expired_or_not_found"
+    assert state["terminal_orders"][0]["local_cleanup_reason"] == "broker_expired_or_not_found"
+    assert state["terminal_orders"][0]["broker_cancel_status"] == "warn"
+    assert state["terminal_orders"][0]["broker_cancel_msg_cd"] == "APBK0999"
+    history = {row["broker_order_no"]: row for row in state["submitted_order_history"]}
+    assert history["0000003333"]["order_state"] == "broker_expired_or_not_found"
+    assert history["0000003333"]["local_cleanup_reason"] == "broker_expired_or_not_found"
 
 
 def test_tick_without_intent_or_reconciliation_does_not_call_kis_account_truth(tmp_path: Path, monkeypatch):

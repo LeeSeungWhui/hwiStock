@@ -1012,6 +1012,108 @@ def _mark_pending_order_cancelled(
     state["last_updated_kst"] = now.isoformat()
 
 
+def _mark_pending_order_terminal_cleanup(
+    state: Dict[str, Any],
+    pending: Mapping[str, Any],
+    cancel_step: Mapping[str, Any],
+    *,
+    now: datetime,
+    reason: str,
+    remaining_quantity: int,
+) -> None:
+    order_no = _order_number_from_row(pending)
+    key = str(pending.get("idempotency_key") or "").strip()
+    symbol = _symbol_from_row(pending)
+    terminal_row = {
+        **dict(pending),
+        "order_state": "broker_expired_or_not_found",
+        "local_cleanup_reason": reason,
+        "requires_runner_cancel": False,
+        "terminal_cleanup_at_kst": now.isoformat(),
+        "remaining_quantity": remaining_quantity,
+        "broker_cancel_status": cancel_step.get("status"),
+        "broker_cancel_msg_cd": cancel_step.get("msg_cd"),
+        "broker_cancel_reason": cancel_step.get("reason"),
+        "broker_cancel_endpoint_called": bool(cancel_step.get("broker_endpoint_called")),
+        "order_cancel_modify_called": bool(cancel_step.get("order_cancel_modify_called")),
+    }
+    terminal_rows = [
+        dict(row)
+        for row in (state.get("terminal_orders") or [])
+        if isinstance(row, Mapping)
+    ]
+    terminal_rows.append(terminal_row)
+    state["terminal_orders"] = terminal_rows[-200:]
+
+    history_rows: list[Dict[str, Any]] = []
+    matched_history = False
+    for row in state.get("submitted_order_history") or []:
+        if not isinstance(row, Mapping):
+            continue
+        updated = dict(row)
+        row_order_no = _order_number_from_row(updated)
+        row_key = str(updated.get("idempotency_key") or "").strip()
+        row_symbol = _symbol_from_row(updated)
+        if (order_no and row_order_no == order_no) or (key and row_key == key) or (
+            not order_no and not key and symbol and row_symbol == symbol
+        ):
+            updated.update(terminal_row)
+            matched_history = True
+        history_rows.append(updated)
+    if not matched_history:
+        history_rows.append(terminal_row)
+    state["submitted_order_history"] = history_rows[-500:]
+    state["last_updated_kst"] = now.isoformat()
+
+
+def _remove_pending_by_order_no(rows: Sequence[Mapping[str, Any]], order_no: str) -> list[Dict[str, Any]]:
+    target = str(order_no or "").strip()
+    if not target:
+        return [dict(row) for row in rows if isinstance(row, Mapping)]
+    return [
+        dict(row)
+        for row in rows
+        if isinstance(row, Mapping) and _order_number_from_row(row) != target
+    ]
+
+
+def _pending_order_is_previous_day(pending: Mapping[str, Any], *, now: datetime) -> bool:
+    submitted_at = _pending_submitted_at(pending)
+    if submitted_at is None:
+        return False
+    return submitted_at.astimezone(KST).date() < now.astimezone(KST).date()
+
+
+def _cancel_failure_is_terminal(cancel_step: Mapping[str, Any]) -> bool:
+    text = " ".join(
+        str(cancel_step.get(key) or "")
+        for key in ("reason", "msg_cd", "msg1", "message", "error", "rt_msg")
+    ).lower()
+    if not text.strip():
+        return False
+    terminal_fragments = (
+        "not_found",
+        "not found",
+        "expired",
+        "already",
+        "no order",
+        "not exist",
+        "does not exist",
+        "cannot cancel",
+        "uncancelable",
+        "cancel not allowed",
+        "원주문",
+        "주문번호",
+        "없",
+        "만료",
+        "취소불가",
+        "정정취소불가",
+        "취소 가능 수량",
+        "취소가능수량",
+    )
+    return any(fragment in text for fragment in terminal_fragments)
+
+
 def _cancel_previous_timing_pending_orders(
     state: Dict[str, Any],
     account_truth: Mapping[str, Any],
@@ -1075,6 +1177,8 @@ def _cancel_previous_timing_pending_orders(
 
     cancelled_order_numbers: list[str] = []
     cancelled_symbols: list[str] = []
+    terminal_cleanup_order_numbers: list[str] = []
+    terminal_cleanup_symbols: list[str] = []
     failed_symbols: list[str] = []
     cancel_results: list[Dict[str, Any]] = []
     pending_after = list(pending_rows)
@@ -1082,6 +1186,37 @@ def _cancel_previous_timing_pending_orders(
         order_no = _order_number_from_row(candidate)
         symbol = _symbol_from_row(candidate)
         remaining_quantity = _coerce_nonnegative_int(candidate.get("_remaining_quantity"), 0)
+        if _pending_order_is_previous_day(candidate, now=now):
+            cleanup_result = {
+                "step": "cancel_order",
+                "status": "terminal_cleanup",
+                "broker_endpoint_called": False,
+                "order_cancel_modify_called": False,
+                "reason": "previous_day_unfilled_order_not_active",
+            }
+            cancel_results.append(
+                {
+                    **cleanup_result,
+                    "symbol": symbol,
+                    "side": str(candidate.get("side") or "").strip().lower(),
+                    "original_order_no": order_no,
+                    "remaining_quantity": remaining_quantity,
+                    "submitted_at_kst": candidate.get("submitted_at_kst"),
+                    "cancel_reason": "previous_day_unfilled_order_not_active",
+                }
+            )
+            terminal_cleanup_order_numbers.append(order_no)
+            terminal_cleanup_symbols.append(symbol)
+            pending_after = _remove_pending_by_order_no(pending_after, order_no)
+            _mark_pending_order_terminal_cleanup(
+                state,
+                candidate,
+                cleanup_result,
+                now=now,
+                reason="previous_day_unfilled_order_not_active",
+                remaining_quantity=remaining_quantity,
+            )
+            continue
         try:
             cancel_step = adapter.cancelOrder(
                 token,
@@ -1111,11 +1246,7 @@ def _cancel_previous_timing_pending_orders(
         if _broker_step_passed(cancel_step):
             cancelled_order_numbers.append(order_no)
             cancelled_symbols.append(symbol)
-            pending_after = [
-                row
-                for row in pending_after
-                if _order_number_from_row(row) != order_no
-            ]
+            pending_after = _remove_pending_by_order_no(pending_after, order_no)
             _mark_pending_order_cancelled(
                 state,
                 candidate,
@@ -1124,25 +1255,42 @@ def _cancel_previous_timing_pending_orders(
                 reason="previous_timing_unfilled_order",
                 remaining_quantity=remaining_quantity,
             )
+        elif _cancel_failure_is_terminal(cancel_result):
+            terminal_cleanup_order_numbers.append(order_no)
+            terminal_cleanup_symbols.append(symbol)
+            pending_after = _remove_pending_by_order_no(pending_after, order_no)
+            _mark_pending_order_terminal_cleanup(
+                state,
+                candidate,
+                cancel_result,
+                now=now,
+                reason="broker_expired_or_not_found",
+                remaining_quantity=remaining_quantity,
+            )
         else:
             failed_symbols.append(symbol)
 
-    if cancelled_order_numbers:
+    if cancelled_order_numbers or terminal_cleanup_order_numbers:
         state["pending_orders"] = pending_after
         state["last_pending_cancel_sweep_kst"] = now.isoformat()
         state["last_updated_kst"] = now.isoformat()
 
     failed_count = len(failed_symbols)
+    broker_endpoint_called = any(result.get("broker_endpoint_called") is True for result in cancel_results)
+    order_cancel_modify_called = any(result.get("order_cancel_modify_called") is True for result in cancel_results)
     return {
         "step": "previous_timing_pending_order_cancellation",
         "status": "warn" if failed_count else "pass",
-        "broker_endpoint_called": bool(cancel_results),
-        "order_cancel_modify_called": bool(cancel_results),
+        "broker_endpoint_called": broker_endpoint_called,
+        "order_cancel_modify_called": order_cancel_modify_called,
         "candidate_count": len(candidates),
         "cancelled_count": len(cancelled_order_numbers),
+        "terminal_cleanup_count": len(terminal_cleanup_order_numbers),
         "failed_count": failed_count,
         "cancelled_order_numbers": cancelled_order_numbers,
         "cancelled_symbols": cancelled_symbols,
+        "terminal_cleanup_order_numbers": terminal_cleanup_order_numbers,
+        "terminal_cleanup_symbols": terminal_cleanup_symbols,
         "failed_symbols": failed_symbols,
         "cancel_results": cancel_results,
         "marketSessionGate": dict(gate_payload),
@@ -1878,7 +2026,10 @@ def runContinuousPaperTick(
     )
     if pending_cancel_step.get("candidate_count"):
         result["steps"].append(pending_cancel_step)
-    if _coerce_nonnegative_int(pending_cancel_step.get("cancelled_count"), 0) > 0:
+    if (
+        _coerce_nonnegative_int(pending_cancel_step.get("cancelled_count"), 0) > 0
+        or _coerce_nonnegative_int(pending_cancel_step.get("terminal_cleanup_count"), 0) > 0
+    ):
         _write_runner_state(local_state, config, data_root=data_root)
 
     current_intent = dict(intent) if isinstance(intent, Mapping) else None

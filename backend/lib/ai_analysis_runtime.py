@@ -236,7 +236,21 @@ def _read_morning_watchlist(data_root: Path, *, at: datetime) -> Optional[Dict[s
     for path in candidates:
         payload = _read_json_artifact(path) if path else None
         if isinstance(payload, Mapping):
-            return dict(payload)
+            artifact = dict(payload)
+            classification = ao.classifyMorningWatchlistArtifact(
+                artifact,
+                target_trade_date=day,
+                now_kst=at.isoformat(),
+            )
+            artifact["morning_watchlist_status"] = classification["status"]
+            artifact["morning_watchlist_usable"] = bool(classification["usable"])
+            artifact["morning_watchlist_items_count"] = classification["items_count"]
+            artifact["morning_watchlist_eligible_count"] = classification["eligible_count"]
+            artifact["morning_watchlist_validation_status"] = classification["validation_status"]
+            artifact["morning_watchlist_validation_errors"] = classification["validation_errors"]
+            artifact["morning_watchlist_safe_block_id"] = classification["safe_block_id"]
+            artifact["morning_watchlist_warnings"] = classification["warnings"]
+            return artifact
     return None
 
 

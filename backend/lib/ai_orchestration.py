@@ -821,6 +821,123 @@ def buildNoTradeSentinel(
     }
 
 
+def _morning_watchlist_ref(morning_watchlist: Mapping[str, Any]) -> str:
+    return str(
+        morning_watchlist.get("artifact_id")
+        or morning_watchlist.get("watchlist_id")
+        or morning_watchlist.get("safe_block_id")
+        or ""
+    ).strip()
+
+
+def classifyMorningWatchlistArtifact(
+    payload: Optional[Mapping[str, Any]],
+    *,
+    target_trade_date: Optional[str] = None,
+    now_kst: Optional[str] = None,
+) -> Dict[str, Any]:
+    warnings: List[str] = []
+    validation_errors: List[str] = []
+    if not isinstance(payload, Mapping) or not payload:
+        return {
+            "status": "missing",
+            "usable": False,
+            "artifact_id": "",
+            "safe_block_id": "",
+            "validation_status": "",
+            "validation_errors": [],
+            "items_count": 0,
+            "eligible_count": 0,
+            "target_trade_date_kst": str(target_trade_date or ""),
+            "warnings": ["morning_watchlist_missing"],
+        }
+
+    morning = dict(payload)
+    items = morning.get("items")
+    item_rows = [dict(item) for item in items if isinstance(item, Mapping)] if isinstance(items, list) else []
+    eligible_count = sum(
+        1
+        for item in item_rows
+        if str(item.get("stance") or "").strip() == "eligible_for_flash_review"
+    )
+    validation_status = str(morning.get("validation_status") or "").strip()
+    schema = str(morning.get("schema_version") or morning.get("schema") or "").strip()
+    artifact_id = str(morning.get("artifact_id") or morning.get("watchlist_id") or "").strip()
+    safe_block_id = str(morning.get("safe_block_id") or "").strip()
+    morning_target = str(
+        morning.get("target_trade_date_kst")
+        or morning.get("trading_date_kst")
+        or morning.get("trading_date")
+        or ""
+    ).strip()
+    expected_target = str(target_trade_date or "").strip()
+    raw_errors = morning.get("validation_errors")
+    if isinstance(raw_errors, list):
+        validation_errors = [str(error) for error in raw_errors if str(error).strip()]
+    elif raw_errors:
+        validation_errors = [str(raw_errors)]
+
+    if validation_status == "safe_block" or safe_block_id:
+        status = "safe_block"
+        usable = False
+        warnings.append("morning_watchlist_safe_block_unusable")
+    elif schema != MORNING_WATCHLIST_SCHEMA:
+        status = "invalid"
+        usable = False
+        warnings.append("morning_watchlist_schema_invalid")
+    elif expected_target and morning_target and morning_target != expected_target:
+        status = "stale"
+        usable = False
+        warnings.append("morning_watchlist_target_trade_date_mismatch")
+    elif validation_errors:
+        status = "invalid"
+        usable = False
+        warnings.append("morning_watchlist_validation_errors")
+    elif validation_status == "accepted" and item_rows:
+        status = "accepted"
+        usable = True
+    elif validation_status == "accepted" and not item_rows:
+        status = "accepted_empty_no_trade"
+        usable = False
+        warnings.append("morning_watchlist_accepted_empty_no_trade")
+        if not morning.get("no_trade_reasons"):
+            warnings.append("morning_watchlist_accepted_empty_without_no_trade_reasons")
+    elif validation_status == "accepted_with_warnings" and item_rows and not validation_errors:
+        status = "accepted"
+        usable = True
+        warnings.append("morning_watchlist_accepted_with_warnings")
+    else:
+        status = "invalid"
+        usable = False
+        warnings.append("morning_watchlist_invalid_unusable")
+
+    if now_kst:
+        now_dt = _parse_kst_timestamp(now_kst, "morning_watchlist_now_kst", [])
+        generated_raw = (
+            morning.get("generated_at_kst")
+            or morning.get("produced_at_kst")
+            or morning.get("created_at_kst")
+        )
+        generated_dt = _parse_kst_timestamp(generated_raw, "morning_watchlist_generated_at_kst", []) if generated_raw else None
+        if now_dt and generated_dt and generated_dt.astimezone(KST).date() > now_dt.astimezone(KST).date():
+            status = "stale"
+            usable = False
+            warnings.append("morning_watchlist_generated_after_current_date")
+
+    return {
+        "status": status,
+        "usable": usable,
+        "artifact_id": artifact_id,
+        "safe_block_id": safe_block_id,
+        "validation_status": validation_status,
+        "validation_errors": validation_errors,
+        "items_count": len(item_rows),
+        "eligible_count": eligible_count,
+        "target_trade_date_kst": morning_target or expected_target,
+        "warnings": _dedupe_strings(warnings),
+    }
+
+
 def buildProvisionalCompiledWatchFromMorningWatchlist(
     morning_watchlist: Optional[Mapping[str, Any]],
     *,
@@ -831,12 +948,14 @@ def buildProvisionalCompiledWatchFromMorningWatchlist(
     produced_dt = _parse_kst_timestamp(produced_at, "produced_at_kst", [])
     valid_until = (produced_dt + timedelta(minutes=10)).isoformat() if produced_dt else produced_at
     morning = deepcopy(dict(morning_watchlist or {}))
-    morning_ref = str(
-        morning.get("artifact_id")
-        or morning.get("watchlist_id")
-        or morning.get("safe_block_id")
-        or ""
-    ).strip()
+    classification = classifyMorningWatchlistArtifact(
+        morning,
+        target_trade_date=produced_dt.astimezone(KST).date().isoformat() if produced_dt else None,
+        now_kst=produced_at,
+    )
+    if classification["usable"] is not True:
+        return []
+    morning_ref = _morning_watchlist_ref(morning)
     candidates: List[Dict[str, Any]] = []
     for item in morning.get("items") or []:
         if not isinstance(item, Mapping):
@@ -943,15 +1062,20 @@ def buildFlashTradeDocument(
     market_feed = rp.normalizeMarketAnalysisFeedMode(market_analysis_feed_mode)
     execution_mode = rp.normalizeExecutionVenueMode(execution_venue_mode)
     morning = deepcopy(dict(morning_watchlist or {}))
-    morning_ref = str(
-        morning.get("artifact_id")
-        or morning.get("watchlist_id")
-        or morning.get("safe_block_id")
-        or ""
-    ).strip()
-    morning_warnings: List[str] = []
+    target_day = produced_dt.astimezone(KST).date().isoformat() if produced_dt else None
+    morning_classification = classifyMorningWatchlistArtifact(
+        morning,
+        target_trade_date=target_day,
+        now_kst=produced_at,
+    )
+    morning_ref = (
+        str(morning_classification.get("artifact_id") or "").strip()
+        or str(morning_classification.get("safe_block_id") or "").strip()
+        or _morning_watchlist_ref(morning)
+    )
+    morning_warnings: List[str] = list(morning_classification.get("warnings") or [])
     if produced_dt and rp.isFirstFlashBucket(produced_dt, investment_mode=mode):
-        if not morning_ref:
+        if morning_classification["status"] == "missing":
             sentinel = buildNoTradeSentinel(
                 job_id="deepseek_flash_trade_document_10m",
                 reason="missing_morning_watchlist_for_first_flash_bucket",
@@ -968,7 +1092,9 @@ def buildFlashTradeDocument(
                 }
             )
             return sentinel
-        morning_warnings = _first_flash_morning_watchlist_warnings(morning, produced_dt)
+        morning_warnings = _dedupe_strings(
+            morning_warnings + _first_flash_morning_watchlist_warnings(morning, produced_dt)
+        )
     watch_rows = [deepcopy(dict(row)) for row in (compiled_watch or [])]
     event_rows = [deepcopy(dict(event)) for event in (recent_events or [])]
     market_rows = [deepcopy(dict(row)) for row in (kis_market_snapshots or [])]
@@ -977,7 +1103,7 @@ def buildFlashTradeDocument(
     previous_docs = [deepcopy(dict(doc)) for doc in (previous_trade_documents or [])]
     candidate_universe_source = "kis_compiled_watch" if watch_rows else "none"
     candidate_universe_warnings: List[str] = []
-    if not watch_rows:
+    if not watch_rows and morning_classification["usable"] is True:
         watch_rows = buildProvisionalCompiledWatchFromMorningWatchlist(
             morning,
             produced_at_kst=produced_at,
@@ -985,6 +1111,11 @@ def buildFlashTradeDocument(
         if watch_rows:
             candidate_universe_source = "gpt_morning_watchlist_provisional"
             candidate_universe_warnings.append("kis_compiled_watch_empty_using_morning_watchlist_fallback")
+    if morning_classification["usable"] is not True:
+        if candidate_universe_source == "kis_compiled_watch" and watch_rows:
+            candidate_universe_warnings.append("flash_running_without_usable_morning_watchlist")
+        if morning_classification["status"] == "safe_block":
+            candidate_universe_warnings.append("morning_watchlist_safe_block_unusable")
 
     if not pro_artifact:
         return buildNoTradeSentinel(
@@ -993,6 +1124,31 @@ def buildFlashTradeDocument(
             produced_at_kst=produced_at,
         )
     if not watch_rows:
+        if (
+            morning_classification["usable"] is not True
+            and morning_classification["status"] != "accepted_empty_no_trade"
+        ):
+            sentinel = buildNoTradeSentinel(
+                job_id="deepseek_flash_trade_document_10m",
+                reason="missing_usable_morning_watchlist_and_candidate_universe",
+                produced_at_kst=produced_at,
+            )
+            sentinel.update(
+                {
+                    "candidate_universe_source": "none",
+                    "candidate_universe_count": 0,
+                    "morning_watchlist_ref": morning_ref,
+                    "morning_watchlist_status": morning_classification["status"],
+                    "morning_watchlist_usable": bool(morning_classification["usable"]),
+                    "morning_watchlist_items_count": morning_classification["items_count"],
+                    "morning_watchlist_eligible_count": morning_classification["eligible_count"],
+                    "morning_watchlist_validation_status": morning_classification["validation_status"],
+                    "morning_watchlist_validation_errors": morning_classification["validation_errors"],
+                    "morning_watchlist_safe_block_id": morning_classification["safe_block_id"],
+                    "morning_watchlist_warnings": morning_warnings,
+                }
+            )
+            return sentinel
         preview_market_refs = [
             str(row.get("artifact_id") or row.get("snapshot_id") or "").strip()
             for row in market_rows
@@ -1013,7 +1169,14 @@ def buildFlashTradeDocument(
         else:
             sentinel = buildNoTradeSentinel(
                 job_id="deepseek_flash_trade_document_10m",
-                reason="missing_compiled_watch_candidate_universe",
+                reason=(
+                    "missing_usable_morning_watchlist_and_candidate_universe"
+                    if (
+                        morning_classification["usable"] is not True
+                        and morning_classification["status"] != "accepted_empty_no_trade"
+                    )
+                    else "missing_compiled_watch_candidate_universe"
+                ),
                 produced_at_kst=produced_at,
             )
             sentinel.update(
@@ -1021,6 +1184,14 @@ def buildFlashTradeDocument(
                     "candidate_universe_source": "none",
                     "candidate_universe_count": 0,
                     "morning_watchlist_ref": morning_ref,
+                    "morning_watchlist_status": morning_classification["status"],
+                    "morning_watchlist_usable": bool(morning_classification["usable"]),
+                    "morning_watchlist_items_count": morning_classification["items_count"],
+                    "morning_watchlist_eligible_count": morning_classification["eligible_count"],
+                    "morning_watchlist_validation_status": morning_classification["validation_status"],
+                    "morning_watchlist_validation_errors": morning_classification["validation_errors"],
+                    "morning_watchlist_safe_block_id": morning_classification["safe_block_id"],
+                    "morning_watchlist_warnings": morning_warnings,
                 }
             )
             return sentinel
@@ -1378,7 +1549,13 @@ def buildFlashTradeDocument(
         "pro_hourly_ref": str(dict(pro_artifact).get("artifact_id") or ""),
         "morning_watchlist_ref": morning_ref,
         "morning_watchlist_required": bool(produced_dt and rp.isFirstFlashBucket(produced_dt, investment_mode=mode)),
-        "morning_watchlist_status": "provisional" if morning_warnings else ("accepted" if morning_ref else "missing"),
+        "morning_watchlist_status": morning_classification["status"],
+        "morning_watchlist_usable": bool(morning_classification["usable"]),
+        "morning_watchlist_items_count": morning_classification["items_count"],
+        "morning_watchlist_eligible_count": morning_classification["eligible_count"],
+        "morning_watchlist_validation_status": morning_classification["validation_status"],
+        "morning_watchlist_validation_errors": morning_classification["validation_errors"],
+        "morning_watchlist_safe_block_id": morning_classification["safe_block_id"],
         "morning_watchlist_warnings": morning_warnings,
         "morning_watchlist_refresh_required": bool(
             morning.get("requires_monday_refresh") is True
@@ -1431,7 +1608,11 @@ def buildFlashTradeDocument(
         "actions": actions,
         "position_actions": position_actions,
         "no_trade_reasons": [],
-        "global_risk_flags": ["pro_hourly_low_utility", "pro_context_low_utility"] if pro_low_utility else [],
+        "global_risk_flags": _dedupe_strings(
+            (["pro_hourly_low_utility", "pro_context_low_utility"] if pro_low_utility else [])
+            + (["morning_watchlist_unavailable"] if morning_classification["usable"] is not True else [])
+            + (["morning_watchlist_safe_block_unusable"] if morning_classification["status"] == "safe_block" else [])
+        ),
         "warnings": candidate_universe_warnings,
         "operator_notes": candidate_universe_warnings,
         "analysis_language": "ko-KR",

@@ -156,6 +156,21 @@ published_to_canonical_data = (
     and publish.get("validation_status") in {"accepted", "safe_block"}
     and all(Path(path).is_file() for path in canonical_paths.values())
 )
+validation_status = publish.get("validation_status") if isinstance(publish, dict) else None
+validation_errors = publish.get("validation_errors") if isinstance(publish, dict) else []
+if not isinstance(validation_errors, list):
+    validation_errors = [validation_errors] if validation_errors else []
+publish_status = "accepted" if validation_status == "accepted" else ("safe_block" if validation_status == "safe_block" else "missing")
+response_json_exists = Path(os.environ["RESPONSE"]).is_file()
+response_raw_exists = Path(os.environ["RAW_RESPONSE"]).is_file()
+parse_status = "parsed" if isinstance(response, dict) else ("missing" if not response_json_exists else "invalid_json")
+watchlist_accepted = validation_status == "accepted"
+watchlist_usable = (
+    watchlist_accepted
+    and isinstance(publish, dict)
+    and isinstance(publish.get("items"), list)
+    and len(publish.get("items") or []) > 0
+)
 summary = {
     "run_id": os.environ["RUN_ID"],
     "status": os.environ["HWISTOCK_GPT_SUMMARY_STATUS"],
@@ -190,10 +205,18 @@ summary = {
         else None
     ),
     "safe_block_id": publish.get("safe_block_id") if isinstance(publish, dict) else None,
-    "validation_status": publish.get("validation_status") if isinstance(publish, dict) else None,
+    "validation_status": validation_status,
+    "validation_errors": validation_errors,
     "artifact_paths": publish.get("artifact_paths") if isinstance(publish, dict) else None,
     "canonical_artifact_paths": canonical_paths,
     "published_to_canonical_data": published_to_canonical_data,
+    "canonical_artifact_written": published_to_canonical_data,
+    "watchlist_accepted": watchlist_accepted,
+    "watchlist_usable": watchlist_usable,
+    "response_json_exists": response_json_exists,
+    "response_raw_exists": response_raw_exists,
+    "parse_status": parse_status,
+    "publish_status": publish_status,
     "route": (response or publish or {}).get("route") if isinstance((response or publish or {}), dict) else None,
     "reviewer": (response or publish or {}).get("reviewer") if isinstance((response or publish or {}), dict) else None,
     "items_count": len((response or {}).get("items") or []) if isinstance(response, dict) else 0,

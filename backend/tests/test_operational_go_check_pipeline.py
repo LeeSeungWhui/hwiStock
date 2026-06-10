@@ -692,6 +692,8 @@ def test_gpt_fallback_without_kis_quote_rejects_paper_intent_even_after_wait_buy
     morning = {
         "schema_version": "morning_watchlist/v1",
         "artifact_id": "art_morning_watchlist_20260605_0715",
+        "target_trade_date_kst": "2026-06-05",
+        "validation_status": "accepted",
         "items": [{"ticker": "005930", "stance": "eligible_for_flash_review", "source_refs": ["naver:news:1"]}],
     }
     doc = ao.buildFlashTradeDocument(

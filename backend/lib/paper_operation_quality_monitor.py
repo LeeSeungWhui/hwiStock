@@ -64,6 +64,9 @@ def _dayPaths(dataRoot: Path, day: str) -> dict[str, str]:
         "kisMarket": dataRoot / "kis-market" / day / "kis-market-snapshot-latest.json",
         "compiledWatch": dataRoot / "compiled-watch" / day / "compiled-watch-latest.json",
         "flashTradeDocument": dataRoot / "trade-documents" / day / "flash-trade-document-latest.json",
+        "morningWatchlist": dataRoot / "morning-watchlist" / day / "morning-watchlist-latest.json",
+        "gptMorningPromptHealth": dataRoot / "evidence" / day / "gpt-morning-prompt-health.json",
+        "morningWatchlistPublishHealth": dataRoot / "evidence" / day / "morning-watchlist-publish-health.json",
         "kisPaperRunner": dataRoot / "evidence" / day / "kis-paper-continuous-latest.json",
     }
     return {key: str(path) for key, path in paths.items() if path.exists()}
@@ -202,6 +205,74 @@ def _checkFlashProvider(*, at: datetime, flash: Mapping[str, Any]) -> dict[str, 
         "no_trade_reason": noTradeReason or None,
         "candidate_universe_source": flash.get("candidate_universe_source"),
         "candidate_universe_count": candidateCount,
+        "p0_conditions": p0,
+    }
+
+
+def _morningUsable(morning: Mapping[str, Any]) -> bool:
+    if not morning:
+        return False
+    if str(morning.get("validation_status") or "") != "accepted":
+        return False
+    items = morning.get("items")
+    return isinstance(items, list) and len(items) > 0
+
+
+def _checkMorningWatchlistUse(
+    *,
+    at: datetime,
+    flash: Mapping[str, Any],
+    morning: Mapping[str, Any],
+    compiledWatch: Mapping[str, Any],
+    kisMarket: Mapping[str, Any],
+    promptHealth: Mapping[str, Any],
+    publishHealth: Mapping[str, Any],
+) -> dict[str, Any]:
+    evaluated = _isAfterOpenCutoff(at)
+    p0: list[str] = []
+    warnings: list[str] = []
+    morningValidationStatus = str(morning.get("validation_status") or "missing")
+    morningStatus = str(flash.get("morning_watchlist_status") or "missing")
+    flashMorningUsable = flash.get("morning_watchlist_usable")
+    morningUsable = _morningUsable(morning)
+    candidateCount = _asPositiveInt(flash.get("candidate_universe_count"))
+    if candidateCount is None:
+        candidateCount = _candidateCount(compiledWatch, kisMarket)
+    candidateSource = str(flash.get("candidate_universe_source") or "")
+    if evaluated and morningValidationStatus == "safe_block" and morningStatus == "accepted":
+        p0.append("morning_watchlist_safe_block_but_flash_marks_accepted")
+    if evaluated and morningValidationStatus == "safe_block" and flashMorningUsable is True:
+        p0.append("flash_uses_unusable_morning_watchlist")
+    if evaluated and not morningUsable and candidateSource == "gpt_morning_watchlist_provisional":
+        p0.append("flash_uses_unusable_morning_watchlist")
+    if (
+        evaluated
+        and flash.get("morning_watchlist_required") is True
+        and not morningUsable
+        and int(candidateCount or 0) <= 0
+    ):
+        p0.append("first_flash_without_usable_morning_or_kis_candidates")
+    if (
+        evaluated
+        and str(promptHealth.get("status") or "") == "ok"
+        and (
+            str(publishHealth.get("status") or "") == "safe_block"
+            or morningValidationStatus == "safe_block"
+        )
+    ):
+        warnings.append("gpt_morning_prompt_ok_publish_safe_block")
+    return {
+        "status": "p0" if p0 else ("warn" if warnings else "pass"),
+        "evaluated": evaluated,
+        "morning_validation_status": morningValidationStatus,
+        "flash_morning_watchlist_status": morningStatus,
+        "flash_morning_watchlist_usable": flashMorningUsable,
+        "underlying_morning_usable": morningUsable,
+        "candidate_universe_source": candidateSource or None,
+        "candidate_universe_count": int(candidateCount or 0),
+        "prompt_status": promptHealth.get("status"),
+        "publish_status": publishHealth.get("status"),
+        "warnings": warnings,
         "p0_conditions": p0,
     }
 
@@ -432,10 +503,22 @@ def evaluatePaperOperationQuality(
     compiledWatch = artifacts.get("compiledWatch") or {}
     kisMarket = artifacts.get("kisMarket") or {}
     flash = artifacts.get("flashTradeDocument") or {}
+    morning = artifacts.get("morningWatchlist") or {}
+    promptHealth = artifacts.get("gptMorningPromptHealth") or {}
+    publishHealth = artifacts.get("morningWatchlistPublishHealth") or {}
     runner = artifacts.get("kisPaperRunner") or {}
     checks = {
         "candidate_universe": _checkCandidateUniverse(at=now, compiledWatch=compiledWatch, kisMarket=kisMarket),
         "flash_provider": _checkFlashProvider(at=now, flash=flash),
+        "morning_watchlist_use": _checkMorningWatchlistUse(
+            at=now,
+            flash=flash,
+            morning=morning,
+            compiledWatch=compiledWatch,
+            kisMarket=kisMarket,
+            promptHealth=promptHealth,
+            publishHealth=publishHealth,
+        ),
         "buy_sizing": _checkBuySizing(flash),
         "sell_pipeline": _checkSellPipeline(flash, runner=runner, at=now),
         "runner_sell_execution": _checkRunnerSellExecution(at=now, runner=runner),
@@ -444,6 +527,7 @@ def evaluatePaperOperationQuality(
     warnings: list[str] = []
     for check in checks.values():
         p0Conditions.extend(str(item) for item in (check.get("p0_conditions") or []))
+        warnings.extend(str(item) for item in (check.get("warnings") or []))
         if check.get("status") == "observation_only":
             warnings.append("off_session_or_before_open_cutoff_observation_only")
     status = "p0" if p0Conditions else ("warn" if warnings else "pass")

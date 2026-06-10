@@ -80,6 +80,32 @@ def _write_flash(root: Path, payload: dict) -> None:
     _write_json(root, f"trade-documents/{DAY}/flash-trade-document-latest.json", base)
 
 
+def _write_morning_watchlist(root: Path, payload: dict) -> None:
+    base = {
+        "schema_version": "morning_watchlist/v1",
+        "artifact_id": "art_morning_quality_test",
+        "target_trade_date_kst": DAY,
+        "generated_at_kst": f"{DAY}T07:15:00+09:00",
+        "validation_status": "accepted",
+        "items": [{"ticker": "005930", "stance": "eligible_for_flash_review"}],
+    }
+    base.update(payload)
+    _write_json(root, f"morning-watchlist/{DAY}/morning-watchlist-latest.json", base)
+
+
+def _write_gpt_morning_health(root: Path, *, prompt_status: str = "ok", publish_status: str = "accepted") -> None:
+    _write_json(
+        root,
+        f"evidence/{DAY}/gpt-morning-prompt-health.json",
+        {"event": "gpt_morning_prompt_health", "status": prompt_status, "target_trade_date_kst": DAY},
+    )
+    _write_json(
+        root,
+        f"evidence/{DAY}/morning-watchlist-publish-health.json",
+        {"event": "morning_watchlist_publish_health", "status": publish_status, "target_trade_date_kst": DAY},
+    )
+
+
 def _write_runner(root: Path, payload: dict | None = None) -> None:
     base = {
         "timestamp_kst": f"{DAY}T09:10:00+09:00",
@@ -121,6 +147,40 @@ def test_monitor_flags_candidate_universe_and_flash_safe_block_after_open_cutoff
     assert "flash_safe_block_missing_candidate_universe_after_open_cutoff" in result["p0_conditions"]
     assert result["broker_calls_enabled"] is False
     assert result["orders_enabled"] is False
+
+
+def test_monitor_flags_safe_block_morning_marked_accepted(tmp_path: Path):
+    _write_compiled_watch(tmp_path, count=1)
+    _write_kis_market(tmp_path, count=1)
+    _write_morning_watchlist(
+        tmp_path,
+        {
+            "artifact_id": None,
+            "safe_block_id": "art_morning_watchlist_20260610_071505_safe_block",
+            "validation_status": "safe_block",
+            "validation_errors": ["missing_morning_watchlist_payload"],
+            "items": [],
+        },
+    )
+    _write_gpt_morning_health(tmp_path, prompt_status="ok", publish_status="safe_block")
+    _write_flash(
+        tmp_path,
+        {
+            "morning_watchlist_ref": "art_morning_watchlist_20260610_071505_safe_block",
+            "morning_watchlist_status": "accepted",
+            "morning_watchlist_usable": True,
+            "candidate_universe_source": "kis_compiled_watch",
+            "candidate_universe_count": 1,
+        },
+    )
+    _write_runner(tmp_path)
+
+    result = monitor.evaluatePaperOperationQuality(data_root=tmp_path, at=_at())
+
+    assert result["status"] == "p0"
+    assert "morning_watchlist_safe_block_but_flash_marks_accepted" in result["p0_conditions"]
+    assert "flash_uses_unusable_morning_watchlist" in result["p0_conditions"]
+    assert "gpt_morning_prompt_ok_publish_safe_block" in result["warnings"]
 
 
 def test_monitor_keeps_after_hours_empty_candidate_as_observation_only(tmp_path: Path):

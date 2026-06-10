@@ -116,6 +116,7 @@ def _morning_watchlist(**overrides):
         "purpose": "daily_preopen_final",
         "requires_monday_refresh": False,
         "forbidden_actions_acknowledged": True,
+        "validation_status": "accepted",
         "items": [{"ticker": "005930", "stance": "eligible_for_flash_review"}],
     }
     payload.update(overrides)
@@ -582,7 +583,8 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         self.assertEqual(doc["document_kind"], "TRADE_ACTIONS")
         self.assertEqual(doc["morning_watchlist_ref"], "art_morning_watchlist_20260608_sunday_rehearsal")
         self.assertTrue(doc["morning_watchlist_required"])
-        self.assertEqual(doc["morning_watchlist_status"], "provisional")
+        self.assertEqual(doc["morning_watchlist_status"], "accepted")
+        self.assertTrue(doc["morning_watchlist_usable"])
         self.assertTrue(doc["morning_watchlist_refresh_required"])
         self.assertIn("monday_final_morning_watchlist_refresh_recommended", doc["morning_watchlist_warnings"])
         self.assertIn("morning_watchlist_is_rehearsal_or_candidate", doc["morning_watchlist_warnings"])
@@ -608,7 +610,8 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         )
         self.assertEqual(doc["document_kind"], "TRADE_ACTIONS")
         self.assertEqual(doc["morning_watchlist_ref"], "art_morning_watchlist_20260608_stale_sunday")
-        self.assertEqual(doc["morning_watchlist_status"], "provisional")
+        self.assertEqual(doc["morning_watchlist_status"], "accepted")
+        self.assertTrue(doc["morning_watchlist_usable"])
         self.assertIn("morning_watchlist_generated_before_trade_date", doc["morning_watchlist_warnings"])
         self.assertEqual(doc["actions"][0]["action"], "WAIT_BUY")
 
@@ -627,6 +630,123 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         self.assertEqual(doc["candidate_universe_source"], "kis_compiled_watch")
         self.assertEqual(doc["candidate_universe_count"], 1)
         self.assertNotIn("kis_compiled_watch_empty_using_morning_watchlist_fallback", doc.get("warnings", []))
+
+    def testClassifySafeBlockMorningWatchlistUnusable(self):
+        result = ao.classifyMorningWatchlistArtifact(
+            {
+                "schema_version": "morning_watchlist/v1",
+                "safe_block_id": "art_morning_watchlist_20260610_071505_safe_block",
+                "target_trade_date_kst": "2026-06-10",
+                "validation_status": "safe_block",
+                "validation_errors": ["missing_morning_watchlist_payload"],
+                "items": [],
+            },
+            target_trade_date="2026-06-10",
+            now_kst="2026-06-10T09:00:00+09:00",
+        )
+
+        self.assertEqual(result["status"], "safe_block")
+        self.assertFalse(result["usable"])
+        self.assertEqual(result["safe_block_id"], "art_morning_watchlist_20260610_071505_safe_block")
+        self.assertEqual(result["items_count"], 0)
+        self.assertIn("morning_watchlist_safe_block_unusable", result["warnings"])
+
+    def testClassifyAcceptedMorningWatchlistWithItemsUsable(self):
+        result = ao.classifyMorningWatchlistArtifact(
+            _morning_watchlist(target_trade_date_kst="2026-06-10"),
+            target_trade_date="2026-06-10",
+            now_kst="2026-06-10T09:00:00+09:00",
+        )
+
+        self.assertEqual(result["status"], "accepted")
+        self.assertTrue(result["usable"])
+        self.assertEqual(result["items_count"], 1)
+        self.assertEqual(result["eligible_count"], 1)
+
+    def testClassifyTargetDateMismatchStale(self):
+        result = ao.classifyMorningWatchlistArtifact(
+            _morning_watchlist(target_trade_date_kst="2026-06-09"),
+            target_trade_date="2026-06-10",
+            now_kst="2026-06-10T09:00:00+09:00",
+        )
+
+        self.assertEqual(result["status"], "stale")
+        self.assertFalse(result["usable"])
+        self.assertIn("morning_watchlist_target_trade_date_mismatch", result["warnings"])
+
+    def testFlashMarksSafeBlockMorningAsUnusableNotAccepted(self):
+        doc = ao.buildFlashTradeDocument(
+            pro_artifact={"artifact_id": "art_pro_hourly_20260610_0900"},
+            recent_events=[{"source_event_id": KNOWN_SOURCE_IDS[0]}],
+            kis_market_snapshots=[{"artifact_id": "art_kis_snapshot_20260610_0900"}],
+            compiled_watch=[{"schema_version": "compiled_watch/v0", "symbol": "005930", "source_ids": KNOWN_SOURCE_IDS}],
+            portfolio_snapshot={"artifact_id": "art_portfolio_20260610_0900", "holdings": []},
+            order_state_snapshot={"artifact_id": "art_order_state_20260610_0900", "pending_orders": []},
+            morning_watchlist={
+                "schema_version": "morning_watchlist/v1",
+                "safe_block_id": "art_morning_watchlist_20260610_071505_safe_block",
+                "target_trade_date_kst": "2026-06-10",
+                "validation_status": "safe_block",
+                "validation_errors": ["missing_morning_watchlist_payload"],
+                "items": [],
+            },
+            produced_at_kst="2026-06-10T09:10:00+09:00",
+        )
+
+        self.assertEqual(doc["morning_watchlist_ref"], "art_morning_watchlist_20260610_071505_safe_block")
+        self.assertEqual(doc["morning_watchlist_status"], "safe_block")
+        self.assertFalse(doc["morning_watchlist_usable"])
+        self.assertEqual(doc["morning_watchlist_items_count"], 0)
+        self.assertEqual(doc["morning_watchlist_validation_errors"], ["missing_morning_watchlist_payload"])
+        self.assertIn("morning_watchlist_safe_block_unusable", doc["global_risk_flags"])
+
+    def testFlashWithSafeBlockMorningAndKisCandidatesRunsKisOnlyWithWarning(self):
+        doc = ao.buildFlashTradeDocument(
+            pro_artifact={"artifact_id": "art_pro_hourly_20260610_0900"},
+            recent_events=[{"source_event_id": KNOWN_SOURCE_IDS[0]}],
+            kis_market_snapshots=[{"artifact_id": "art_kis_snapshot_20260610_0900"}],
+            compiled_watch=[{"schema_version": "compiled_watch/v0", "symbol": "005930", "source_ids": KNOWN_SOURCE_IDS}],
+            portfolio_snapshot={"artifact_id": "art_portfolio_20260610_0900", "holdings": []},
+            order_state_snapshot={"artifact_id": "art_order_state_20260610_0900", "pending_orders": []},
+            morning_watchlist={
+                "schema_version": "morning_watchlist/v1",
+                "safe_block_id": "art_morning_watchlist_20260610_071505_safe_block",
+                "target_trade_date_kst": "2026-06-10",
+                "validation_status": "safe_block",
+                "items": [],
+            },
+            produced_at_kst="2026-06-10T09:10:00+09:00",
+        )
+
+        self.assertNotEqual(doc["document_kind"], "NO_TRADE")
+        self.assertEqual(doc["candidate_universe_source"], "kis_compiled_watch")
+        self.assertEqual(doc["candidate_universe_count"], 1)
+        self.assertIn("flash_running_without_usable_morning_watchlist", doc["warnings"])
+        self.assertNotIn("kis_compiled_watch_empty_using_morning_watchlist_fallback", doc["warnings"])
+
+    def testFlashWithSafeBlockMorningAndNoKisCandidatesNoTrade(self):
+        doc = ao.buildFlashTradeDocument(
+            pro_artifact={"artifact_id": "art_pro_hourly_20260610_0900"},
+            recent_events=[],
+            kis_market_snapshots=[],
+            compiled_watch=[],
+            portfolio_snapshot={"artifact_id": "art_portfolio_20260610_0900", "holdings": []},
+            order_state_snapshot={"artifact_id": "art_order_state_20260610_0900", "pending_orders": []},
+            morning_watchlist={
+                "schema_version": "morning_watchlist/v1",
+                "safe_block_id": "art_morning_watchlist_20260610_071505_safe_block",
+                "target_trade_date_kst": "2026-06-10",
+                "validation_status": "safe_block",
+                "items": [],
+            },
+            produced_at_kst="2026-06-10T09:10:00+09:00",
+        )
+
+        self.assertEqual(doc["document_kind"], "NO_TRADE")
+        self.assertEqual(doc["no_trade_reason"], "missing_usable_morning_watchlist_and_candidate_universe")
+        self.assertEqual(doc["candidate_universe_source"], "none")
+        self.assertEqual(doc["morning_watchlist_status"], "safe_block")
+        self.assertFalse(doc["morning_watchlist_usable"])
 
     def testQa012FlashUsesGptMorningProvisionalUniverseWhenKisCompiledEmpty(self):
         doc = ao.buildFlashTradeDocument(

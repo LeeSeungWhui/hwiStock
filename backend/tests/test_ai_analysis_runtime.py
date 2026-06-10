@@ -1419,6 +1419,7 @@ def test_flash_provider_called_with_morning_fallback_universe(tmp_path: Path, mo
             "artifact_id": "art_morning_watchlist_20260608_0715",
             "target_trade_date_kst": day,
             "generated_at_kst": "2026-06-08T07:15:00+09:00",
+            "validation_status": "accepted",
             "items": [
                 {
                     "ticker": "005930",
@@ -1691,3 +1692,18 @@ def test_gpt_morning_wrapper_requires_top_level_items_validation():
     assert "top_level_eligible_for_flash_review_forbidden" in text
     assert 'raise SystemExit("items_must_be_list")' in text
     assert 'obj.get("items") or []' not in text
+
+
+def test_gpt_morning_wrapper_summary_separates_canonical_written_from_watchlist_usable():
+    script = Path(__file__).resolve().parents[2] / "ops" / "gpt_pro_morning_watchlist.sh"
+    text = script.read_text(encoding="utf-8")
+
+    assert '"canonical_artifact_written": published_to_canonical_data' in text
+    assert '"watchlist_accepted": watchlist_accepted' in text
+    assert '"watchlist_usable": watchlist_usable' in text
+    assert '"response_json_exists": response_json_exists' in text
+    assert '"response_raw_exists": response_raw_exists' in text
+    assert '"parse_status": parse_status' in text
+    assert '"publish_status": publish_status' in text
+    assert 'validation_status == "accepted"' in text
+    assert 'validation_status == "safe_block"' in text
