@@ -256,6 +256,44 @@ def test_default_order_state_snapshot_includes_reconciled_holdings(tmp_path: Pat
     assert snapshot["legacy_consumed_trade_document_ids"] == []
 
 
+def test_default_order_state_snapshot_excludes_previous_timing_pending_orders_for_flash_analysis(tmp_path: Path):
+    data_root = tmp_path / "data"
+    state_path = data_root / "state" / "kis-paper-runner-state.json"
+    _write_json(
+        state_path,
+        {
+            "schema_version": "kis_paper_runner_state/v0",
+            "pending_orders": [
+                {
+                    "symbol": "005930",
+                    "side": "sell",
+                    "quantity": 10,
+                    "broker_order_no": "0000001111",
+                    "submitted_at_kst": "2026-06-08T09:10:15+09:00",
+                },
+                {
+                    "symbol": "000660",
+                    "side": "buy",
+                    "quantity": 1,
+                    "broker_order_no": "0000002222",
+                    "submitted_at_kst": "2026-06-08T09:20:15+09:00",
+                },
+            ],
+            "holdings": [],
+            "active_exits": [],
+            "consumed_intent_keys": [],
+        },
+    )
+    now = datetime.fromisoformat("2026-06-08T09:20:30+09:00")
+
+    snapshot = runtime._default_order_state_snapshot(now, data_root=data_root)  # noqa: SLF001
+
+    assert [row["symbol"] for row in snapshot["pending_orders"]] == ["000660"]
+    assert [row["symbol"] for row in snapshot["stale_pending_orders_excluded_for_analysis"]] == ["005930"]
+    assert snapshot["stale_pending_orders_excluded_for_analysis"][0]["requires_runner_cancel"] is True
+    assert snapshot["account_truth_positions_source"] == "kis_paper_continuous_latest"
+
+
 def test_default_order_state_snapshot_ignores_legacy_consumed_trade_document_ids_for_siblings(tmp_path: Path):
     data_root = tmp_path / "data"
     state_path = data_root / "state" / "kis-paper-runner-state.json"

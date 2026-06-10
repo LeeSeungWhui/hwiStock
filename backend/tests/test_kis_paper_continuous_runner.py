@@ -71,6 +71,15 @@ class FakeTransport:
                     "output": {"ODNO": "1234567890", "KRX_FWDG_ORD_ORGNO": "00123"},
                 },
             }
+        if "/uapi/domestic-stock/v1/trading/order-rvsecncl" in url:
+            return {
+                "http_status": 200,
+                "payload": {
+                    "rt_cd": "0",
+                    "msg_cd": "ok",
+                    "output": {"ODNO": body.get("ORGN_ODNO") if isinstance(body, dict) else "1234567890"},
+                },
+            }
         if "/uapi/domestic-stock/v1/trading/inquire-balance-rlz-pl" in url:
             return {
                 "http_status": 200,
@@ -576,6 +585,105 @@ def test_reconciliation_closes_filled_sell_and_removes_stale_absent_holding():
     assert history_by_symbol["126640"]["remaining_quantity"] == 0
     assert history_by_symbol["126640"]["filled_price"] == 4430
     assert "filled_quantity" not in history_by_symbol["189400"]
+
+
+def test_tick_cancels_previous_timing_unfilled_pending_order(tmp_path: Path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    data_root = tmp_path / "data"
+    state_dir = data_root / "state"
+    state_dir.mkdir(parents=True)
+    (state_dir / "kis-paper-runner-state.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "kis_paper_runner_state/v0",
+                "pending_orders": [
+                    {
+                        "symbol": "005930",
+                        "side": "sell",
+                        "quantity": 10,
+                        "order_price": 70500,
+                        "broker_order_no": "0000001111",
+                        "krx_forwarding_order_orgno": "00123",
+                        "submitted_at_kst": "2026-06-05T09:10:15+09:00",
+                        "idempotency_key": "old-sell-1",
+                    }
+                ],
+                "holdings": [
+                    {
+                        "symbol": "005930",
+                        "quantity": 10,
+                        "sellable_quantity": 10,
+                        "position_state": "holding_confirmed",
+                    }
+                ],
+                "submitted_order_history": [
+                    {
+                        "symbol": "005930",
+                        "side": "sell",
+                        "quantity": 10,
+                        "broker_order_no": "0000001111",
+                        "submitted_at_kst": "2026-06-05T09:10:15+09:00",
+                        "idempotency_key": "old-sell-1",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    env = _env()
+    env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _mark_order_grade_source(env)
+    _order_approval(tmp_path, env)
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(data_root)
+    transport = FakeTransport(
+        balance_positions=[
+            {
+                "pdno": "005930",
+                "prdt_name": "삼성전자",
+                "hldg_qty": "10",
+                "ord_psbl_qty": "10",
+                "pchs_avg_pric": "70000",
+                "prpr": "70400",
+            }
+        ],
+        daily_fills=[
+            {
+                "pdno": "005930",
+                "sll_buy_dvsn_cd": "01",
+                "odno": "0000001111",
+                "ord_qty": "10",
+                "tot_ccld_qty": "0",
+                "rmn_qty": "10",
+                "ord_unpr": "70500",
+            }
+        ],
+    )
+
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=KisPaperAdapter(env=env, transport=transport),
+        at_kst="2026-06-05T09:20:01",
+    )
+
+    cancel_step = [
+        step for step in payload["steps"]
+        if step.get("step") == "previous_timing_pending_order_cancellation"
+    ][-1]
+    assert cancel_step["status"] == "pass"
+    assert cancel_step["cancelled_order_numbers"] == ["0000001111"]
+    assert cancel_step["cancelled_symbols"] == ["005930"]
+    cancel_calls = [call for call in transport.calls if "/order-rvsecncl" in call["url"]]
+    assert len(cancel_calls) == 1
+    assert cancel_calls[0]["body"]["ORGN_ODNO"] == "0000001111"
+    assert cancel_calls[0]["body"]["ORD_QTY"] == "10"
+    state = json.loads((state_dir / "kis-paper-runner-state.json").read_text(encoding="utf-8"))
+    assert state["pending_orders"] == []
+    assert state["cancelled_orders"][0]["symbol"] == "005930"
+    history = {row["broker_order_no"]: row for row in state["submitted_order_history"]}
+    assert history["0000001111"]["order_state"] == "cancelled"
+    assert history["0000001111"]["cancel_reason"] == "previous_timing_unfilled_order"
 
 
 def test_tick_without_intent_or_reconciliation_does_not_call_kis_account_truth(tmp_path: Path, monkeypatch):

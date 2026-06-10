@@ -920,7 +920,18 @@ class KisPaperAdapter:
             headers=self.authHeaders(token, "VTTC0803U"),
             body=body,
         )
-        return sanitizeKisResponse(response, step="cancel_order")
+        result = sanitizeKisResponse(response, step="cancel_order")
+        result.update(
+            {
+                "broker_endpoint_called": True,
+                "order_cancel_modify_called": True,
+                "original_order_no": original_order_no,
+                "original_order_orgno": original_order_orgno,
+                "cancel_quantity": int(quantity or 0),
+                "cancel_all_quantity": int(quantity or 0) <= 0,
+            }
+        )
+        return result
 
     def blockedIfMissingEnv(self, step: str) -> Optional[Dict[str, Any]]:
         missing = self.missingEnvKeys()

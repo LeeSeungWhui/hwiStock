@@ -896,6 +896,259 @@ def _remaining_quantity_from_row(row: Mapping[str, Any]) -> Optional[int]:
     return None
 
 
+def _ten_minute_bucket_start(value: datetime) -> datetime:
+    local = value.astimezone(KST)
+    return local.replace(minute=(local.minute // 10) * 10, second=0, microsecond=0)
+
+
+def _pending_submitted_at(row: Mapping[str, Any]) -> Optional[datetime]:
+    return _parse_optional_kst_timestamp(
+        row.get("submitted_at_kst")
+        or row.get("created_at_kst")
+        or row.get("recorded_at_kst")
+    )
+
+
+def _matching_daily_fill_for_pending(
+    pending: Mapping[str, Any],
+    account_truth: Mapping[str, Any],
+) -> Optional[Dict[str, Any]]:
+    pending_order_no = _order_number_from_row(pending)
+    pending_symbol = _symbol_from_row(pending)
+    pending_side = str(pending.get("side") or "").strip().lower()
+    for row in account_truth.get("daily_order_fills") or []:
+        if not isinstance(row, Mapping):
+            continue
+        row_order_no = _order_number_from_row(row)
+        row_symbol = _symbol_from_row(row)
+        row_side = str(row.get("side") or "").strip().lower()
+        if pending_order_no and row_order_no and row_order_no == pending_order_no:
+            return dict(row)
+        if not pending_order_no and pending_symbol and row_symbol == pending_symbol and row_side == pending_side:
+            return dict(row)
+    return None
+
+
+def _pending_remaining_quantity(
+    pending: Mapping[str, Any],
+    account_truth: Mapping[str, Any],
+) -> int:
+    fill = _matching_daily_fill_for_pending(pending, account_truth)
+    if fill:
+        remaining = _remaining_quantity_from_row(fill)
+        if remaining is not None:
+            return remaining
+        filled = _filled_quantity_from_row(fill)
+        order_quantity = _coerce_nonnegative_int(fill.get("order_quantity"), 0)
+        if order_quantity > 0:
+            return max(order_quantity - filled, 0)
+    local_remaining = _remaining_quantity_from_row(pending)
+    if local_remaining is not None:
+        return local_remaining
+    return _positive_quantity_from_row(pending)
+
+
+def _is_previous_timing_pending_order(
+    pending: Mapping[str, Any],
+    *,
+    now: datetime,
+) -> bool:
+    if not _order_number_from_row(pending):
+        return False
+    submitted_at = _pending_submitted_at(pending)
+    if submitted_at is None:
+        return False
+    return submitted_at < _ten_minute_bucket_start(now)
+
+
+def _mark_pending_order_cancelled(
+    state: Dict[str, Any],
+    pending: Mapping[str, Any],
+    cancel_step: Mapping[str, Any],
+    *,
+    now: datetime,
+    reason: str,
+    remaining_quantity: int,
+) -> None:
+    order_no = _order_number_from_row(pending)
+    key = str(pending.get("idempotency_key") or "").strip()
+    symbol = _symbol_from_row(pending)
+    cancelled_row = {
+        **dict(pending),
+        "order_state": "cancelled",
+        "cancel_status": cancel_step.get("status"),
+        "cancelled_at_kst": now.isoformat(),
+        "cancel_reason": reason,
+        "remaining_quantity": remaining_quantity,
+        "broker_cancel_endpoint_called": bool(cancel_step.get("broker_endpoint_called")),
+        "order_cancel_modify_called": bool(cancel_step.get("order_cancel_modify_called")),
+    }
+    cancelled_rows = [
+        dict(row)
+        for row in (state.get("cancelled_orders") or [])
+        if isinstance(row, Mapping)
+    ]
+    cancelled_rows.append(cancelled_row)
+    state["cancelled_orders"] = cancelled_rows[-200:]
+
+    history_rows: list[Dict[str, Any]] = []
+    matched_history = False
+    for row in state.get("submitted_order_history") or []:
+        if not isinstance(row, Mapping):
+            continue
+        updated = dict(row)
+        row_order_no = _order_number_from_row(updated)
+        row_key = str(updated.get("idempotency_key") or "").strip()
+        row_symbol = _symbol_from_row(updated)
+        if (order_no and row_order_no == order_no) or (key and row_key == key) or (
+            not order_no and not key and symbol and row_symbol == symbol
+        ):
+            updated.update(cancelled_row)
+            matched_history = True
+        history_rows.append(updated)
+    if not matched_history:
+        history_rows.append(cancelled_row)
+    state["submitted_order_history"] = history_rows[-500:]
+    state["last_updated_kst"] = now.isoformat()
+
+
+def _cancel_previous_timing_pending_orders(
+    state: Dict[str, Any],
+    account_truth: Mapping[str, Any],
+    *,
+    adapter: KisPaperAdapter,
+    token: str,
+    now: datetime,
+    enabled: bool,
+    gate: Mapping[str, Any],
+) -> Dict[str, Any]:
+    pending_rows = [
+        dict(row)
+        for row in (state.get("pending_orders") or [])
+        if isinstance(row, Mapping)
+    ]
+    candidates: list[Dict[str, Any]] = []
+    for pending in pending_rows:
+        remaining_quantity = _pending_remaining_quantity(pending, account_truth)
+        if remaining_quantity <= 0:
+            continue
+        if not _is_previous_timing_pending_order(pending, now=now):
+            continue
+        row = dict(pending)
+        row["_remaining_quantity"] = remaining_quantity
+        candidates.append(row)
+
+    if not candidates:
+        return {
+            "step": "previous_timing_pending_order_cancellation",
+            "status": "skipped_no_previous_timing_pending_orders",
+            "broker_endpoint_called": False,
+            "order_cancel_modify_called": False,
+            "cancelled_count": 0,
+            "failed_count": 0,
+            "candidate_count": 0,
+        }
+    if not enabled:
+        return {
+            "step": "previous_timing_pending_order_cancellation",
+            "status": "blocked_paper_order_disabled",
+            "broker_endpoint_called": False,
+            "order_cancel_modify_called": False,
+            "candidate_count": len(candidates),
+            "cancelled_count": 0,
+            "failed_count": len(candidates),
+            "reason": "paper_order_enabled_required_for_cancel",
+        }
+    gate_payload = gate.get("evidence_payload") if isinstance(gate.get("evidence_payload"), Mapping) else {}
+    if gate.get("allowed") is not True:
+        return {
+            "step": "previous_timing_pending_order_cancellation",
+            "status": "blocked_market_session_gate",
+            "broker_endpoint_called": False,
+            "order_cancel_modify_called": False,
+            "candidate_count": len(candidates),
+            "cancelled_count": 0,
+            "failed_count": len(candidates),
+            "reason": gate.get("reason"),
+            "marketSessionGate": dict(gate_payload),
+        }
+
+    cancelled_order_numbers: list[str] = []
+    cancelled_symbols: list[str] = []
+    failed_symbols: list[str] = []
+    cancel_results: list[Dict[str, Any]] = []
+    pending_after = list(pending_rows)
+    for candidate in candidates:
+        order_no = _order_number_from_row(candidate)
+        symbol = _symbol_from_row(candidate)
+        remaining_quantity = _coerce_nonnegative_int(candidate.get("_remaining_quantity"), 0)
+        try:
+            cancel_step = adapter.cancelOrder(
+                token,
+                original_order_no=order_no,
+                original_order_orgno=str(candidate.get("krx_forwarding_order_orgno") or ""),
+                quantity=remaining_quantity,
+            )
+        except Exception as exc:  # pragma: no cover - defensive network ambiguity boundary
+            cancel_step = {
+                "step": "cancel_order",
+                "status": "warn",
+                "broker_endpoint_called": "unknown",
+                "order_cancel_modify_called": "unknown",
+                "reason": "cancel_order_exception_requires_reconciliation",
+                "error_type": type(exc).__name__,
+            }
+        cancel_result = {
+            **dict(cancel_step),
+            "symbol": symbol,
+            "side": str(candidate.get("side") or "").strip().lower(),
+            "original_order_no": order_no,
+            "remaining_quantity": remaining_quantity,
+            "submitted_at_kst": candidate.get("submitted_at_kst"),
+            "cancel_reason": "previous_timing_unfilled_order",
+        }
+        cancel_results.append(cancel_result)
+        if _broker_step_passed(cancel_step):
+            cancelled_order_numbers.append(order_no)
+            cancelled_symbols.append(symbol)
+            pending_after = [
+                row
+                for row in pending_after
+                if _order_number_from_row(row) != order_no
+            ]
+            _mark_pending_order_cancelled(
+                state,
+                candidate,
+                cancel_result,
+                now=now,
+                reason="previous_timing_unfilled_order",
+                remaining_quantity=remaining_quantity,
+            )
+        else:
+            failed_symbols.append(symbol)
+
+    if cancelled_order_numbers:
+        state["pending_orders"] = pending_after
+        state["last_pending_cancel_sweep_kst"] = now.isoformat()
+        state["last_updated_kst"] = now.isoformat()
+
+    failed_count = len(failed_symbols)
+    return {
+        "step": "previous_timing_pending_order_cancellation",
+        "status": "warn" if failed_count else "pass",
+        "broker_endpoint_called": bool(cancel_results),
+        "order_cancel_modify_called": bool(cancel_results),
+        "candidate_count": len(candidates),
+        "cancelled_count": len(cancelled_order_numbers),
+        "failed_count": failed_count,
+        "cancelled_order_numbers": cancelled_order_numbers,
+        "cancelled_symbols": cancelled_symbols,
+        "failed_symbols": failed_symbols,
+        "cancel_results": cancel_results,
+        "marketSessionGate": dict(gate_payload),
+    }
+
+
 def _account_truth_from_steps(steps: Sequence[Mapping[str, Any]], *, produced_at: datetime) -> Dict[str, Any]:
     balance_summary: Dict[str, Any] = {}
     buyable_summary: Dict[str, Any] = {}
@@ -1608,6 +1861,26 @@ def runContinuousPaperTick(
     if reconciliation_step.get("status") == "pass":
         _write_runner_state(local_state, config, data_root=data_root)
 
+    pending_cancel_gate = msg.evaluateKisCallGate(
+        now_kst=reference_now,
+        investment_mode=config["investment_mode"],
+        call_family="kis_order_submit",
+        env=source,
+    )
+    pending_cancel_step = _cancel_previous_timing_pending_orders(
+        local_state,
+        base_account_truth,
+        adapter=adapter,
+        token=token,
+        now=reference_now,
+        enabled=bool(config["paper_order_enabled"]),
+        gate=pending_cancel_gate,
+    )
+    if pending_cancel_step.get("candidate_count"):
+        result["steps"].append(pending_cancel_step)
+    if _coerce_nonnegative_int(pending_cancel_step.get("cancelled_count"), 0) > 0:
+        _write_runner_state(local_state, config, data_root=data_root)
+
     current_intent = dict(intent) if isinstance(intent, Mapping) else None
     max_intents = 1 if explicit_intent else int(config["max_intents_per_tick"])
     processed_count = 0
@@ -1836,6 +2109,7 @@ def runContinuousPaperTick(
         or "ambiguous_submit_requires_reconciliation" in step_statuses
         or "blocked_intent_claim" in step_statuses
         or "blocked_market_session_gate" in step_statuses
+        or "blocked_paper_order_disabled" in step_statuses
     ):
         result["status"] = "warn"
     else:

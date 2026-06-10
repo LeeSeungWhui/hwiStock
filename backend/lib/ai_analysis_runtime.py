@@ -1613,6 +1613,45 @@ def _merge_order_state_holdings_with_account_truth(
     return [merged_by_symbol[symbol] for symbol in sorted(merged_by_symbol)][:50]
 
 
+def _ten_minute_bucket_start(value: datetime) -> datetime:
+    local = value.astimezone(KST)
+    return local.replace(minute=(local.minute // 10) * 10, second=0, microsecond=0)
+
+
+def _split_current_pending_orders_for_analysis(
+    pending_orders: Sequence[Mapping[str, Any]],
+    *,
+    now: datetime,
+) -> tuple[list[Dict[str, Any]], list[Dict[str, Any]]]:
+    bucket_start = _ten_minute_bucket_start(now)
+    current: list[Dict[str, Any]] = []
+    stale: list[Dict[str, Any]] = []
+    for row in pending_orders:
+        pending = dict(row)
+        submitted_at = _parse_optional_kst(
+            pending.get("submitted_at_kst")
+            or pending.get("created_at_kst")
+            or pending.get("recorded_at_kst")
+        )
+        broker_order_no = str(
+            pending.get("broker_order_no")
+            or pending.get("order_no")
+            or pending.get("odno")
+            or ""
+        ).strip()
+        if submitted_at and submitted_at < bucket_start and broker_order_no:
+            stale.append(
+                {
+                    **pending,
+                    "analysis_exclusion_reason": "previous_timing_unfilled_pending_order",
+                    "requires_runner_cancel": True,
+                }
+            )
+        else:
+            current.append(pending)
+    return current, stale
+
+
 def _default_order_state_snapshot(now: datetime, *, data_root: Path = DEFAULT_DATA_ROOT) -> Dict[str, Any]:
     state_path = data_root / "state" / "kis-paper-runner-state.json"
     pending_orders: list[Dict[str, Any]] = []
@@ -1651,6 +1690,10 @@ def _default_order_state_snapshot(now: datetime, *, data_root: Path = DEFAULT_DA
                 for item in (state.get("consumed_trade_document_ids") or [])
                 if str(item).strip()
             ]
+    current_pending_orders, stale_pending_orders = _split_current_pending_orders_for_analysis(
+        pending_orders,
+        now=now,
+    )
     account_positions = _read_latest_account_truth_positions(data_root, day=now.date().isoformat())
     holdings = _merge_order_state_holdings_with_account_truth(holdings, account_positions)
     return {
@@ -1658,8 +1701,11 @@ def _default_order_state_snapshot(now: datetime, *, data_root: Path = DEFAULT_DA
         "artifact_id": f"art_order_state_local_snapshot_{now.strftime('%Y%m%d_%H%M%S')}",
         "snapshot_id": f"order_state_local_snapshot_{now.strftime('%Y%m%d_%H%M%S')}",
         "produced_at_kst": now.isoformat(),
-        "source": "local_kis_paper_runner_state",
-        "pending_orders": pending_orders,
+        "source": "local_kis_paper_runner_state_with_kis_account_truth",
+        "pending_orders": current_pending_orders,
+        "stale_pending_orders_excluded_for_analysis": stale_pending_orders,
+        "stale_pending_order_policy": "previous_timing_pending_orders_are_excluded_from_flash_analysis_and_cancelled_by_runner",
+        "account_truth_positions_source": "kis_paper_continuous_latest",
         "holdings": holdings,
         "active_exits": active_exits,
         "cooldowns": [],
