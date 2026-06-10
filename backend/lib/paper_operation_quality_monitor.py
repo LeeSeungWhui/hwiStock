@@ -25,12 +25,27 @@ ORDER_WINDOW_OPEN = time(9, 0)
 ORDER_WINDOW_CLOSE = time(15, 0)
 EXIT_TRIGGER_REASONS = frozenset({"target_price_hit", "stop_loss_hit", "hard_max_hold_exceeded"})
 EXIT_TRIGGER_STATUSES = frozenset({"target_price_hit", "stop_loss_hit", "hard_max_exceeded"})
+RUNNER_INTERVAL_SECONDS = 300
+RUNNER_PICKUP_GRACE_SECONDS = 60
+MIN_SELL_PICKUP_TTL_SECONDS = RUNNER_INTERVAL_SECONDS + RUNNER_PICKUP_GRACE_SECONDS
 
 
 def parseKst(value: Optional[str]) -> datetime:
     if not value:
         return datetime.now(KST).replace(microsecond=0)
     parsed = datetime.fromisoformat(str(value).strip())
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=KST)
+    return parsed.astimezone(KST)
+
+
+def _parseOptionalKst(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).strip())
+    except ValueError:
+        return None
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=KST)
     return parsed.astimezone(KST)
@@ -226,7 +241,12 @@ def _positionExitTriggered(row: Mapping[str, Any]) -> bool:
     return reason in EXIT_TRIGGER_REASONS or status in EXIT_TRIGGER_STATUSES
 
 
-def _checkSellPipeline(flash: Mapping[str, Any]) -> dict[str, Any]:
+def _checkSellPipeline(
+    flash: Mapping[str, Any],
+    *,
+    runner: Mapping[str, Any],
+    at: datetime,
+) -> dict[str, Any]:
     positionActions = _listOfDicts(flash.get("position_actions"))
     triggered = [row for row in positionActions if bool(row.get("order_window_open")) and _positionExitTriggered(row)]
     blocked = [
@@ -245,17 +265,70 @@ def _checkSellPipeline(flash: Mapping[str, Any]) -> dict[str, Any]:
     ]
     sellNowCount = sum(1 for row in positionActions if str(row.get("action") or "").upper() == "SELL_NOW")
     sellIntents = [row for row in _pipelineAcceptedIntents(flash) if _intentIsSell(row)]
+    runnerAt = _parseOptionalKst(runner.get("timestamp_kst")) or at
+    flashProducedAt = _parseOptionalKst(flash.get("produced_at_kst"))
+    loaded = runner.get("loaded_intent") if isinstance(runner.get("loaded_intent"), Mapping) else {}
+    loadedSell = bool(loaded) and _intentIsSell(loaded)
+    steps = _stepRows(runner)
+    touchedSell = loadedSell or any(
+        (
+            row.get("step") == "cash_order" and str(row.get("side") or "").strip().lower() == "sell"
+        )
+        or (
+            row.get("step") == "intent_claim"
+            and "SELL_NOW" in str(row.get("idempotency_key") or row.get("intent_id") or "")
+        )
+        for row in steps
+    )
+    ttlFindings: list[dict[str, Any]] = []
+    nonExpiredSellIntents: list[dict[str, Any]] = []
+    expiredBeforeRunner: list[dict[str, Any]] = []
     p0: list[str] = []
     if blocked:
         p0.append("exit_trigger_without_sell_now")
     if sellNowCount > 0 and not sellIntents:
         p0.append("sell_now_without_accepted_sell_intent")
+    for row in sellIntents:
+        createdAt = _parseOptionalKst(row.get("created_at_kst") or row.get("created_at"))
+        validUntil = _parseOptionalKst(row.get("valid_until_kst") or row.get("valid_until"))
+        symbol = str(row.get("symbol") or row.get("ticker") or "").strip() or None
+        if not createdAt or not validUntil:
+            continue
+        ttlSeconds = int((validUntil - createdAt).total_seconds())
+        finding = {
+            "symbol": symbol,
+            "created_at_kst": createdAt.isoformat(),
+            "valid_until_kst": validUntil.isoformat(),
+            "ttl_seconds": ttlSeconds,
+        }
+        if ttlSeconds <= 0:
+            p0.append("sell_intent_zero_ttl")
+            ttlFindings.append({**finding, "reason": "sell_intent_zero_ttl"})
+        if ttlSeconds < MIN_SELL_PICKUP_TTL_SECONDS:
+            p0.append("sell_intent_ttl_shorter_than_runner_pickup_window")
+            ttlFindings.append({**finding, "reason": "sell_intent_ttl_shorter_than_runner_pickup_window"})
+        if runnerAt >= validUntil:
+            expiredBeforeRunner.append(finding)
+        else:
+            nonExpiredSellIntents.append(finding)
+    runnerAfterFlash = flashProducedAt is None or runnerAt >= flashProducedAt
+    if sellIntents and runnerAfterFlash and len(expiredBeforeRunner) == len(sellIntents):
+        p0.append("sell_intent_expired_before_runner_pickup")
+    if _isOrderWindow(runnerAt) and runnerAfterFlash and nonExpiredSellIntents and not touchedSell:
+        p0.append("runner_did_not_pick_nonexpired_sell_intent")
     return {
         "status": "p0" if p0 else "pass",
         "triggered_position_count": len(triggered),
         "sell_now_count": sellNowCount,
         "accepted_sell_intent_count": len(sellIntents),
         "blocked_position_actions": blocked,
+        "runner_timestamp_kst": runnerAt.isoformat(),
+        "runner_loaded_sell_intent": loadedSell,
+        "runner_touched_sell_intent": touchedSell,
+        "sell_intent_ttl_findings": ttlFindings,
+        "expired_sell_intents_before_runner": expiredBeforeRunner,
+        "nonexpired_sell_intents_at_runner": nonExpiredSellIntents,
+        "min_sell_pickup_ttl_seconds": MIN_SELL_PICKUP_TTL_SECONDS,
         "p0_conditions": p0,
     }
 
@@ -327,7 +400,7 @@ def evaluatePaperOperationQuality(
         "candidate_universe": _checkCandidateUniverse(at=now, compiledWatch=compiledWatch, kisMarket=kisMarket),
         "flash_provider": _checkFlashProvider(at=now, flash=flash),
         "buy_sizing": _checkBuySizing(flash),
-        "sell_pipeline": _checkSellPipeline(flash),
+        "sell_pipeline": _checkSellPipeline(flash, runner=runner, at=now),
         "runner_sell_execution": _checkRunnerSellExecution(at=now, runner=runner),
     }
     p0Conditions: list[str] = []

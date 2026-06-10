@@ -1399,6 +1399,45 @@ def test_runner_sell_preflight_accepts_balance_position_fallback_when_sellable_s
     assert account_truth["normalized_sellable_quantity"] == 7
 
 
+def test_runner_sell_preflight_rejects_zero_ttl_sell_intent(tmp_path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    monkeypatch.setenv("HWISTOCK_MARKET_DATA_SOURCE", "kis_market_mode_aware")
+    status = base_runner.get_runner_status("2026-06-05T09:30:00")
+
+    preflight = continuous.evaluateIntentExecutionPreflight(
+        {
+            "schema_version": "paper_order_intent/v0",
+            "intent_id": "intent-sell-zero-ttl-1",
+            "idempotency_key": "intent-sell-zero-ttl-1",
+            "symbol": "005930",
+            "side": "sell",
+            "quantity": 2,
+            "venue_route": "KRX",
+            "broker_adapter": "kis_paper",
+            "created_at_kst": "2026-06-05T09:30:00+09:00",
+            "valid_until_kst": "2026-06-05T09:30:00+09:00",
+            "planned_order_cash_krw": 0,
+            "paper_only": True,
+        },
+        order_state_snapshot={"pending_orders": [], "active_exits": [], "consumed_intent_keys": []},
+        status=status,
+        account_truth={
+            "source": "kis_paper_read_steps",
+            "balance_status": "pass",
+            "sellable_status": "none",
+            "sellable_quantity": None,
+            "positions": [
+                {"symbol": "005930", "quantity": 7, "sellable_quantity": 7, "source": "kis_balance_output1"}
+            ],
+        },
+    )
+
+    assert preflight["ok"] is False
+    assert "valid_until_kst_must_be_after_created_at_kst" in preflight["errors"]
+    assert "sell_intent_zero_ttl" in preflight["errors"]
+    assert "sell_intent_ttl_shorter_than_runner_pickup_window" in preflight["errors"]
+
+
 def test_runner_sell_preflight_blocks_active_sell_duplicate_with_balance_fallback(tmp_path, monkeypatch):
     _calendar(tmp_path, monkeypatch)
     monkeypatch.setenv("HWISTOCK_MARKET_DATA_SOURCE", "kis_market_mode_aware")
@@ -1863,3 +1902,56 @@ def test_tick_does_not_mark_intent_consumed_when_broker_warns(tmp_path, monkeypa
     assert retry_payload["executionPreflight"]["ok"] is False
     assert "ambiguous_submit_requires_reconciliation" in retry_payload["executionPreflight"]["errors"]
     assert not any("/order-cash" in call["url"] for call in retry_transport.calls)
+
+
+def test_runner_can_consume_sell_intent_five_minutes_after_creation(tmp_path: Path):
+    doc = {
+        "schema_version": "flash_trade_document/v1",
+        "artifact_id": "art_flash_tdoc_20260605_0940",
+        "bucket_id": "20260605T0940",
+        "document_kind": "POSITION_MANAGEMENT",
+        "produced_at_kst": "2026-06-05T09:40:00+09:00",
+        "market_context": {"broker_order_open": True},
+        "actions": [],
+        "position_actions": [
+            {
+                "symbol": "005930",
+                "ticker": "005930",
+                "position_state": "holding_confirmed",
+                "action": "SELL_NOW",
+                "current_price": 10020,
+                "quantity": 10,
+                "sellable_quantity": 10,
+                "sellable_status": "pass",
+                "sellable_truth_status": "pass",
+                "sellable_truth_accepted": True,
+                "sell_allowed": True,
+                "order_window_open": True,
+                "time_exit_status": "hard_max_exceeded",
+                "time_exit_reason": "hard_max_hold_exceeded",
+                "market_data_refs": ["art_kis_snapshot_20260605_0939"],
+            }
+        ],
+    }
+    pipeline = engine.generatePaperOrderIntentsFromFlashDocument(
+        doc,
+        compiled_watch=[{"symbol": "005930"}],
+        portfolio_snapshot={"holdings": [{"symbol": "005930", "quantity": 10, "sellable_quantity": 10}]},
+        order_state_snapshot={"pending_orders": [], "active_exits": []},
+        now_kst="2026-06-05T09:40:00+09:00",
+    )
+    intent = pipeline["accepted_intents"][0]
+    queue_path = tmp_path / "intents" / "2026-06-05" / "paper-order-intents-latest.jsonl"
+    queue_path.parent.mkdir(parents=True)
+    queue_path.write_text(json.dumps(intent, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    loaded = continuous_runtime._load_next_intent_from_queue(
+        data_root=tmp_path,
+        at=datetime.fromisoformat("2026-06-05T09:45:00+09:00"),
+        state={"consumed_intent_keys": [], "submitting_intent_keys": [], "ambiguous_intent_keys": []},
+    )
+
+    assert loaded["source"] == "next_intent_queue_exit_priority_fifo"
+    assert loaded["intent"]["side"] == "sell"
+    assert loaded["intent"]["action"] == "SELL_NOW"
+    assert loaded["intent"]["valid_until_kst"] == "2026-06-05T09:52:00+09:00"

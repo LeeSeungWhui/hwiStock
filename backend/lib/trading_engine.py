@@ -16,7 +16,7 @@ simulates fills, balances, or PnL.
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 import re
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
@@ -34,6 +34,10 @@ CONDITION_CARD_SCHEMA_VERSION = "condition_card/v0"
 COMPILED_WATCH_SCHEMA_VERSION = "compiled_watch/v0"
 PAPER_ORDER_INTENT_SCHEMA_VERSION = "paper_order_intent/v0"
 NO_ORDER_DRY_RUN = "no_order_dry_run"
+PAPER_INTENT_RUNNER_INTERVAL_SECONDS = 300
+PAPER_INTENT_RUNNER_PICKUP_GRACE_SECONDS = 60
+PAPER_SELL_NOW_MIN_TTL_SECONDS = 720
+PAPER_BUY_MIN_TTL_SECONDS = 600
 
 SELLABLE_TRUTH_ACCEPTED_STATUSES = frozenset(
     {
@@ -819,6 +823,32 @@ def generatePaperOrderIntentsFromFlashDocument(
             )
             continue
         tick_size = krxTickSizeForPrice(raw_order_price)
+        validity = _resolveIntentValidUntil(
+            side=side,
+            action=action_type,
+            created_at_kst=produced_at,
+            action_valid_until_kst=(
+                action.get("cancel_if_not_filled_until")
+                or action.get("valid_until_kst")
+                or action.get("valid_until")
+            ),
+            trade_window_end_kst=document.get("valid_until") or document.get("valid_until_kst"),
+            document=document,
+        )
+        if not validity["ok"]:
+            rejected.append(
+                {
+                    "index": index,
+                    "ticker": symbol,
+                    "action": action_type,
+                    "reasons": [str(validity["reason"])],
+                    "paper_order_intent_created": False,
+                    "created_at_kst": produced_at,
+                    "valid_until_kst": validity.get("valid_until_kst"),
+                    "intent_ttl_seconds": validity.get("intent_ttl_seconds"),
+                }
+            )
+            continue
         intent = {
             "schema_version": PAPER_ORDER_INTENT_SCHEMA_VERSION,
             "artifact_id": f"art_intent_{_compact_timestamp(produced_at)}_{symbol}_{len(accepted)+1}",
@@ -828,7 +858,12 @@ def generatePaperOrderIntentsFromFlashDocument(
             "producer": "trade_document_intent_pipeline",
             "intent_type": "flash_buy_entry" if action_type == "BUY_NOW" else "flash_wait_buy_entry",
             "created_at_kst": produced_at,
-            "valid_until_kst": action.get("cancel_if_not_filled_until") or document.get("valid_until") or produced_at,
+            "valid_until_kst": validity["valid_until_kst"],
+            "intent_ttl_seconds": validity["intent_ttl_seconds"],
+            "intent_ttl_policy": validity["intent_ttl_policy"],
+            "runner_interval_seconds": validity["runner_interval_seconds"],
+            "runner_pickup_grace_seconds": validity["runner_pickup_grace_seconds"],
+            "order_window_close_kst": validity["order_window_close_kst"],
             "flash_trade_document_ref": document.get("artifact_id"),
             "source_refs": list(action.get("source_refs") or document.get("source_refs") or []),
             "symbol_source_refs": list(action.get("symbol_source_refs") or document.get("symbol_source_refs") or []),
@@ -997,6 +1032,35 @@ def generatePaperOrderIntentsFromFlashDocument(
             )
             continue
         tick_size = krxTickSizeForPrice(raw_order_price)
+        validity = _resolveIntentValidUntil(
+            side="sell",
+            action="SELL_NOW",
+            created_at_kst=produced_at,
+            action_valid_until_kst=(
+                position_action.get("valid_until_kst")
+                or position_action.get("valid_until")
+                or position_action.get("cancel_if_not_filled_until")
+            ),
+            trade_window_end_kst=document.get("valid_until") or document.get("valid_until_kst"),
+            document=document,
+        )
+        if not validity["ok"]:
+            rejected.append(
+                {
+                    "position_action_index": index,
+                    "ticker": symbol,
+                    "action": "WAIT_SELL",
+                    "original_action": action_type,
+                    "reasons": [str(validity["reason"])],
+                    "exit_blocked_reason": str(validity["reason"]),
+                    "paper_order_intent_created": False,
+                    "created_at_kst": produced_at,
+                    "valid_until_kst": validity.get("valid_until_kst"),
+                    "intent_ttl_seconds": validity.get("intent_ttl_seconds"),
+                    "order_window_close_kst": validity.get("order_window_close_kst"),
+                }
+            )
+            continue
         time_exit_reason = str(position_action.get("time_exit_reason") or "")
         intent_type = (
             "position_time_stop_exit"
@@ -1012,7 +1076,12 @@ def generatePaperOrderIntentsFromFlashDocument(
             "producer": "trade_document_intent_pipeline",
             "intent_type": intent_type,
             "created_at_kst": produced_at,
-            "valid_until_kst": position_action.get("valid_until_kst") or document.get("valid_until") or produced_at,
+            "valid_until_kst": validity["valid_until_kst"],
+            "intent_ttl_seconds": validity["intent_ttl_seconds"],
+            "intent_ttl_policy": validity["intent_ttl_policy"],
+            "runner_interval_seconds": validity["runner_interval_seconds"],
+            "runner_pickup_grace_seconds": validity["runner_pickup_grace_seconds"],
+            "order_window_close_kst": validity["order_window_close_kst"],
             "flash_trade_document_ref": document.get("artifact_id"),
             "source_refs": list(position_action.get("source_refs") or document.get("source_refs") or []),
             "symbol_source_refs": list(position_action.get("symbol_source_refs") or []),
@@ -1193,6 +1262,148 @@ def _parse_kst_timestamp(value: Any, label: str, errors: List[str]) -> Optional[
         errors.append(f"{label}_must_be_kst_iso")
         return None
     return parsed
+
+
+def _parse_optional_kst_timestamp(value: Any) -> Optional[datetime]:
+    if value in (None, ""):
+        return None
+    raw = str(value).strip()
+    if not TIMESTAMP_PATTERN.match(raw):
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() != KST.utcoffset(None):
+        return None
+    return parsed
+
+
+def _parse_hhmm_time(value: Any) -> Optional[time]:
+    if isinstance(value, time):
+        return value
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    parts = raw.split(":")
+    if len(parts) < 2:
+        return None
+    try:
+        hour = int(parts[0])
+        minute = int(parts[1])
+        second = int(parts[2]) if len(parts) > 2 else 0
+        return time(hour, minute, second)
+    except (TypeError, ValueError):
+        return None
+
+
+def _nested_mapping(value: Any, key: str) -> Mapping[str, Any]:
+    if isinstance(value, Mapping) and isinstance(value.get(key), Mapping):
+        return value[key]  # type: ignore[return-value]
+    return {}
+
+
+def _resolveOrderWindowClose(
+    created_at: datetime,
+    document: Mapping[str, Any],
+) -> datetime:
+    market_context = _nested_mapping(document, "market_context")
+    calendar_context = _nested_mapping(document, "calendar_context") or _nested_mapping(market_context, "calendar_context")
+    direct_candidates = (
+        document.get("order_window_close_kst"),
+        document.get("broker_order_window_close_kst"),
+        market_context.get("order_window_close_kst"),
+        market_context.get("broker_order_window_close_kst"),
+        calendar_context.get("order_window_close_kst"),
+        calendar_context.get("broker_order_window_close_kst"),
+    )
+    for candidate in direct_candidates:
+        parsed = _parse_optional_kst_timestamp(candidate)
+        if parsed:
+            return parsed
+
+    window_candidates = (
+        document.get("paper_order_window_kst"),
+        market_context.get("paper_order_window_kst"),
+        calendar_context.get("paper_order_window_kst"),
+    )
+    close_time: Optional[time] = None
+    for window in window_candidates:
+        if isinstance(window, Mapping):
+            close_time = _parse_hhmm_time(window.get("close"))
+            if close_time:
+                break
+
+    if close_time is None:
+        investment_mode = document.get("investment_mode") or market_context.get("investment_mode")
+        _, close_time = rp.orderWindowForMode(investment_mode)
+    return datetime.combine(created_at.date(), close_time, tzinfo=KST)
+
+
+def _resolveIntentValidUntil(
+    *,
+    side: str,
+    action: str,
+    created_at_kst: str,
+    action_valid_until_kst: Any = None,
+    trade_window_end_kst: Any = None,
+    document: Optional[Mapping[str, Any]] = None,
+    runner_interval_seconds: int = PAPER_INTENT_RUNNER_INTERVAL_SECONDS,
+    sell_min_ttl_seconds: int = PAPER_SELL_NOW_MIN_TTL_SECONDS,
+    buy_min_ttl_seconds: int = PAPER_BUY_MIN_TTL_SECONDS,
+) -> Dict[str, Any]:
+    created_at = _parse_optional_kst_timestamp(created_at_kst) or datetime.now(tz=KST).replace(microsecond=0)
+    doc = document or {}
+    order_window_close = _resolveOrderWindowClose(created_at, doc)
+    action_valid_until = _parse_optional_kst_timestamp(action_valid_until_kst)
+    trade_window_end = _parse_optional_kst_timestamp(trade_window_end_kst)
+    is_sell = str(side or "").strip().lower() == "sell" or str(action or "").strip().upper() in {"SELL", "SELL_NOW"}
+    runner_grace = PAPER_INTENT_RUNNER_PICKUP_GRACE_SECONDS
+
+    if is_sell:
+        min_ttl = max(sell_min_ttl_seconds, runner_interval_seconds * 2 + runner_grace)
+        min_valid_until = created_at + timedelta(seconds=min_ttl)
+        candidates = [dt for dt in (action_valid_until, trade_window_end) if dt and dt > created_at]
+        preferred_valid_until = max([min_valid_until, *candidates])
+        final_valid_until = min(preferred_valid_until, order_window_close)
+        pickup_deadline = created_at + timedelta(seconds=runner_interval_seconds + runner_grace)
+        ttl_seconds = int((final_valid_until - created_at).total_seconds())
+        ok = final_valid_until >= pickup_deadline
+        reason = None if ok else "insufficient_order_window_for_runner_pickup"
+        return {
+            "ok": ok,
+            "reason": reason,
+            "valid_until_kst": final_valid_until.isoformat(),
+            "intent_ttl_seconds": ttl_seconds,
+            "intent_ttl_policy": "sell_now_min_runner_pickup_window",
+            "runner_interval_seconds": runner_interval_seconds,
+            "runner_pickup_grace_seconds": runner_grace,
+            "order_window_close_kst": order_window_close.isoformat(),
+            "min_required_ttl_seconds": runner_interval_seconds + runner_grace,
+            "target_min_ttl_seconds": min_ttl,
+        }
+
+    candidate_valid_until = action_valid_until if action_valid_until and action_valid_until > created_at else None
+    if trade_window_end and trade_window_end > created_at and (
+        candidate_valid_until is None or trade_window_end > candidate_valid_until
+    ):
+        candidate_valid_until = trade_window_end
+    preferred_valid_until = candidate_valid_until or (created_at + timedelta(seconds=buy_min_ttl_seconds))
+    final_valid_until = min(preferred_valid_until, order_window_close)
+    ttl_seconds = int((final_valid_until - created_at).total_seconds())
+    ok = final_valid_until > created_at
+    return {
+        "ok": ok,
+        "reason": None if ok else "rejected_invalid_intent_ttl",
+        "valid_until_kst": final_valid_until.isoformat(),
+        "intent_ttl_seconds": ttl_seconds,
+        "intent_ttl_policy": "buy_min_ttl_if_missing_or_zero",
+        "runner_interval_seconds": runner_interval_seconds,
+        "runner_pickup_grace_seconds": runner_grace,
+        "order_window_close_kst": order_window_close.isoformat(),
+        "min_required_ttl_seconds": 1,
+        "target_min_ttl_seconds": buy_min_ttl_seconds,
+    }
 
 
 def _resolve_risk_gate_venue_route(entry_intent: Mapping[str, Any]) -> Dict[str, Any]:

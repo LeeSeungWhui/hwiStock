@@ -222,6 +222,142 @@ def test_monitor_flags_sell_now_without_accepted_sell_intent(tmp_path: Path):
     assert "sell_now_without_accepted_sell_intent" in result["p0_conditions"]
 
 
+def test_monitor_flags_sell_intent_zero_ttl_and_expired_before_runner_pickup(tmp_path: Path):
+    _write_compiled_watch(tmp_path)
+    _write_kis_market(tmp_path)
+    _write_flash(
+        tmp_path,
+        {
+            "document_kind": "POSITION_MANAGEMENT",
+            "produced_at_kst": f"{DAY}T09:10:00+09:00",
+            "position_actions": [
+                {
+                    "symbol": "005930",
+                    "action": "SELL_NOW",
+                    "order_window_open": True,
+                    "time_exit_reason": "target_price_hit",
+                    "time_exit_status": "active",
+                    "sellable_truth_accepted": True,
+                }
+            ],
+            "paper_intent_pipeline": {
+                "accepted_count": 1,
+                "accepted_intents": [
+                    {
+                        "symbol": "005930",
+                        "side": "sell",
+                        "action": "SELL_NOW",
+                        "created_at_kst": f"{DAY}T09:10:00+09:00",
+                        "valid_until_kst": f"{DAY}T09:10:00+09:00",
+                    }
+                ],
+            },
+        },
+    )
+    _write_runner(tmp_path, {"timestamp_kst": f"{DAY}T09:15:00+09:00"})
+
+    result = monitor.evaluatePaperOperationQuality(data_root=tmp_path, at=_at(f"{DAY}T09:15:00+09:00"))
+
+    assert result["status"] == "p0"
+    assert "sell_intent_zero_ttl" in result["p0_conditions"]
+    assert "sell_intent_ttl_shorter_than_runner_pickup_window" in result["p0_conditions"]
+    assert "sell_intent_expired_before_runner_pickup" in result["p0_conditions"]
+
+
+def test_monitor_flags_runner_did_not_pick_nonexpired_sell_intent(tmp_path: Path):
+    _write_compiled_watch(tmp_path)
+    _write_kis_market(tmp_path)
+    _write_flash(
+        tmp_path,
+        {
+            "document_kind": "POSITION_MANAGEMENT",
+            "produced_at_kst": f"{DAY}T09:10:00+09:00",
+            "position_actions": [
+                {
+                    "symbol": "005930",
+                    "action": "SELL_NOW",
+                    "order_window_open": True,
+                    "time_exit_reason": "target_price_hit",
+                    "time_exit_status": "active",
+                    "sellable_truth_accepted": True,
+                }
+            ],
+            "paper_intent_pipeline": {
+                "accepted_count": 1,
+                "accepted_intents": [
+                    {
+                        "symbol": "005930",
+                        "side": "sell",
+                        "action": "SELL_NOW",
+                        "created_at_kst": f"{DAY}T09:10:00+09:00",
+                        "valid_until_kst": f"{DAY}T09:22:00+09:00",
+                    }
+                ],
+            },
+        },
+    )
+    _write_runner(tmp_path, {"timestamp_kst": f"{DAY}T09:15:00+09:00", "intent_loaded": False})
+
+    result = monitor.evaluatePaperOperationQuality(data_root=tmp_path, at=_at(f"{DAY}T09:15:00+09:00"))
+
+    assert result["status"] == "p0"
+    assert "runner_did_not_pick_nonexpired_sell_intent" in result["p0_conditions"]
+
+
+def test_monitor_does_not_flag_runner_pick_when_sell_cash_order_was_attempted(tmp_path: Path):
+    _write_compiled_watch(tmp_path)
+    _write_kis_market(tmp_path)
+    _write_flash(
+        tmp_path,
+        {
+            "document_kind": "POSITION_MANAGEMENT",
+            "produced_at_kst": f"{DAY}T09:10:00+09:00",
+            "position_actions": [
+                {
+                    "symbol": "005930",
+                    "action": "SELL_NOW",
+                    "order_window_open": True,
+                    "time_exit_reason": "target_price_hit",
+                    "time_exit_status": "active",
+                    "sellable_truth_accepted": True,
+                }
+            ],
+            "paper_intent_pipeline": {
+                "accepted_count": 1,
+                "accepted_intents": [
+                    {
+                        "symbol": "005930",
+                        "side": "sell",
+                        "action": "SELL_NOW",
+                        "created_at_kst": f"{DAY}T09:10:00+09:00",
+                        "valid_until_kst": f"{DAY}T09:22:00+09:00",
+                    }
+                ],
+            },
+        },
+    )
+    _write_runner(
+        tmp_path,
+        {
+            "timestamp_kst": f"{DAY}T09:15:00+09:00",
+            "intent_loaded": True,
+            "steps": [
+                {
+                    "step": "intent_claim",
+                    "status": "pass",
+                    "idempotency_key": "art_flash:bucket:005930:SELL_NOW",
+                },
+                {"step": "cash_order", "status": "warn", "side": "sell", "broker_endpoint_called": True},
+            ],
+        },
+    )
+
+    result = monitor.evaluatePaperOperationQuality(data_root=tmp_path, at=_at(f"{DAY}T09:15:00+09:00"))
+
+    assert "runner_did_not_pick_nonexpired_sell_intent" not in result["p0_conditions"]
+    assert result["checks"]["sell_pipeline"]["runner_touched_sell_intent"] is True
+
+
 def test_monitor_flags_runner_sellable_truth_block_and_consumed_sibling(tmp_path: Path):
     _write_compiled_watch(tmp_path)
     _write_kis_market(tmp_path)

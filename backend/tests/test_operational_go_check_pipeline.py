@@ -27,6 +27,10 @@ from service import kis_paper_continuous_runner as executor  # noqa: E402
 NOW = "2026-06-05T09:40:00+09:00"
 
 
+def _ttl_seconds(row):
+    return int((datetime.fromisoformat(row["valid_until_kst"]) - datetime.fromisoformat(row["created_at_kst"])).total_seconds())
+
+
 def _compiled_watch(symbol: str = "005930"):
     return {
         "schema_version": "compiled_watch/v0",
@@ -930,6 +934,71 @@ def test_time_stop_sell_intent_has_paper_only_kis_paper_krx():
     assert intent["no_live_order"] is True
     assert intent["broker_endpoint_called"] is False
     assert intent["order_cancel_modify_called"] is False
+    assert intent["valid_until_kst"] > intent["created_at_kst"]
+    assert _ttl_seconds(intent) >= 720
+    assert intent["intent_ttl_policy"] == "sell_now_min_runner_pickup_window"
+    assert intent["runner_pickup_grace_seconds"] == 60
+
+
+def test_sell_now_intent_ttl_capped_by_order_window_close():
+    produced_at = "2026-06-05T14:45:00+09:00"
+    doc = _flash_doc_with_position_sell(order_window_open=True)
+    doc["produced_at_kst"] = produced_at
+    doc["valid_until"] = "2026-06-05T15:30:00+09:00"
+    pipeline = engine.generatePaperOrderIntentsFromFlashDocument(
+        doc,
+        compiled_watch=[_compiled_watch("005930")],
+        portfolio_snapshot={"holdings": [{"symbol": "005930", "quantity": 10, "sellable_quantity": 10}]},
+        order_state_snapshot={"pending_orders": [], "active_exits": []},
+        now_kst=produced_at,
+    )
+
+    assert pipeline["accepted_count"] == 1
+    intent = pipeline["accepted_intents"][0]
+    assert intent["valid_until_kst"] == "2026-06-05T15:00:00+09:00"
+    assert intent["order_window_close_kst"] == "2026-06-05T15:00:00+09:00"
+    assert _ttl_seconds(intent) == 900
+
+
+def test_sell_now_near_order_close_wait_sell_when_runner_pickup_impossible():
+    produced_at = "2026-06-05T14:55:00+09:00"
+    doc = _flash_doc_with_position_sell(order_window_open=True)
+    doc["produced_at_kst"] = produced_at
+    pipeline = engine.generatePaperOrderIntentsFromFlashDocument(
+        doc,
+        compiled_watch=[_compiled_watch("005930")],
+        portfolio_snapshot={"holdings": [{"symbol": "005930", "quantity": 10, "sellable_quantity": 10}]},
+        order_state_snapshot={"pending_orders": [], "active_exits": []},
+        now_kst=produced_at,
+    )
+
+    assert pipeline["accepted_count"] == 0
+    rejection = pipeline["rejected_actions"][0]
+    assert rejection["action"] == "WAIT_SELL"
+    assert rejection["original_action"] == "SELL_NOW"
+    assert rejection["exit_blocked_reason"] == "insufficient_order_window_for_runner_pickup"
+    assert "insufficient_order_window_for_runner_pickup" in rejection["reasons"]
+
+
+def test_buy_now_zero_ttl_is_extended():
+    doc = _flash_doc("005930")
+    doc["actions"][0]["action"] = "BUY_NOW"
+    doc["actions"][0]["cancel_if_not_filled_until"] = NOW
+    doc["valid_until"] = NOW
+    pipeline = engine.generatePaperOrderIntentsFromFlashDocument(
+        doc,
+        compiled_watch=[_compiled_watch("005930")],
+        portfolio_snapshot={"artifact_id": "art_portfolio_20260605_0939", "holdings": []},
+        order_state_snapshot={"artifact_id": "art_order_state_20260605_0939", "pending_orders": []},
+        now_kst=NOW,
+    )
+
+    assert pipeline["accepted_count"] == 1
+    intent = pipeline["accepted_intents"][0]
+    assert intent["side"] == "buy"
+    assert intent["valid_until_kst"] == "2026-06-05T09:50:00+09:00"
+    assert _ttl_seconds(intent) == 600
+    assert intent["intent_ttl_policy"] == "buy_min_ttl_if_missing_or_zero"
 
 
 def test_time_stop_does_not_create_sell_when_order_window_closed():

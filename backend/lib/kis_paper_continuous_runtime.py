@@ -68,6 +68,8 @@ ORDER_GRADE_MARKET_DATA_SOURCES = frozenset(
 OPERATION_MODES = frozenset({"observe_only", "paper_experiment", "live_production"})
 DEFAULT_MAX_DAILY_PAPER_ORDERS = 20
 DEFAULT_MAX_PAPER_NOTIONAL_KRW = 2_000_000
+PAPER_INTENT_RUNNER_INTERVAL_SECONDS = 300
+PAPER_INTENT_RUNNER_PICKUP_GRACE_SECONDS = 60
 SELLABLE_TRUTH_PASS_STATUSES = frozenset({"pass", "ok", "available", "confirmed"})
 SELLABLE_TRUTH_PROVIDER_UNSUPPORTED_STATUSES = frozenset(
     {"", "none", "unknown", "skipped_provider_unsupported", "provider_unsupported", "paper_mock_unsupported"}
@@ -669,8 +671,18 @@ def evaluateIntentExecutionPreflight(
         errors.append("active_exit_order_exists")
         if side == "sell":
             errors.append("active_sell_order_exists")
+    created_at = _parse_optional_kst_timestamp(payload.get("created_at_kst") or payload.get("created_at"))
     expiry = _parse_optional_kst_timestamp(payload.get("valid_until_kst") or payload.get("valid_until"))
     reference_now = _status_reference_datetime(status)
+    if created_at and expiry and expiry <= created_at:
+        errors.append("valid_until_kst_must_be_after_created_at_kst")
+        if side == "sell":
+            errors.append("sell_intent_zero_ttl")
+    if side == "sell" and created_at and expiry:
+        ttl_seconds = int((expiry - created_at).total_seconds())
+        min_sell_ttl = PAPER_INTENT_RUNNER_INTERVAL_SECONDS + PAPER_INTENT_RUNNER_PICKUP_GRACE_SECONDS
+        if ttl_seconds < min_sell_ttl:
+            errors.append("sell_intent_ttl_shorter_than_runner_pickup_window")
     if expiry and expiry <= reference_now:
         errors.append("intent_expired")
     risk_payload = dict(payload)
