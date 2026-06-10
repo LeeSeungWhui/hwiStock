@@ -1765,7 +1765,9 @@ def test_tick_prioritizes_exit_sell_intent_before_entry_fifo(tmp_path, monkeypat
     assert payload["intent_source"] == "next_intent_queue_exit_priority_fifo"
     assert payload["executionPreflight"]["idempotency_key"] == "intent-sell-exit"
     assert "sellable_truth_not_accepted" in payload["executionPreflight"]["errors"]
-    assert not (data_root / "state" / "kis-paper-runner-state.json").exists()
+    state = json.loads((data_root / "state" / "kis-paper-runner-state.json").read_text(encoding="utf-8"))
+    assert "intent-sell-exit" in state["quarantined_intent_keys"]
+    assert "intent-buy-first" not in state["consumed_intent_keys"]
     assert not any("/order-cash" in call["url"] for call in transport.calls)
 
 
@@ -1955,3 +1957,173 @@ def test_runner_can_consume_sell_intent_five_minutes_after_creation(tmp_path: Pa
     assert loaded["intent"]["side"] == "sell"
     assert loaded["intent"]["action"] == "SELL_NOW"
     assert loaded["intent"]["valid_until_kst"] == "2026-06-05T09:52:00+09:00"
+
+
+def test_terminal_sell_no_holding_is_quarantined_and_next_sell_intent_processed(tmp_path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    data_root = tmp_path / "data"
+    intent_dir = data_root / "intents" / "2026-06-05"
+    intent_dir.mkdir(parents=True)
+    stale_sell = {
+        "schema_version": "paper_order_intent/v0",
+        "intent_id": "intent-stale-sell-040350",
+        "idempotency_key": "intent-stale-sell-040350",
+        "side": "sell",
+        "intent_type": "position_time_stop_exit",
+        "symbol": "040350",
+        "quantity": 10,
+        "order_price": 9500,
+        "venue_route": "KRX",
+        "broker_adapter": "kis_paper",
+        "planned_order_cash_krw": 0,
+        "valid_until_kst": "2026-06-05T09:42:00+09:00",
+        "paper_only": True,
+    }
+    next_sell = {
+        **stale_sell,
+        "intent_id": "intent-next-sell-126640",
+        "idempotency_key": "intent-next-sell-126640",
+        "symbol": "126640",
+        "quantity": 5,
+        "order_price": 4400,
+    }
+    intent_dir.joinpath("paper-order-intents-latest.jsonl").write_text(
+        json.dumps(stale_sell, ensure_ascii=False) + "\n" + json.dumps(next_sell, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    env = _env()
+    env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _mark_order_grade_source(env)
+    _order_approval(tmp_path, env)
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(data_root)
+    transport = FakeTransport(
+        sellable_quantity="0",
+        balance_positions=[
+            {
+                "pdno": "126640",
+                "hldg_qty": "5",
+                "ord_psbl_qty": "5",
+                "prpr": "4400",
+                "pchs_avg_pric": "4300",
+            }
+        ],
+        daily_fills=[],
+    )
+
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=KisPaperAdapter(env=env, transport=transport),
+        at_kst="2026-06-05T09:30:00",
+    )
+
+    dispositions = payload["intent_dispositions"]
+    assert [row["idempotency_key"] for row in dispositions] == [
+        "intent-stale-sell-040350",
+        "intent-next-sell-126640",
+    ]
+    assert dispositions[0]["intent_disposition"] == "quarantined_terminal"
+    assert dispositions[0]["reason"] == "no_holding_for_sell_symbol"
+    assert dispositions[0]["queue_continued"] is True
+    assert dispositions[1]["intent_disposition"] == "submitted"
+    assert payload["intent_processing_summary"]["intents_seen_this_tick"] == 2
+    assert payload["intent_processing_summary"]["intents_quarantined_this_tick"] == 1
+    assert payload["intent_processing_summary"]["intents_submitted_this_tick"] == 1
+    assert sum(1 for call in transport.calls if "/order-cash" in call["url"]) == 1
+
+    state_path = data_root / "state" / "kis-paper-runner-state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert "intent-stale-sell-040350" in state["quarantined_intent_keys"]
+    assert "intent-stale-sell-040350" not in state["consumed_intent_keys"]
+    assert "intent-next-sell-126640" in state["consumed_intent_keys"]
+
+    loaded = continuous_runtime._load_next_intent_from_queue(
+        data_root=data_root,
+        at=datetime.fromisoformat("2026-06-05T09:31:00+09:00"),
+        state=state,
+        exit_only=True,
+    )
+    assert loaded["intent"] is None
+
+
+def test_active_sell_duplicate_is_snoozed_not_resubmitted_and_next_sell_processed(tmp_path, monkeypatch):
+    _calendar(tmp_path, monkeypatch)
+    data_root = tmp_path / "data"
+    intent_dir = data_root / "intents" / "2026-06-05"
+    intent_dir.mkdir(parents=True)
+    duplicate_sell = {
+        "schema_version": "paper_order_intent/v0",
+        "intent_id": "intent-duplicate-sell",
+        "idempotency_key": "intent-duplicate-sell",
+        "side": "sell",
+        "intent_type": "position_time_stop_exit",
+        "symbol": "005930",
+        "quantity": 2,
+        "order_price": 70000,
+        "venue_route": "KRX",
+        "broker_adapter": "kis_paper",
+        "planned_order_cash_krw": 0,
+        "valid_until_kst": "2026-06-05T09:42:00+09:00",
+        "paper_only": True,
+    }
+    next_sell = {
+        **duplicate_sell,
+        "intent_id": "intent-fresh-sell",
+        "idempotency_key": "intent-fresh-sell",
+        "symbol": "126640",
+        "quantity": 5,
+        "order_price": 4400,
+    }
+    intent_dir.joinpath("paper-order-intents-latest.jsonl").write_text(
+        json.dumps(duplicate_sell, ensure_ascii=False) + "\n" + json.dumps(next_sell, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    state_dir = data_root / "state"
+    state_dir.mkdir(parents=True)
+    state_dir.joinpath("kis-paper-runner-state.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "kis_paper_runner_state/v0",
+                "active_exits": [{"symbol": "005930", "side": "sell"}],
+                "consumed_intent_keys": [],
+                "submitting_intent_keys": [],
+                "ambiguous_intent_keys": [],
+                "pending_orders": [],
+                "holdings": [],
+                "submitted_order_history": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    env = _env()
+    env["HWISTOCK_KIS_PAPER_ORDER_ENABLED"] = "true"
+    _mark_order_grade_source(env)
+    _order_approval(tmp_path, env)
+    env["HWISTOCK_CALENDAR_PATH"] = os.environ["HWISTOCK_CALENDAR_PATH"]
+    env["HWISTOCK_DATA_DIR"] = str(data_root)
+    transport = FakeTransport(
+        sellable_quantity="0",
+        balance_positions=[
+            {"pdno": "005930", "hldg_qty": "2", "ord_psbl_qty": "2"},
+            {"pdno": "126640", "hldg_qty": "5", "ord_psbl_qty": "5"},
+        ],
+        daily_fills=[],
+    )
+
+    payload = continuous.runContinuousPaperTick(
+        env=env,
+        adapter=KisPaperAdapter(env=env, transport=transport),
+        at_kst="2026-06-05T09:30:00",
+    )
+
+    dispositions = payload["intent_dispositions"]
+    assert dispositions[0]["intent_disposition"] == "blocked_duplicate_active_exit"
+    assert dispositions[0]["queue_continued"] is True
+    assert dispositions[1]["idempotency_key"] == "intent-fresh-sell"
+    assert dispositions[1]["intent_disposition"] == "submitted"
+    assert sum(1 for call in transport.calls if "/order-cash" in call["url"]) == 1
+    order_body = next(call["body"] for call in transport.calls if "/order-cash" in call["url"])
+    assert order_body["PDNO"] == "126640"

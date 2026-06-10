@@ -270,6 +270,8 @@ def _checkSellPipeline(
     loaded = runner.get("loaded_intent") if isinstance(runner.get("loaded_intent"), Mapping) else {}
     loadedSell = bool(loaded) and _intentIsSell(loaded)
     steps = _stepRows(runner)
+    dispositions = _runnerIntentDispositions(runner)
+    sellDispositions = [row for row in dispositions if str(row.get("side") or "").strip().lower() == "sell"]
     touchedSell = loadedSell or any(
         (
             row.get("step") == "cash_order" and str(row.get("side") or "").strip().lower() == "sell"
@@ -279,7 +281,7 @@ def _checkSellPipeline(
             and "SELL_NOW" in str(row.get("idempotency_key") or row.get("intent_id") or "")
         )
         for row in steps
-    )
+    ) or bool(sellDispositions)
     ttlFindings: list[dict[str, Any]] = []
     nonExpiredSellIntents: list[dict[str, Any]] = []
     expiredBeforeRunner: list[dict[str, Any]] = []
@@ -316,6 +318,20 @@ def _checkSellPipeline(
         p0.append("sell_intent_expired_before_runner_pickup")
     if _isOrderWindow(runnerAt) and runnerAfterFlash and nonExpiredSellIntents and not touchedSell:
         p0.append("runner_did_not_pick_nonexpired_sell_intent")
+    headDisposition = sellDispositions[0] if sellDispositions else {}
+    headDispositionName = str(headDisposition.get("intent_disposition") or headDisposition.get("disposition") or "")
+    headQuarantinable = headDispositionName in {"quarantined_terminal", "invalid_payload", "expired"}
+    if (
+        _isOrderWindow(runnerAt)
+        and runnerAfterFlash
+        and len(nonExpiredSellIntents) > 1
+        and headQuarantinable
+        and headDisposition.get("queue_continued") is not True
+    ):
+        p0.append("nonexpired_sell_intents_behind_quarantinable_head")
+        p0.append("sell_intent_starvation_detected")
+    if runner.get("intent_processing_summary", {}).get("queue_starvation_detected") is True:
+        p0.append("sell_intent_starvation_detected")
     return {
         "status": "p0" if p0 else "pass",
         "triggered_position_count": len(triggered),
@@ -325,6 +341,7 @@ def _checkSellPipeline(
         "runner_timestamp_kst": runnerAt.isoformat(),
         "runner_loaded_sell_intent": loadedSell,
         "runner_touched_sell_intent": touchedSell,
+        "runner_sell_intent_dispositions": sellDispositions,
         "sell_intent_ttl_findings": ttlFindings,
         "expired_sell_intents_before_runner": expiredBeforeRunner,
         "nonexpired_sell_intents_at_runner": nonExpiredSellIntents,
@@ -335,6 +352,13 @@ def _checkSellPipeline(
 
 def _stepRows(runner: Mapping[str, Any]) -> list[dict[str, Any]]:
     return _listOfDicts(runner.get("steps"))
+
+
+def _runnerIntentDispositions(runner: Mapping[str, Any]) -> list[dict[str, Any]]:
+    rows = _listOfDicts(runner.get("intent_dispositions"))
+    if rows:
+        return rows
+    return [row for row in _stepRows(runner) if row.get("step") == "intent_disposition"]
 
 
 def _runnerErrors(runner: Mapping[str, Any]) -> list[str]:
@@ -357,8 +381,19 @@ def _checkRunnerSellExecution(*, at: datetime, runner: Mapping[str, Any]) -> dic
     cashOrders = [row for row in _stepRows(runner) if row.get("step") == "cash_order"]
     cashBrokerCalled = any(row.get("broker_endpoint_called") is True for row in cashOrders)
     errors = _runnerErrors(runner)
+    dispositions = _runnerIntentDispositions(runner)
+    loadedDisposition = next((row for row in dispositions if str(row.get("side") or "").strip().lower() == "sell"), {})
+    loadedDispositionName = str(
+        loadedDisposition.get("intent_disposition")
+        or loadedDisposition.get("disposition")
+        or ""
+    )
+    terminalHandled = (
+        loadedDispositionName in {"quarantined_terminal", "invalid_payload", "expired"}
+        and loadedDisposition.get("queue_continued") is True
+    )
     p0: list[str] = []
-    if activeWindow and loadedIsSell:
+    if activeWindow and loadedIsSell and not terminalHandled:
         if any("sellable_truth_not_accepted" in error for error in errors):
             p0.append("sell_intent_blocked_by_sellable_truth")
         if not cashBrokerCalled:
@@ -379,6 +414,8 @@ def _checkRunnerSellExecution(*, at: datetime, runner: Mapping[str, Any]) -> dic
             if isinstance(runner.get("account_truth"), Mapping)
             else None
         ),
+        "loaded_intent_disposition": loadedDispositionName or None,
+        "loaded_intent_terminal_handled": terminalHandled,
         "detected_errors": sorted(set(errors)),
         "p0_conditions": p0,
     }

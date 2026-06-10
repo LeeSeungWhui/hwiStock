@@ -402,6 +402,133 @@ def test_monitor_flags_runner_sellable_truth_block_and_consumed_sibling(tmp_path
     assert "sibling_intent_blocked_by_trade_document_already_consumed" in result["p0_conditions"]
 
 
+def test_monitor_flags_quarantinable_head_blocking_nonexpired_sell_intents(tmp_path: Path):
+    _write_compiled_watch(tmp_path)
+    _write_kis_market(tmp_path)
+    _write_flash(
+        tmp_path,
+        {
+            "document_kind": "POSITION_MANAGEMENT",
+            "produced_at_kst": f"{DAY}T09:10:00+09:00",
+            "position_actions": [
+                {"symbol": "040350", "action": "SELL_NOW", "order_window_open": True, "time_exit_reason": "stop_loss_hit"},
+                {"symbol": "126640", "action": "SELL_NOW", "order_window_open": True, "time_exit_reason": "target_price_hit"},
+            ],
+            "paper_intent_pipeline": {
+                "accepted_count": 2,
+                "accepted_intents": [
+                    {
+                        "symbol": "040350",
+                        "side": "sell",
+                        "action": "SELL_NOW",
+                        "created_at_kst": f"{DAY}T09:10:00+09:00",
+                        "valid_until_kst": f"{DAY}T09:22:00+09:00",
+                    },
+                    {
+                        "symbol": "126640",
+                        "side": "sell",
+                        "action": "SELL_NOW",
+                        "created_at_kst": f"{DAY}T09:10:00+09:00",
+                        "valid_until_kst": f"{DAY}T09:22:00+09:00",
+                    },
+                ],
+            },
+        },
+    )
+    _write_runner(
+        tmp_path,
+        {
+            "timestamp_kst": f"{DAY}T09:15:00+09:00",
+            "intent_loaded": True,
+            "loaded_intent": {"symbol": "040350", "side": "sell"},
+            "executionPreflight": {"ok": False, "errors": ["sellable_truth_not_accepted"]},
+            "intent_dispositions": [
+                {
+                    "intent_disposition": "quarantined_terminal",
+                    "symbol": "040350",
+                    "side": "sell",
+                    "queue_continued": False,
+                }
+            ],
+            "steps": [{"step": "cash_order", "status": "blocked_risk_overlay", "broker_endpoint_called": False}],
+        },
+    )
+
+    result = monitor.evaluatePaperOperationQuality(data_root=tmp_path, at=_at(f"{DAY}T09:15:00+09:00"))
+
+    assert result["status"] == "p0"
+    assert "nonexpired_sell_intents_behind_quarantinable_head" in result["p0_conditions"]
+    assert "sell_intent_starvation_detected" in result["p0_conditions"]
+
+
+def test_monitor_passes_after_terminal_head_quarantined_and_next_sell_processed(tmp_path: Path):
+    _write_compiled_watch(tmp_path)
+    _write_kis_market(tmp_path)
+    _write_flash(
+        tmp_path,
+        {
+            "document_kind": "POSITION_MANAGEMENT",
+            "produced_at_kst": f"{DAY}T09:10:00+09:00",
+            "position_actions": [
+                {"symbol": "040350", "action": "SELL_NOW", "order_window_open": True, "time_exit_reason": "stop_loss_hit"},
+                {"symbol": "126640", "action": "SELL_NOW", "order_window_open": True, "time_exit_reason": "target_price_hit"},
+            ],
+            "paper_intent_pipeline": {
+                "accepted_count": 2,
+                "accepted_intents": [
+                    {
+                        "symbol": "040350",
+                        "side": "sell",
+                        "action": "SELL_NOW",
+                        "created_at_kst": f"{DAY}T09:10:00+09:00",
+                        "valid_until_kst": f"{DAY}T09:22:00+09:00",
+                    },
+                    {
+                        "symbol": "126640",
+                        "side": "sell",
+                        "action": "SELL_NOW",
+                        "created_at_kst": f"{DAY}T09:10:00+09:00",
+                        "valid_until_kst": f"{DAY}T09:22:00+09:00",
+                    },
+                ],
+            },
+        },
+    )
+    _write_runner(
+        tmp_path,
+        {
+            "timestamp_kst": f"{DAY}T09:15:00+09:00",
+            "intent_loaded": True,
+            "loaded_intent": {"symbol": "040350", "side": "sell"},
+            "executionPreflight": {"ok": True, "errors": []},
+            "intent_dispositions": [
+                {
+                    "intent_disposition": "quarantined_terminal",
+                    "symbol": "040350",
+                    "side": "sell",
+                    "queue_continued": True,
+                },
+                {
+                    "intent_disposition": "submitted",
+                    "symbol": "126640",
+                    "side": "sell",
+                    "queue_continued": False,
+                    "broker_endpoint_called": True,
+                },
+            ],
+            "steps": [
+                {"step": "intent_disposition", "intent_disposition": "quarantined_terminal", "symbol": "040350", "side": "sell", "queue_continued": True},
+                {"step": "cash_order", "status": "pass", "side": "sell", "broker_endpoint_called": True},
+            ],
+        },
+    )
+
+    result = monitor.evaluatePaperOperationQuality(data_root=tmp_path, at=_at(f"{DAY}T09:15:00+09:00"))
+
+    assert result["status"] == "pass"
+    assert result["p0_conditions"] == []
+
+
 def test_monitor_passes_healthy_next_session_flow_and_writes_evidence(tmp_path: Path):
     _write_compiled_watch(tmp_path)
     _write_kis_market(tmp_path)

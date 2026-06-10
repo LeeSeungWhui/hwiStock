@@ -70,6 +70,8 @@ DEFAULT_MAX_DAILY_PAPER_ORDERS = 20
 DEFAULT_MAX_PAPER_NOTIONAL_KRW = 2_000_000
 PAPER_INTENT_RUNNER_INTERVAL_SECONDS = 300
 PAPER_INTENT_RUNNER_PICKUP_GRACE_SECONDS = 60
+DEFAULT_RUNNER_MAX_INTENTS_PER_TICK = 5
+RUNNER_SNOOZE_RETRY_SECONDS = 180
 SELLABLE_TRUTH_PASS_STATUSES = frozenset({"pass", "ok", "available", "confirmed"})
 SELLABLE_TRUTH_PROVIDER_UNSUPPORTED_STATUSES = frozenset(
     {"", "none", "unknown", "skipped_provider_unsupported", "provider_unsupported", "paper_mock_unsupported"}
@@ -166,6 +168,7 @@ def loadContinuousPaperRunnerConfig(
         "intent_file": str(source.get("HWISTOCK_KIS_PAPER_INTENT_FILE", "")).strip(),
         "data_root": str(source.get("HWISTOCK_DATA_DIR", str(DEFAULT_DATA_ROOT))).strip(),
         "state_file": str(source.get("HWISTOCK_KIS_PAPER_STATE_FILE", "")).strip(),
+        "max_intents_per_tick": max(1, _int_env(source, "HWISTOCK_RUNNER_MAX_INTENTS_PER_TICK", DEFAULT_RUNNER_MAX_INTENTS_PER_TICK)),
         "min_call_gap_sec": _float_env(source, "HWISTOCK_KIS_MIN_CALL_GAP_SEC", 1.35),
         "paper_env": describeKisPaperEnv(source),
         "capabilities": loadKisPaperCapabilityFlags(),
@@ -1140,7 +1143,8 @@ def runContinuousPaperTick(
     paper_readiness = buildPaperExperimentReadiness(config, status)
     data_root = Path(config["data_root"])
     local_state = _load_runner_state(config, data_root=data_root)
-    intent_source = "explicit_argument" if intent else "none"
+    explicit_intent = intent is not None
+    intent_source = "explicit_argument" if explicit_intent else "none"
     if intent is None:
         loaded = _load_next_intent_from_queue(data_root=data_root, at=reference_now, state=local_state)
         intent = loaded.get("intent")
@@ -1183,8 +1187,21 @@ def runContinuousPaperTick(
         "status": "pending",
         "intent_source": intent_source,
         "intent_loaded": bool(intent),
+        "loaded_intent": dict(intent) if isinstance(intent, Mapping) else None,
         "base_runner_order_gate": status["orderGate"],
         "intent_priority_policy": "exit_intents_before_entry_fifo",
+        "intent_drain_policy": "sell_exit_intents_only",
+        "max_intents_per_tick": config["max_intents_per_tick"],
+        "intent_processing_summary": {
+            "intents_seen_this_tick": 0,
+            "intents_submitted_this_tick": 0,
+            "intents_quarantined_this_tick": 0,
+            "intents_snoozed_this_tick": 0,
+            "intents_invalid_this_tick": 0,
+            "intents_remaining": None,
+            "queue_starvation_detected": False,
+        },
+        "intent_dispositions": [],
         "steps": [],
         "observationWindow": ledger.buildObservationWindowManifest(
             started_at_kst=str(source.get("HWISTOCK_OBSERVATION_STARTED_AT_KST") or now.isoformat()),
@@ -1413,36 +1430,82 @@ def runContinuousPaperTick(
             "credential_values_printed": False,
         }
     )
-    account_truth = _account_truth_from_steps(result["steps"], produced_at=reference_now)
-    if intent:
-        account_truth = enrichAccountTruthWithSellableTruth(account_truth, intent)
-        if str((intent or {}).get("side") or "buy").strip().lower() == "sell":
-            result["steps"].append(_sellable_truth_normalization_step(intent, account_truth))
-    result["account_truth"] = account_truth
+    base_account_truth = _account_truth_from_steps(result["steps"], produced_at=reference_now)
+    result["account_truth"] = (
+        enrichAccountTruthWithSellableTruth(base_account_truth, intent)
+        if intent
+        else base_account_truth
+    )
     reconciliation_step = _reconcile_runner_state_from_account_truth(
         local_state,
-        account_truth,
+        base_account_truth,
         now=reference_now,
     )
     result["steps"].append(reconciliation_step)
     if reconciliation_step.get("status") == "pass":
         _write_runner_state(local_state, config, data_root=data_root)
 
-    if intent:
+    current_intent = dict(intent) if isinstance(intent, Mapping) else None
+    max_intents = 1 if explicit_intent else int(config["max_intents_per_tick"])
+    processed_count = 0
+    while current_intent and processed_count < max_intents:
+        processed_count += 1
+        key = _intent_key(current_intent)
+        side = _intent_side(current_intent)
+        symbol = _intent_symbol(current_intent)
+        intent_account_truth = enrichAccountTruthWithSellableTruth(base_account_truth, current_intent)
+        result["account_truth"] = intent_account_truth
+        if side == "sell":
+            result["steps"].append(_sellable_truth_normalization_step(current_intent, intent_account_truth))
         local_order_state = _order_state_snapshot_from_runner_state(local_state, now=now)
         preflight = evaluateIntentExecutionPreflight(
-            intent,
+            current_intent,
             order_state_snapshot=local_order_state,
             status=status,
-            account_truth=account_truth,
+            account_truth=intent_account_truth,
         )
         result["executionPreflight"] = preflight
         result["riskOverlay"] = preflight.get("riskOverlay")
+        disposition_step: Dict[str, Any] = {
+            "step": "intent_disposition",
+            "intent_key": key,
+            "idempotency_key": key,
+            "symbol": symbol,
+            "side": side,
+            "queue_continued": False,
+            "next_intent_loaded": False,
+            "broker_endpoint_called": False,
+        }
         if not preflight["ok"]:
-            result["steps"].append({"step": "cash_order", "status": "blocked_risk_overlay", "errors": preflight["errors"]})
+            result["steps"].append(
+                {
+                    "step": "cash_order",
+                    "status": "blocked_risk_overlay",
+                    "errors": preflight["errors"],
+                    "broker_endpoint_called": False,
+                }
+            )
+            disposition = _classify_preflight_disposition(
+                current_intent,
+                preflight,
+                account_truth=intent_account_truth,
+                now=reference_now,
+            )
+            disposition_name = str(disposition.get("intent_disposition") or "invalid_payload")
+            if disposition_name in {"quarantined_terminal", "invalid_payload", "expired"}:
+                _mark_runner_state_quarantined(local_state, current_intent, disposition, now=reference_now)
+                _write_runner_state(local_state, config, data_root=data_root)
+                result["intent_processing_summary"]["intents_quarantined_this_tick"] += 1
+                if disposition_name == "invalid_payload":
+                    result["intent_processing_summary"]["intents_invalid_this_tick"] += 1
+            elif disposition_name in {"snoozed_retryable", "blocked_duplicate_active_exit"}:
+                _mark_runner_state_snoozed(local_state, current_intent, disposition, now=reference_now)
+                _write_runner_state(local_state, config, data_root=data_root)
+                result["intent_processing_summary"]["intents_snoozed_this_tick"] += 1
+            disposition_step.update(disposition)
         else:
             session_limit = evaluatePaperSessionLimits(
-                intent,
+                current_intent,
                 local_state,
                 config["paper_order_approval"],
                 now=reference_now,
@@ -1458,8 +1521,22 @@ def runContinuousPaperTick(
                         "sessionLimit": session_limit,
                     }
                 )
+                retry_after = reference_now + timedelta(seconds=RUNNER_SNOOZE_RETRY_SECONDS)
+                disposition = {
+                    "intent_disposition": "snoozed_retryable",
+                    "intent_key": key,
+                    "idempotency_key": key,
+                    "symbol": symbol,
+                    "side": side,
+                    "reason": "paper_session_limit_blocked",
+                    "retry_after_kst": retry_after.isoformat(),
+                    "broker_endpoint_called": False,
+                }
+                _mark_runner_state_snoozed(local_state, current_intent, disposition, now=reference_now)
+                _write_runner_state(local_state, config, data_root=data_root)
+                result["intent_processing_summary"]["intents_snoozed_this_tick"] += 1
+                disposition_step.update(disposition)
             else:
-                key = str(intent.get("idempotency_key") or intent.get("intent_id") or "").strip()
                 claim = _acquire_intent_claim(key, data_root=data_root, now=now)
                 result["steps"].append(claim)
                 if claim["status"] != "pass":
@@ -1471,11 +1548,26 @@ def runContinuousPaperTick(
                             "reason": claim.get("reason"),
                         }
                     )
+                    retry_after = reference_now + timedelta(seconds=RUNNER_SNOOZE_RETRY_SECONDS)
+                    disposition = {
+                        "intent_disposition": "blocked_duplicate_active_exit",
+                        "intent_key": key,
+                        "idempotency_key": key,
+                        "symbol": symbol,
+                        "side": side,
+                        "reason": claim.get("reason") or "intent_claim_already_exists",
+                        "retry_after_kst": retry_after.isoformat(),
+                        "broker_endpoint_called": False,
+                    }
+                    _mark_runner_state_snoozed(local_state, current_intent, disposition, now=reference_now)
+                    _write_runner_state(local_state, config, data_root=data_root)
+                    result["intent_processing_summary"]["intents_snoozed_this_tick"] += 1
+                    disposition_step.update(disposition)
                 else:
-                    _mark_runner_state_submitting(local_state, intent, now=now)
+                    _mark_runner_state_submitting(local_state, current_intent, now=now)
                     _write_runner_state(local_state, config, data_root=data_root)
                     try:
-                        cash_order = adapter.placeCashOrder(token, intent)
+                        cash_order = adapter.placeCashOrder(token, current_intent)
                     except Exception as exc:  # pragma: no cover - defensive network ambiguity boundary
                         cash_order = {
                             "step": "cash_order",
@@ -1488,12 +1580,34 @@ def runContinuousPaperTick(
                     if _broker_step_passed(cash_order):
                         markIntentConsumed(key)
                         _update_intent_claim_status(key, data_root=data_root, status="submitted", now=now)
-                        _mark_runner_state_submitted(local_state, intent, cash_order, now=now)
+                        _mark_runner_state_submitted(local_state, current_intent, cash_order, now=now)
                         _write_runner_state(local_state, config, data_root=data_root)
+                        result["intent_processing_summary"]["intents_submitted_this_tick"] += 1
+                        disposition_step.update(
+                            {
+                                "intent_disposition": "submitted",
+                                "reason": "broker_order_submitted",
+                                "broker_endpoint_called": True,
+                                "broker_order_no": cash_order.get("broker_order_no") or "",
+                            }
+                        )
                     elif cash_order.get("broker_endpoint_called") is False:
                         _release_intent_claim(key, data_root=data_root)
                         _clear_runner_state_submitting(local_state, key, now=now)
+                        retry_after = reference_now + timedelta(seconds=RUNNER_SNOOZE_RETRY_SECONDS)
+                        disposition = {
+                            "intent_disposition": "snoozed_retryable",
+                            "intent_key": key,
+                            "idempotency_key": key,
+                            "symbol": symbol,
+                            "side": side,
+                            "reason": "cash_order_blocked_before_broker_endpoint",
+                            "retry_after_kst": retry_after.isoformat(),
+                            "broker_endpoint_called": False,
+                        }
+                        _mark_runner_state_snoozed(local_state, current_intent, disposition, now=reference_now)
                         _write_runner_state(local_state, config, data_root=data_root)
+                        result["intent_processing_summary"]["intents_snoozed_this_tick"] += 1
                         result["steps"].append(
                             {
                                 "step": "local_state",
@@ -1502,9 +1616,10 @@ def runContinuousPaperTick(
                                 "broker_status": cash_order.get("status"),
                             }
                         )
+                        disposition_step.update(disposition)
                     else:
                         _update_intent_claim_status(key, data_root=data_root, status="ambiguous", now=now)
-                        _mark_runner_state_ambiguous(local_state, intent, cash_order, now=now)
+                        _mark_runner_state_ambiguous(local_state, current_intent, cash_order, now=now)
                         _write_runner_state(local_state, config, data_root=data_root)
                         result["steps"].append(
                             {
@@ -1514,6 +1629,36 @@ def runContinuousPaperTick(
                                 "broker_status": cash_order.get("status"),
                             }
                         )
+                        disposition_step.update(
+                            {
+                                "intent_disposition": "snoozed_retryable",
+                                "reason": "cash_order_ambiguous_requires_reconciliation",
+                                "broker_endpoint_called": cash_order.get("broker_endpoint_called"),
+                            }
+                        )
+        result["intent_processing_summary"]["intents_seen_this_tick"] += 1
+        result["intent_dispositions"].append(dict(disposition_step))
+        result["steps"].append(disposition_step)
+        if explicit_intent or side != "sell" or processed_count >= max_intents:
+            break
+        loaded = _load_next_intent_from_queue(
+            data_root=data_root,
+            at=reference_now,
+            state=local_state,
+            exit_only=True,
+        )
+        next_intent = loaded.get("intent")
+        disposition_step["queue_continued"] = bool(next_intent)
+        disposition_step["next_intent_loaded"] = bool(next_intent)
+        result["intent_dispositions"][-1] = dict(disposition_step)
+        current_intent = dict(next_intent) if isinstance(next_intent, Mapping) else None
+
+    result["intent_processing_summary"]["intents_remaining"] = _count_available_queue_intents(
+        data_root=data_root,
+        at=reference_now,
+        state=local_state,
+        exit_only=True,
+    )
 
     if token_cache_managed:
         result["steps"].append(tokenCacheRevokeSkippedStep())
@@ -1589,6 +1734,7 @@ def _load_next_intent_from_queue(
     data_root: Path,
     at: datetime,
     state: Mapping[str, Any],
+    exit_only: bool = False,
 ) -> Dict[str, Any]:
     path = data_root / "intents" / at.date().isoformat() / "paper-order-intents-latest.jsonl"
     if not path.is_file():
@@ -1607,6 +1753,19 @@ def _load_next_intent_from_queue(
         ]
         if str(item or "").strip()
     }
+    quarantined = {
+        str(item or "").strip()
+        for item in (state.get("quarantined_intent_keys") or [])
+        if str(item or "").strip()
+    }
+    snoozed_until_by_key: dict[str, datetime] = {}
+    for item in state.get("snoozed_intents") or []:
+        if not isinstance(item, Mapping):
+            continue
+        key = str(item.get("idempotency_key") or item.get("intent_id") or "").strip()
+        retry_after = _parse_optional_kst_timestamp(item.get("retry_after_kst"))
+        if key and retry_after and retry_after > at:
+            snoozed_until_by_key[key] = retry_after
     rows: list[Dict[str, Any]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
@@ -1619,16 +1778,82 @@ def _load_next_intent_from_queue(
             rows.append(dict(parsed))
     prioritized_rows = sorted(enumerate(rows), key=lambda item: (_intent_priority_rank(item[1]), item[0]))
     for _, row in prioritized_rows:
+        if exit_only and _intent_priority_rank(row) != 0:
+            continue
         key = str(row.get("idempotency_key") or row.get("intent_id") or "").strip()
         if key and key in consumed:
             continue
         if key and key in locked:
+            continue
+        if key and key in quarantined:
+            continue
+        if key and key in snoozed_until_by_key:
             continue
         expiry = _parse_optional_kst_timestamp(row.get("valid_until_kst") or row.get("valid_until"))
         if expiry and expiry <= at:
             continue
         return {"intent": row, "source": "next_intent_queue_exit_priority_fifo", "path": str(path)}
     return {"intent": None, "source": "next_intent_queue_empty_or_expired", "path": str(path)}
+
+
+def _count_available_queue_intents(
+    *,
+    data_root: Path,
+    at: datetime,
+    state: Mapping[str, Any],
+    exit_only: bool = False,
+) -> int:
+    path = data_root / "intents" / at.date().isoformat() / "paper-order-intents-latest.jsonl"
+    if not path.is_file():
+        return 0
+    consumed = {
+        str(item or "").strip()
+        for item in (state.get("consumed_intent_keys") or [])
+        if str(item or "").strip()
+    }
+    locked = {
+        str(item or "").strip()
+        for item in [
+            *(state.get("submitting_intent_keys") or []),
+            *(state.get("ambiguous_intent_keys") or []),
+            *(state.get("claim_intent_keys") or []),
+        ]
+        if str(item or "").strip()
+    }
+    quarantined = {
+        str(item or "").strip()
+        for item in (state.get("quarantined_intent_keys") or [])
+        if str(item or "").strip()
+    }
+    snoozed = set()
+    for item in state.get("snoozed_intents") or []:
+        if not isinstance(item, Mapping):
+            continue
+        key = str(item.get("idempotency_key") or item.get("intent_key") or "").strip()
+        retry_after = _parse_optional_kst_timestamp(item.get("retry_after_kst"))
+        if key and retry_after and retry_after > at:
+            snoozed.add(key)
+    count = 0
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(parsed, Mapping):
+            continue
+        row = dict(parsed)
+        if exit_only and _intent_priority_rank(row) != 0:
+            continue
+        key = str(row.get("idempotency_key") or row.get("intent_id") or "").strip()
+        if key and key in consumed.union(locked, quarantined, snoozed):
+            continue
+        expiry = _parse_optional_kst_timestamp(row.get("valid_until_kst") or row.get("valid_until"))
+        if expiry and expiry <= at:
+            continue
+        count += 1
+    return count
 
 
 def _intent_priority_rank(row: Mapping[str, Any]) -> int:
@@ -1658,6 +1883,9 @@ def _load_runner_state(config: Mapping[str, Any], *, data_root: Path) -> Dict[st
             "submitting_intent_keys": [],
             "ambiguous_intent_keys": [],
             "ambiguous_submits": [],
+            "quarantined_intent_keys": [],
+            "quarantined_intents": [],
+            "snoozed_intents": [],
             "pending_orders": [],
             "holdings": [],
             "active_exits": [],
@@ -1677,6 +1905,9 @@ def _load_runner_state(config: Mapping[str, Any], *, data_root: Path) -> Dict[st
     state.setdefault("submitting_intent_keys", [])
     state.setdefault("ambiguous_intent_keys", [])
     state.setdefault("ambiguous_submits", [])
+    state.setdefault("quarantined_intent_keys", [])
+    state.setdefault("quarantined_intents", [])
+    state.setdefault("snoozed_intents", [])
     state.setdefault("pending_orders", [])
     state.setdefault("holdings", [])
     state.setdefault("active_exits", [])
@@ -1687,6 +1918,9 @@ def _load_runner_state(config: Mapping[str, Any], *, data_root: Path) -> Dict[st
         "submitting_intent_keys",
         "ambiguous_intent_keys",
         "ambiguous_submits",
+        "quarantined_intent_keys",
+        "quarantined_intents",
+        "snoozed_intents",
         "pending_orders",
         "holdings",
         "active_exits",
@@ -1856,6 +2090,16 @@ def _order_state_snapshot_from_runner_state(state: Mapping[str, Any], *, now: da
             for item in (state.get("ambiguous_intent_keys") or [])
             if str(item).strip()
         ],
+        "quarantined_intent_keys": [
+            str(item)
+            for item in (state.get("quarantined_intent_keys") or [])
+            if str(item).strip()
+        ],
+        "snoozed_intents": [
+            dict(row)
+            for row in (state.get("snoozed_intents") or [])
+            if isinstance(row, Mapping)
+        ],
     }
 
 
@@ -1980,6 +2224,188 @@ def _mark_runner_state_submitted(
     ]
     history.append(dict(pending[-1]))
     state["submitted_order_history"] = history[-500:]
+    state["last_updated_kst"] = now.isoformat()
+
+
+def _intent_key(intent: Mapping[str, Any]) -> str:
+    return str(intent.get("idempotency_key") or intent.get("intent_id") or "").strip()
+
+
+def _intent_symbol(intent: Mapping[str, Any]) -> str:
+    return str(intent.get("symbol") or intent.get("ticker") or "").strip()
+
+
+def _intent_side(intent: Mapping[str, Any]) -> str:
+    return str(intent.get("side") or "buy").strip().lower()
+
+
+def _account_truth_has_position(account_truth: Mapping[str, Any], symbol: str) -> bool:
+    expected = str(symbol or "").strip()
+    if not expected:
+        return False
+    for row in account_truth.get("positions") or []:
+        if isinstance(row, Mapping) and _symbol_matches(row, expected) and _positive_quantity_from_row(row) > 0:
+            return True
+    return False
+
+
+def _classify_preflight_disposition(
+    intent: Mapping[str, Any],
+    preflight: Mapping[str, Any],
+    *,
+    account_truth: Mapping[str, Any],
+    now: datetime,
+) -> Dict[str, Any]:
+    errors = {str(item) for item in (preflight.get("errors") or []) if str(item)}
+    side = _intent_side(intent)
+    symbol = _intent_symbol(intent)
+    key = _intent_key(intent)
+    base: Dict[str, Any] = {
+        "intent_key": key,
+        "idempotency_key": key,
+        "symbol": symbol,
+        "side": side,
+        "broker_endpoint_called": False,
+    }
+    if not errors:
+        return {**base, "intent_disposition": "eligible"}
+    if "intent_expired" in errors:
+        return {**base, "intent_disposition": "expired", "reason": "intent_expired"}
+    if errors.intersection(
+        {
+            "intent_schema_invalid",
+            "paper_only_guard_failed",
+            "broker_adapter_not_allowed_for_paper_order",
+            "kis_paper_order_route_must_be_krx",
+            "symbol_required",
+            "idempotency_key_required",
+            "sell_quantity_must_be_positive",
+            "valid_until_kst_must_be_after_created_at_kst",
+            "sell_intent_zero_ttl",
+            "sell_intent_ttl_shorter_than_runner_pickup_window",
+        }
+    ):
+        return {**base, "intent_disposition": "invalid_payload", "reason": sorted(errors)[0]}
+    if side == "sell" and errors.intersection(
+        {
+            "active_exit_order_exists",
+            "active_sell_order_exists",
+            "pending_order_exists",
+            "ambiguous_submit_requires_reconciliation",
+            "intent_submit_claim_in_progress",
+        }
+    ):
+        retry_after = now + timedelta(seconds=RUNNER_SNOOZE_RETRY_SECONDS)
+        reason = "active_sell_order_exists" if "active_sell_order_exists" in errors else sorted(errors)[0]
+        return {
+            **base,
+            "intent_disposition": "blocked_duplicate_active_exit",
+            "reason": reason,
+            "retry_after_kst": retry_after.isoformat(),
+        }
+    if side == "sell" and "sellable_truth_not_accepted" in errors:
+        balance_ok = account_truth.get("balance_status") == "pass"
+        symbol_in_positions = _account_truth_has_position(account_truth, symbol)
+        normalized_sellable_quantity = _coerce_nonnegative_int(account_truth.get("normalized_sellable_quantity"), 0)
+        truth_status = str(account_truth.get("sellable_truth_status") or "").strip()
+        if balance_ok and not symbol_in_positions:
+            return {
+                **base,
+                "intent_disposition": "quarantined_terminal",
+                "reason": "no_holding_for_sell_symbol",
+                "sellable_truth_status": truth_status or None,
+                "sellable_quantity": normalized_sellable_quantity,
+            }
+        if balance_ok and normalized_sellable_quantity <= 0 and truth_status in {"provider_unsupported_no_fallback", "unknown", "blocked"}:
+            return {
+                **base,
+                "intent_disposition": "quarantined_terminal",
+                "reason": "sellable_quantity_zero_no_position",
+                "sellable_truth_status": truth_status or None,
+                "sellable_quantity": normalized_sellable_quantity,
+            }
+        retry_after = now + timedelta(seconds=RUNNER_SNOOZE_RETRY_SECONDS)
+        return {
+            **base,
+            "intent_disposition": "snoozed_retryable",
+            "reason": "sellable_truth_retryable",
+            "retry_after_kst": retry_after.isoformat(),
+            "sellable_truth_status": truth_status or None,
+        }
+    if errors.intersection({"account_truth_required_for_order", "balance_truth_not_pass", "buyable_cash_truth_not_pass"}):
+        retry_after = now + timedelta(seconds=RUNNER_SNOOZE_RETRY_SECONDS)
+        return {
+            **base,
+            "intent_disposition": "snoozed_retryable",
+            "reason": sorted(errors)[0],
+            "retry_after_kst": retry_after.isoformat(),
+        }
+    return {**base, "intent_disposition": "invalid_payload", "reason": sorted(errors)[0]}
+
+
+def _mark_runner_state_quarantined(
+    state: Dict[str, Any],
+    intent: Mapping[str, Any],
+    disposition: Mapping[str, Any],
+    *,
+    now: datetime,
+) -> None:
+    key = _intent_key(intent)
+    if not key:
+        return
+    existing = [
+        dict(row)
+        for row in (state.get("quarantined_intents") or [])
+        if isinstance(row, Mapping) and str(row.get("idempotency_key") or row.get("intent_key") or "").strip() != key
+    ]
+    row = {
+        "idempotency_key": key,
+        "intent_key": key,
+        "intent_id": intent.get("intent_id"),
+        "symbol": _intent_symbol(intent),
+        "side": _intent_side(intent),
+        "action": intent.get("action"),
+        "disposition": disposition.get("intent_disposition"),
+        "reason": disposition.get("reason"),
+        "recorded_at_kst": now.isoformat(),
+        "terminal": True,
+    }
+    existing.append(row)
+    state["quarantined_intent_keys"] = sorted(set([*(state.get("quarantined_intent_keys") or []), key]))
+    state["quarantined_intents"] = existing[-500:]
+    state["last_updated_kst"] = now.isoformat()
+
+
+def _mark_runner_state_snoozed(
+    state: Dict[str, Any],
+    intent: Mapping[str, Any],
+    disposition: Mapping[str, Any],
+    *,
+    now: datetime,
+) -> None:
+    key = _intent_key(intent)
+    if not key:
+        return
+    existing = [
+        dict(row)
+        for row in (state.get("snoozed_intents") or [])
+        if isinstance(row, Mapping) and str(row.get("idempotency_key") or row.get("intent_key") or "").strip() != key
+    ]
+    existing.append(
+        {
+            "idempotency_key": key,
+            "intent_key": key,
+            "intent_id": intent.get("intent_id"),
+            "symbol": _intent_symbol(intent),
+            "side": _intent_side(intent),
+            "action": intent.get("action"),
+            "disposition": disposition.get("intent_disposition"),
+            "reason": disposition.get("reason"),
+            "retry_after_kst": disposition.get("retry_after_kst"),
+            "recorded_at_kst": now.isoformat(),
+        }
+    )
+    state["snoozed_intents"] = existing[-500:]
     state["last_updated_kst"] = now.isoformat()
 
 
