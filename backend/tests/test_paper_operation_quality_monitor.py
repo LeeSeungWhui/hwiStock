@@ -106,6 +106,20 @@ def _write_gpt_morning_health(root: Path, *, prompt_status: str = "ok", publish_
     )
 
 
+def _write_market_calendar_refresh(root: Path) -> None:
+    _write_json(
+        root,
+        f"evidence/{DAY}/market-calendar-refresh-latest.json",
+        {
+            "event": "market_calendar_refresh",
+            "status": "ok",
+            "target_date_kst": DAY,
+            "valid_until_kst": "2026-06-24T23:59:59+09:00",
+            "warnings": [],
+        },
+    )
+
+
 def _write_runner(root: Path, payload: dict | None = None) -> None:
     base = {
         "timestamp_kst": f"{DAY}T09:10:00+09:00",
@@ -147,6 +161,33 @@ def test_monitor_flags_candidate_universe_and_flash_safe_block_after_open_cutoff
     assert "flash_safe_block_missing_candidate_universe_after_open_cutoff" in result["p0_conditions"]
     assert result["broker_calls_enabled"] is False
     assert result["orders_enabled"] is False
+
+
+def test_calendar_stale_during_market_window_monitor_p0(tmp_path: Path):
+    _write_compiled_watch(tmp_path, count=1)
+    _write_kis_market(tmp_path, count=1)
+    _write_flash(tmp_path, {})
+    _write_runner(
+        tmp_path,
+        {
+            "timestamp_kst": f"{DAY}T09:12:00+09:00",
+            "calendar_context": {
+                "investment_mode": "paper",
+                "calendar_status": "calendar_stale",
+                "calendar_reason": "calendar cache expired",
+                "market_context_open": False,
+                "broker_order_open": False,
+                "reason": "calendar_stale",
+            },
+        },
+    )
+
+    result = monitor.evaluatePaperOperationQuality(data_root=tmp_path, at=_at())
+
+    assert result["status"] == "p0"
+    assert "calendar_stale_during_market_window" in result["p0_conditions"]
+    assert "calendar_stale_blocks_order_during_krx_window" in result["p0_conditions"]
+    assert "market_calendar_refresh_missing" in result["p0_conditions"]
 
 
 def test_monitor_flags_safe_block_morning_marked_accepted(tmp_path: Path):
@@ -524,6 +565,7 @@ def test_monitor_flags_quarantinable_head_blocking_nonexpired_sell_intents(tmp_p
 def test_monitor_passes_after_terminal_head_quarantined_and_next_sell_processed(tmp_path: Path):
     _write_compiled_watch(tmp_path)
     _write_kis_market(tmp_path)
+    _write_market_calendar_refresh(tmp_path)
     _write_flash(
         tmp_path,
         {
@@ -592,6 +634,7 @@ def test_monitor_passes_after_terminal_head_quarantined_and_next_sell_processed(
 def test_monitor_passes_healthy_next_session_flow_and_writes_evidence(tmp_path: Path):
     _write_compiled_watch(tmp_path)
     _write_kis_market(tmp_path)
+    _write_market_calendar_refresh(tmp_path)
     _write_flash(
         tmp_path,
         {

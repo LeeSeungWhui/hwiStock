@@ -14,5 +14,6 @@ EnvironmentFile=-/home/hwi/.config/hwistock/runtime-mode.env
 Environment=HWISTOCK_DEEPSEEK_MODEL=deepseek-v4-flash
 Environment=HWISTOCK_AI_EVENT_LIMIT=20
 Environment=HWISTOCK_AI_REASONING_EFFORT=low
-ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-ai-flash -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && source ops/systemd/load_runtime_mode_env.sh && python backend/service/ai_analysis_runner.py --once --job flash-10m --model "${HWISTOCK_DEEPSEEK_MODEL:-deepseek-v4-flash}"'
+Environment=HWISTOCK_RUNTIME_CALENDAR_PATH=/home/hwi/.config/hwistock/market-calendar/krx-nxt-trading-days.json
+ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-ai-flash -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && source ops/systemd/load_runtime_mode_env.sh && python ops/systemd/ensure_market_calendar.py --investment-mode "${HWISTOCK_INVESTMENT_MODE:-paper}" --date today --horizon-days 14 --write --write-evidence && python backend/service/ai_analysis_runner.py --once --job flash-10m --model "${HWISTOCK_DEEPSEEK_MODEL:-deepseek-v4-flash}"'
 NoNewPrivileges=true

@@ -1,0 +1,15 @@
+# hwiStock rolling market-calendar cache refresh.
+# Paper mode may autofill KRX-only weekday rows; live mode stays fail-closed.
+
+[Unit]
+Description=hwiStock market calendar refresh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/data/workspace/My/hwiStock
+EnvironmentFile=-/home/hwi/.config/hwistock/runtime-mode.env
+Environment=HWISTOCK_RUNTIME_CALENDAR_PATH=/home/hwi/.config/hwistock/market-calendar/krx-nxt-trading-days.json
+ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-market-calendar-refresh -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && source ops/systemd/load_runtime_mode_env.sh && python ops/systemd/ensure_market_calendar.py --investment-mode "${HWISTOCK_INVESTMENT_MODE:-paper}" --date today --horizon-days 14 --write --write-evidence'
+NoNewPrivileges=true

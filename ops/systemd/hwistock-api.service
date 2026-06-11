@@ -16,6 +16,7 @@ Environment=HWISTOCK_BIND_HOST=127.0.0.1
 Environment=HWISTOCK_KIS_INVESTMENT_MODE=paper
 Environment=HWISTOCK_MARKET_DATA_SOURCE=kis_market_mode_aware
 Environment=HWISTOCK_CALENDAR_PATH=/data/workspace/My/hwiStock/config/market-calendar/krx-nxt-trading-days.json
+Environment=HWISTOCK_RUNTIME_CALENDAR_PATH=/home/hwi/.config/hwistock/market-calendar/krx-nxt-trading-days.json
 Environment=HWISTOCK_ALLOW_WEEKDAY_CALENDAR_FALLBACK=false
 ExecStart=/usr/bin/env python3 /data/workspace/My/hwiStock/ops/systemd/run_with_daily_logs.py --name hwistock-api -- /usr/bin/python3 -m uvicorn server:app --host 127.0.0.1 --port 5001
 Restart=on-failure

@@ -53,6 +53,37 @@ def _env(path: Path, **overrides: str) -> dict[str, str]:
     return {"HWISTOCK_CALENDAR_PATH": str(path), **overrides}
 
 
+def _write_paper_autofill_calendar(path: Path, *, day: str = "2026-06-11") -> Path:
+    path.write_text(
+        json.dumps(
+            {
+                "validUntil": "2026-06-25T23:59:59+09:00",
+                "sourceAuthority": "paper_autofill_weekday_public_holiday_crosscheck",
+                "days": {
+                    day: {
+                        "dateKst": day,
+                        "isTradingDay": True,
+                        "source": "paper_autofill_weekday_public_holiday_crosscheck",
+                        "confidence": "paper_experiment",
+                        "warnings": ["calendar_row_autofilled_for_paper_mode"],
+                        "nxtEnabled": False,
+                        "krx": {
+                            "regularOpen": "09:00",
+                            "regularClose": "15:30",
+                            "orderOpen": "09:00",
+                            "orderClose": "15:00",
+                        },
+                        "nxt": {"open": "08:00", "close": "20:00", "enabled": False},
+                    }
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
 def test_weekend_kis_market_data_skips_but_pro_hourly_still_allowed(tmp_path: Path):
     calendar = _write_calendar(tmp_path)
     env = _env(calendar)
@@ -179,3 +210,41 @@ def test_live_mode_does_not_enable_nxt_without_approval_flags(tmp_path: Path):
     assert default_live["calendar_context"]["nxt_enabled"] is False
     assert approved_live["routing"]["nxtEnabled"] is True
     assert approved_live["calendar_context"]["nxt_enabled"] is True
+
+
+def test_market_session_gate_uses_runtime_calendar_before_repo_seed(tmp_path: Path):
+    repo = _write_calendar(tmp_path, valid_until="2026-06-10T23:59:59+09:00")
+    runtime = _write_paper_autofill_calendar(tmp_path / "runtime-calendar.json")
+    env = _env(repo, HWISTOCK_RUNTIME_CALENDAR_PATH=str(runtime), HWISTOCK_INVESTMENT_MODE="paper")
+
+    result = gate.evaluateKisCallGate("2026-06-11T14:50:00+09:00", call_family="kis_order_submit", env=env)
+
+    assert result["allowed"] is True
+    assert result["calendar"]["path"] == str(runtime)
+    assert result["calendar_context"]["calendar_status"] == "paper_autofilled"
+    assert result["calendar_context"]["broker_order_open"] is True
+
+
+def test_paper_1450_with_autofilled_row_opens_market_and_order_gate(tmp_path: Path):
+    runtime = _write_paper_autofill_calendar(tmp_path / "runtime-calendar.json")
+    result = gate.evaluateKisCallGate(
+        "2026-06-11T14:50:00+09:00",
+        call_family="kis_order_submit",
+        env={"HWISTOCK_RUNTIME_CALENDAR_PATH": str(runtime), "HWISTOCK_INVESTMENT_MODE": "paper"},
+    )
+
+    assert result["allowed"] is True
+    assert result["calendar_context"]["market_context_open"] is True
+    assert result["calendar_context"]["broker_order_open"] is True
+
+
+def test_paper_1510_with_autofilled_row_blocks_order_but_allows_close_context(tmp_path: Path):
+    runtime = _write_paper_autofill_calendar(tmp_path / "runtime-calendar.json")
+    env = {"HWISTOCK_RUNTIME_CALENDAR_PATH": str(runtime), "HWISTOCK_INVESTMENT_MODE": "paper"}
+    order = gate.evaluateKisCallGate("2026-06-11T15:10:00+09:00", call_family="kis_order_submit", env=env)
+    reconciliation = gate.evaluateKisCallGate("2026-06-11T15:10:00+09:00", call_family="kis_reconciliation", env=env)
+
+    assert order["allowed"] is False
+    assert order["reason"] == "broker_order_window_closed"
+    assert order["calendar_context"]["market_context_open"] is True
+    assert reconciliation["allowed"] is True

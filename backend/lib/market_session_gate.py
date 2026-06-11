@@ -17,13 +17,16 @@ from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
 try:
+    from lib import market_calendar_cache as mcal
     from lib import runtime_policy as rp
 except ImportError:  # pragma: no cover
+    from backend.lib import market_calendar_cache as mcal
     from backend.lib import runtime_policy as rp
 
 KST = timezone(timedelta(hours=9))
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CALENDAR_PATH = REPO_ROOT / "config" / "market-calendar" / "krx-nxt-trading-days.json"
+DEFAULT_CALENDAR_PATH = mcal.DEFAULT_REPO_CALENDAR_PATH
+READY_CALENDAR_STATES = frozenset({"calendar_ready", "paper_autofilled"})
 
 ALWAYS_ALLOWED_CALL_FAMILIES = frozenset(
     {
@@ -54,12 +57,7 @@ def parseKstDatetime(value: Optional[Any] = None) -> datetime:
 
 
 def calendarPathFromEnv(env: Optional[Mapping[str, str]] = None) -> Path:
-    source = env if env is not None else os.environ
-    override = str(source.get("HWISTOCK_CALENDAR_PATH") or "").strip()
-    if override:
-        path = Path(override)
-        return path if path.is_absolute() else REPO_ROOT / override
-    return DEFAULT_CALENDAR_PATH
+    return mcal.resolve_calendar_read_path(env if env is not None else os.environ)
 
 
 def _parse_calendar_time(value: Any, default_value: time) -> time:
@@ -75,24 +73,7 @@ def _parse_calendar_time(value: Any, default_value: time) -> time:
 
 
 def _calendar_day_rows(payload: Mapping[str, Any]) -> Dict[str, Dict[str, Any]]:
-    rows: Dict[str, Dict[str, Any]] = {}
-    for key in ("days", "tradingDays", "calendar"):
-        value = payload.get(key)
-        if isinstance(value, Mapping):
-            for day, row in value.items():
-                if isinstance(row, Mapping):
-                    rows[str(day)] = dict(row)
-                elif isinstance(row, bool):
-                    rows[str(day)] = {"isTradingDay": row}
-        elif isinstance(value, list):
-            for row in value:
-                if isinstance(row, str):
-                    rows[row] = {"isTradingDay": True}
-                elif isinstance(row, Mapping):
-                    day = str(row.get("dateKst") or row.get("date") or row.get("day") or "").strip()
-                    if day:
-                        rows[day] = dict(row)
-    return rows
+    return mcal.calendar_day_rows(payload)
 
 
 def _calendar_session_state(day_payload: Mapping[str, Any], at: datetime) -> Dict[str, Any]:
@@ -239,23 +220,34 @@ def evaluateCalendarState(
             **session_state,
         }
 
+    state = "paper_autofilled" if mcal.is_paper_autofill_row(day_payload) else "calendar_ready"
     return {
-        "state": "calendar_ready",
+        "state": state,
         "path": str(path),
         "dateKst": date_key,
         "tradingAllowed": True,
         "isTradingDay": True,
         "validUntil": valid_until or None,
-        "reason": "calendar row ready",
-        "sourceAuthority": payload.get("sourceAuthority") or payload.get("source") or "local_cache",
-        "sourceHierarchy": payload.get("sourceHierarchy") or "local KRX/NXT cached calendar; KIS holiday lookup deferred",
+        "reason": "paper autofilled calendar row ready" if state == "paper_autofilled" else "calendar row ready",
+        "sourceAuthority": (
+            day_payload.get("sourceAuthority")
+            or day_payload.get("source")
+            or payload.get("sourceAuthority")
+            or payload.get("source")
+            or "local_cache"
+        ),
+        "sourceHierarchy": (
+            day_payload.get("sourceHierarchy")
+            or payload.get("sourceHierarchy")
+            or "local KRX/NXT cached calendar; KIS holiday lookup deferred"
+        ),
         **session_state,
     }
 
 
 def _context_reason(calendar: Mapping[str, Any], route: Mapping[str, Any], *, market_context_open: bool) -> str:
     state = str(calendar.get("state") or "")
-    if state != "calendar_ready":
+    if state not in READY_CALENDAR_STATES:
         return state or "calendar_unavailable"
     if calendar.get("isTradingDay") is not True:
         return "weekend_or_holiday"
@@ -292,7 +284,7 @@ def evaluateKisCallGate(
     env_for_route["HWISTOCK_INVESTMENT_MODE"] = mode
     route = rp.routeForExecutionAt(ref, env=env_for_route)
     calendar = evaluateCalendarState(ref, env=source)
-    calendar_ready = calendar.get("state") == "calendar_ready" and calendar.get("isTradingDay") is True
+    calendar_ready = calendar.get("state") in READY_CALENDAR_STATES and calendar.get("isTradingDay") is True
     market_context_open = bool(calendar_ready and route.get("marketAnalysisContextOpen"))
     broker_order_open = bool(calendar_ready and route.get("orderWindowOpen") and calendar.get("krxOrderSessionOpen"))
     kis_realtime_expected = market_context_open

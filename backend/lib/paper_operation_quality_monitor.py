@@ -16,6 +16,11 @@ from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 from zoneinfo import ZoneInfo
 
+try:
+    from lib import market_calendar_cache as mcal
+except ImportError:  # pragma: no cover
+    from backend.lib import market_calendar_cache as mcal
+
 KST = ZoneInfo("Asia/Seoul")
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_ROOT = Path(os.getenv("HWISTOCK_DATA_DIR", str(REPO_ROOT / "data")))
@@ -67,6 +72,7 @@ def _dayPaths(dataRoot: Path, day: str) -> dict[str, str]:
         "morningWatchlist": dataRoot / "morning-watchlist" / day / "morning-watchlist-latest.json",
         "gptMorningPromptHealth": dataRoot / "evidence" / day / "gpt-morning-prompt-health.json",
         "morningWatchlistPublishHealth": dataRoot / "evidence" / day / "morning-watchlist-publish-health.json",
+        "marketCalendarRefresh": dataRoot / "evidence" / day / "market-calendar-refresh-latest.json",
         "kisPaperRunner": dataRoot / "evidence" / day / "kis-paper-continuous-latest.json",
     }
     return {key: str(path) for key, path in paths.items() if path.exists()}
@@ -116,6 +122,11 @@ def _candidateSource(compiledWatch: Mapping[str, Any], kisMarket: Mapping[str, A
 def _isOrderWindow(at: datetime) -> bool:
     local = at.astimezone(KST)
     return local.weekday() < 5 and ORDER_WINDOW_OPEN <= local.time() <= ORDER_WINDOW_CLOSE
+
+
+def _isKnownNonTradingDay(at: datetime) -> bool:
+    day = at.astimezone(KST).date()
+    return mcal.is_weekend(day) or bool(mcal.known_public_holiday_reason(day))
 
 
 def _isAfterOpenCutoff(at: datetime) -> bool:
@@ -168,6 +179,69 @@ def _checkCandidateUniverse(
         "candidate_universe_source": _candidateSource(compiledWatch, kisMarket),
         "compiled_watch_produced_at_kst": compiledWatch.get("produced_at_kst"),
         "kis_market_produced_at_kst": kisMarket.get("produced_at_kst"),
+        "p0_conditions": p0,
+    }
+
+
+def _calendarContextFrom(*artifacts: Mapping[str, Any]) -> Mapping[str, Any]:
+    for artifact in artifacts:
+        if not isinstance(artifact, Mapping):
+            continue
+        direct = artifact.get("calendar_context")
+        if isinstance(direct, Mapping):
+            return direct
+        gate = artifact.get("base_runner_order_gate")
+        if isinstance(gate, Mapping) and isinstance(gate.get("calendar_context"), Mapping):
+            return gate["calendar_context"]
+        for key in ("market_session_gate", "kis_call_gate", "gate"):
+            nested = artifact.get(key)
+            if isinstance(nested, Mapping) and isinstance(nested.get("calendar_context"), Mapping):
+                return nested["calendar_context"]
+    return {}
+
+
+def _checkMarketCalendar(
+    *,
+    at: datetime,
+    kisMarket: Mapping[str, Any],
+    runner: Mapping[str, Any],
+    refresh: Mapping[str, Any],
+) -> dict[str, Any]:
+    local = at.astimezone(KST)
+    evaluated = _isOrderWindow(local) and not _isKnownNonTradingDay(local)
+    context = _calendarContextFrom(runner, kisMarket)
+    calendarStatus = str(context.get("calendar_status") or context.get("state") or "")
+    investmentMode = str(context.get("investment_mode") or runner.get("investment_mode") or "paper")
+    marketOpen = context.get("market_context_open")
+    brokerOpen = context.get("broker_order_open")
+    p0: list[str] = []
+    warnings: list[str] = []
+    staleStatuses = {"calendar_stale", "calendar_day_missing", "calendar_unconfigured", "missing"}
+    if evaluated and investmentMode == "paper":
+        if not refresh:
+            p0.append("market_calendar_refresh_missing")
+        if calendarStatus in staleStatuses:
+            if calendarStatus == "calendar_stale":
+                p0.append("calendar_cache_expires_before_next_trading_day")
+                p0.append("calendar_stale_during_market_window")
+            if calendarStatus in {"calendar_day_missing", "calendar_unconfigured", "missing"} and local.time() >= time(8, 0):
+                p0.append("calendar_today_row_missing_after_0800")
+            if marketOpen is False or brokerOpen is False or context.get("reason") in staleStatuses:
+                p0.append("calendar_stale_blocks_order_during_krx_window")
+    if refresh and isinstance(refresh.get("warnings"), list):
+        warnings.extend(str(item) for item in refresh.get("warnings") if item)
+    return {
+        "status": "p0" if p0 else ("warn" if warnings else ("pass" if evaluated else "observation_only")),
+        "evaluated": evaluated,
+        "investment_mode": investmentMode,
+        "calendar_status": calendarStatus or "missing",
+        "calendar_reason": context.get("calendar_reason") or context.get("reason"),
+        "market_context_open": marketOpen,
+        "broker_order_open": brokerOpen,
+        "refresh_artifact_present": bool(refresh),
+        "refresh_status": refresh.get("status"),
+        "refresh_valid_until_kst": refresh.get("valid_until_kst"),
+        "warnings": warnings,
         "p0_conditions": p0,
     }
 
@@ -506,8 +580,15 @@ def evaluatePaperOperationQuality(
     morning = artifacts.get("morningWatchlist") or {}
     promptHealth = artifacts.get("gptMorningPromptHealth") or {}
     publishHealth = artifacts.get("morningWatchlistPublishHealth") or {}
+    marketCalendarRefresh = artifacts.get("marketCalendarRefresh") or {}
     runner = artifacts.get("kisPaperRunner") or {}
     checks = {
+        "market_calendar": _checkMarketCalendar(
+            at=now,
+            kisMarket=kisMarket,
+            runner=runner,
+            refresh=marketCalendarRefresh,
+        ),
         "candidate_universe": _checkCandidateUniverse(at=now, compiledWatch=compiledWatch, kisMarket=kisMarket),
         "flash_provider": _checkFlashProvider(at=now, flash=flash),
         "morning_watchlist_use": _checkMorningWatchlistUse(

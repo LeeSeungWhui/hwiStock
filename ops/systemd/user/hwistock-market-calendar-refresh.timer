@@ -1,0 +1,13 @@
+[Unit]
+Description=hwiStock market calendar refresh timer
+
+[Timer]
+OnBootSec=30s
+OnCalendar=*-*-* 07:00:00
+OnCalendar=*-*-* 08:50:00
+OnUnitActiveSec=6h
+Persistent=true
+Unit=hwistock-market-calendar-refresh.service
+
+[Install]
+WantedBy=timers.target

@@ -15,6 +15,7 @@ EnvironmentFile=-/home/hwi/.config/hwistock/runtime-mode.env
 Environment=HWISTOCK_BIND_HOST=127.0.0.1
 Environment=HWISTOCK_MARKET_DATA_SOURCE=kis_market_mode_aware
 Environment=HWISTOCK_CALENDAR_PATH=/data/workspace/My/hwiStock/config/market-calendar/krx-nxt-trading-days.json
+Environment=HWISTOCK_RUNTIME_CALENDAR_PATH=/home/hwi/.config/hwistock/market-calendar/krx-nxt-trading-days.json
 Environment=HWISTOCK_ALLOW_WEEKDAY_CALENDAR_FALLBACK=false
 Environment=HWISTOCK_KIS_PAPER_ORDER_ENABLED=true
 Environment=HWISTOCK_MAX_DAILY_PAPER_ORDERS=20
@@ -22,5 +23,5 @@ Environment=HWISTOCK_MAX_PAPER_NOTIONAL_KRW=2000000
 Environment=HWISTOCK_PAPER_STOP_ON_DUPLICATE_LOCK_ERROR=true
 Environment=HWISTOCK_PAPER_STOP_ON_EVIDENCE_WRITE_ERROR=true
 Environment=HWISTOCK_KIS_MIN_CALL_GAP_SEC=1.35
-ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-kis-paper-runner -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && source ops/systemd/load_runtime_mode_env.sh && export HWISTOCK_OPERATION_MODE="${HWISTOCK_OPERATION_MODE:-paper_experiment}" HWISTOCK_KIS_PAPER_ORDER_ENABLED="${HWISTOCK_KIS_PAPER_ORDER_ENABLED:-true}" && eval "$(python3 ops/systemd/ensure_paper_order_approval.py --emit-env --update-runtime-env)" && python backend/service/kis_paper_continuous_runner.py --once --write-evidence --allow-paper-network --allow-paper-orders'
+ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-kis-paper-runner -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && source ops/systemd/load_runtime_mode_env.sh && python ops/systemd/ensure_market_calendar.py --investment-mode "${HWISTOCK_INVESTMENT_MODE:-paper}" --date today --horizon-days 14 --write --write-evidence && export HWISTOCK_OPERATION_MODE="${HWISTOCK_OPERATION_MODE:-paper_experiment}" HWISTOCK_KIS_PAPER_ORDER_ENABLED="${HWISTOCK_KIS_PAPER_ORDER_ENABLED:-true}" && eval "$(python3 ops/systemd/ensure_paper_order_approval.py --emit-env --update-runtime-env)" && python backend/service/kis_paper_continuous_runner.py --once --write-evidence --allow-paper-network --allow-paper-orders'
 NoNewPrivileges=true

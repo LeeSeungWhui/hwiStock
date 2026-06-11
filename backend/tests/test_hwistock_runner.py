@@ -380,6 +380,7 @@ def test_systemd_api_service_template():
     assert "Environment=HWISTOCK_MARKET_DATA_SOURCE=kis_market_mode_aware" in text
     assert "Environment=HWISTOCK_ALLOW_WEEKDAY_CALENDAR_FALLBACK=false" in text
     assert "config/market-calendar/krx-nxt-trading-days.json" in text
+    assert "HWISTOCK_RUNTIME_CALENDAR_PATH=/home/hwi/.config/hwistock/market-calendar/krx-nxt-trading-days.json" in text
     assert "--reload" not in text
     assert "reload=True" not in text
 
@@ -411,3 +412,41 @@ def test_runner_once_entrypoint_exits_zero_with_local_status():
     assert payload["status"]["brokerCallsEnabled"] is False
     assert payload["status"]["liveOrdersEnabled"] is False
     assert payload["auditLog"]["externalDelivery"] is False
+
+
+def test_kis_market_data_service_runs_calendar_helper_before_collector():
+    path = OPS_SYSTEMD / "user" / "hwistock-kis-market-data.service"
+    text = path.read_text(encoding="utf-8")
+
+    assert "ensure_market_calendar.py" in text
+    assert text.index("ensure_market_calendar.py") < text.index("kis_market_data_collector.py")
+
+
+def test_paper_runner_service_runs_calendar_helper_before_order_gate():
+    path = OPS_SYSTEMD / "user" / "hwistock-kis-paper-runner.service"
+    text = path.read_text(encoding="utf-8")
+
+    assert "ensure_market_calendar.py" in text
+    assert text.index("ensure_market_calendar.py") < text.index("ensure_paper_order_approval.py")
+    assert text.index("ensure_market_calendar.py") < text.index("kis_paper_continuous_runner.py")
+
+
+def test_ai_flash_service_runs_calendar_helper_before_flash_job():
+    path = OPS_SYSTEMD / "user" / "hwistock-ai-flash.service"
+    text = path.read_text(encoding="utf-8")
+
+    assert "ensure_market_calendar.py" in text
+    assert text.index("ensure_market_calendar.py") < text.index("ai_analysis_runner.py")
+
+
+def test_market_calendar_refresh_timer_template():
+    service = OPS_SYSTEMD / "user" / "hwistock-market-calendar-refresh.service"
+    timer = OPS_SYSTEMD / "user" / "hwistock-market-calendar-refresh.timer"
+
+    assert service.is_file()
+    assert timer.is_file()
+    assert "ensure_market_calendar.py" in service.read_text(encoding="utf-8")
+    timer_text = timer.read_text(encoding="utf-8")
+    assert "OnBootSec=30s" in timer_text
+    assert "OnCalendar=*-*-* 07:00:00" in timer_text
+    assert "OnCalendar=*-*-* 08:50:00" in timer_text

@@ -13,5 +13,6 @@ EnvironmentFile=-/home/hwi/.config/hwistock/hwistockApi.env
 EnvironmentFile=-/home/hwi/.config/hwistock/runtime-mode.env
 Environment=HWISTOCK_KIS_MARKET_READ_NETWORK_ENABLED=true
 Environment=HWISTOCK_KIS_MIN_CALL_GAP_SEC=1.35
-ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-kis-market-data -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && source ops/systemd/load_runtime_mode_env.sh && python backend/service/kis_market_data_collector.py --once --write-evidence'
+Environment=HWISTOCK_RUNTIME_CALENDAR_PATH=/home/hwi/.config/hwistock/market-calendar/krx-nxt-trading-days.json
+ExecStart=/usr/bin/env python3 ops/systemd/run_with_daily_logs.py --name hwistock-kis-market-data -- /usr/bin/env bash -lc 'source ./env.sh >/dev/null 2>&1 && source ops/systemd/load_runtime_mode_env.sh && python ops/systemd/ensure_market_calendar.py --investment-mode "${HWISTOCK_INVESTMENT_MODE:-paper}" --date today --horizon-days 14 --write --write-evidence && python backend/service/kis_market_data_collector.py --once --write-evidence'
 NoNewPrivileges=true

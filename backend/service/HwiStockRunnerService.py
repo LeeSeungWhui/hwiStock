@@ -21,8 +21,10 @@ if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 
 try:
+    from lib import market_calendar_cache as mcal
     from lib import runtime_policy as rp
 except ImportError:  # pragma: no cover - package-style imports
+    from backend.lib import market_calendar_cache as mcal
     from backend.lib import runtime_policy as rp
 
 KST = ZoneInfo("Asia/Seoul")
@@ -45,7 +47,8 @@ _AUDIT_CATEGORY_SPECS: tuple[tuple[str, str, str], ...] = (
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_DEFAULT_CALENDAR_PATH = _REPO_ROOT / "config" / "market-calendar" / "krx-nxt-trading-days.json"
+_DEFAULT_CALENDAR_PATH = mcal.DEFAULT_REPO_CALENDAR_PATH
+_READY_CALENDAR_STATES = frozenset({"calendar_ready", "paper_autofilled"})
 
 
 @dataclass
@@ -202,11 +205,7 @@ def routeVenueAtKst(at: datetime) -> Dict[str, Any]:
 
 
 def calendarPath() -> Path:
-    override = os.getenv("HWISTOCK_CALENDAR_PATH", "").strip()
-    if override:
-        p = Path(override)
-        return p if p.is_absolute() else _REPO_ROOT / override
-    return _DEFAULT_CALENDAR_PATH
+    return mcal.resolve_calendar_read_path(os.environ)
 
 
 def parseCalendarTime(value: Any, defaultValue: time) -> time:
@@ -222,24 +221,7 @@ def parseCalendarTime(value: Any, defaultValue: time) -> time:
 
 
 def calendarDayRows(payload: Mapping[str, Any]) -> Dict[str, Dict[str, Any]]:
-    rows: Dict[str, Dict[str, Any]] = {}
-    for key in ("days", "tradingDays", "calendar"):
-        value = payload.get(key)
-        if isinstance(value, Mapping):
-            for day, row in value.items():
-                if isinstance(row, Mapping):
-                    rows[str(day)] = dict(row)
-                elif isinstance(row, bool):
-                    rows[str(day)] = {"isTradingDay": row}
-        elif isinstance(value, list):
-            for row in value:
-                if isinstance(row, str):
-                    rows[row] = {"isTradingDay": True}
-                elif isinstance(row, Mapping):
-                    day = str(row.get("dateKst") or row.get("date") or row.get("day") or "").strip()
-                    if day:
-                        rows[day] = dict(row)
-    return rows
+    return mcal.calendar_day_rows(payload)
 
 
 def calendarSessionState(dayPayload: Mapping[str, Any], at: datetime) -> Dict[str, Any]:
@@ -379,21 +361,33 @@ def evaluateCalendarState(now: Optional[datetime] = None) -> Dict[str, Any]:
             "sourceHierarchy": payload.get("sourceHierarchy") or "local KRX/NXT cached calendar",
         }
 
+    state = "paper_autofilled" if mcal.is_paper_autofill_row(day_payload) else "calendar_ready"
     return {
-        "state": "calendar_ready",
+        "state": state,
         "path": str(path),
         "tradingAllowed": True,
         "dateKst": date_key,
         "isTradingDay": True,
         "validUntil": valid_until or None,
-        "sourceAuthority": payload.get("sourceAuthority") or payload.get("source") or "local_cache",
-        "sourceHierarchy": payload.get("sourceHierarchy") or "local KRX/NXT cached calendar; KIS holiday lookup deferred",
+        "reason": "paper autofilled calendar row ready" if state == "paper_autofilled" else "calendar row ready",
+        "sourceAuthority": (
+            day_payload.get("sourceAuthority")
+            or day_payload.get("source")
+            or payload.get("sourceAuthority")
+            or payload.get("source")
+            or "local_cache"
+        ),
+        "sourceHierarchy": (
+            day_payload.get("sourceHierarchy")
+            or payload.get("sourceHierarchy")
+            or "local KRX/NXT cached calendar; KIS holiday lookup deferred"
+        ),
         **session_state,
     }
 
 
 def routeBlockedByCalendar(route: Dict[str, Any], calendar: Mapping[str, Any]) -> Dict[str, Any]:
-    if calendar.get("state") == "calendar_ready" and calendar.get("isTradingDay") is True:
+    if calendar.get("state") in _READY_CALENDAR_STATES and calendar.get("isTradingDay") is True:
         return route
     blocked = dict(route)
     blocked.update(
@@ -503,7 +497,7 @@ def getRunnerStatus(atKst: Optional[str] = None) -> Dict[str, Any]:
 
     if kill_switch:
         order_gate = "blocked_kill_switch"
-    elif calendar["state"] != "calendar_ready":
+    elif calendar["state"] not in _READY_CALENDAR_STATES:
         order_gate = f"blocked_{calendar['state']}"
     elif market_source["state"] == "source_unconfigured":
         order_gate = "blocked_source_unconfigured"
