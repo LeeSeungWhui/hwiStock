@@ -1511,6 +1511,47 @@ def test_tick_blocks_order_when_paper_session_notional_cap_exceeded(tmp_path, mo
     assert not any("/order-cash" in call["url"] for call in transport.calls)
 
 
+def test_paper_session_limits_do_not_block_sell_exit_orders():
+    result = continuous_runtime.evaluatePaperSessionLimits(
+        {
+            "intent_id": "sell-exit-cap-bypass",
+            "idempotency_key": "sell-exit-cap-bypass",
+            "symbol": "005930",
+            "side": "sell",
+            "quantity": 10,
+            "order_price": 70000,
+        },
+        {
+            "submitted_order_history": [
+                {
+                    "idempotency_key": "buy-1",
+                    "side": "buy",
+                    "submitted_at_kst": "2026-06-05T09:10:00+09:00",
+                    "notional_krw": 1_950_000,
+                },
+                {
+                    "idempotency_key": "sell-1",
+                    "side": "sell",
+                    "submitted_at_kst": "2026-06-05T09:20:00+09:00",
+                    "notional_krw": 900_000,
+                },
+            ],
+            "pending_orders": [],
+        },
+        {"maxDailyOrders": 1, "maxNotionalKrw": 2_000_000},
+        now=datetime.fromisoformat("2026-06-05T09:30:00+09:00"),
+    )
+
+    assert result["ok"] is True
+    assert result["limitsApplyToSide"] is False
+    assert result["side"] == "sell"
+    assert result["errors"] == []
+    assert result["blocksPaperOrder"] is False
+    assert result["submittedOrderCountToday"] == 2
+    assert result["submittedBuyOrderCountToday"] == 1
+    assert result["notionalScope"] == "buy_orders_only"
+
+
 def test_tick_preflight_uses_kis_account_truth_not_intent_cash(tmp_path, monkeypatch):
     _calendar(tmp_path, monkeypatch)
     env = _env()

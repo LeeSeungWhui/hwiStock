@@ -584,20 +584,27 @@ def evaluatePaperSessionLimits(
         row for row in [*history_rows, *pending_rows]
         if str(row.get("submitted_at_kst") or row.get("recorded_at_kst") or "").startswith(today)
     ]
-    used_notional = sum(_coerce_nonnegative_int(row.get("notional_krw"), 0) for row in submitted_today)
+    side = _intent_side(intent)
+    limits_apply = side == "buy"
+    submitted_buy_today = [row for row in submitted_today if _intent_side(row) == "buy"]
+    used_notional = sum(_coerce_nonnegative_int(row.get("notional_krw"), 0) for row in submitted_buy_today)
     intent_notional = estimateIntentNotionalKrw(intent)
     errors: list[str] = []
-    if max_daily_orders > 0 and len(submitted_today) >= max_daily_orders:
+    if limits_apply and max_daily_orders > 0 and len(submitted_buy_today) >= max_daily_orders:
         errors.append("max_daily_paper_orders_exceeded")
-    if max_notional > 0 and used_notional + intent_notional > max_notional:
+    if limits_apply and max_notional > 0 and used_notional + intent_notional > max_notional:
         errors.append("max_paper_notional_krw_exceeded")
     return {
         "ok": not errors,
         "errors": errors,
         "dateKst": today,
+        "side": side,
+        "limitsApplyToSide": limits_apply,
         "submittedOrderCountToday": len(submitted_today),
+        "submittedBuyOrderCountToday": len(submitted_buy_today),
         "maxDailyOrders": max_daily_orders,
         "usedNotionalKrw": used_notional,
+        "notionalScope": "buy_orders_only",
         "intentNotionalKrw": intent_notional,
         "maxNotionalKrw": max_notional,
         "blocksPaperOrder": bool(errors),
