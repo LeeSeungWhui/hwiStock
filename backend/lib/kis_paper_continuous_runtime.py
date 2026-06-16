@@ -1420,29 +1420,64 @@ def _reconcile_runner_state_from_account_truth(
         for row in existing_holdings
         if _symbol_from_row(row)
     }
+    pending_buy_symbols_initial = {
+        _symbol_from_row(row)
+        for row in pending_rows
+        if _symbol_from_row(row) and str(row.get("side") or "buy").strip().lower() == "buy"
+    }
     sell_fills: list[Dict[str, Any]] = []
+    buy_fills: list[Dict[str, Any]] = []
     for row in account_truth.get("daily_order_fills") or []:
         if not isinstance(row, Mapping):
             continue
-        if str(row.get("side") or "").strip().lower() != "sell":
+        side = str(row.get("side") or "").strip().lower()
+        if side not in {"buy", "sell"}:
             continue
         filled_quantity = _filled_quantity_from_row(row)
         remaining_quantity = _remaining_quantity_from_row(row)
-        if filled_quantity <= 0 and remaining_quantity != 0:
+        normalized_fill = {
+            **dict(row),
+            "side": side,
+            "symbol": _symbol_from_row(row),
+            "order_no": _order_number_from_row(row),
+            "filled_quantity": filled_quantity,
+            "remaining_quantity": remaining_quantity,
+        }
+        if side == "sell":
+            if filled_quantity <= 0 and remaining_quantity != 0:
+                continue
+            sell_fills.append(normalized_fill)
             continue
-        sell_fills.append(
-            {
-                **dict(row),
-                "symbol": _symbol_from_row(row),
-                "order_no": _order_number_from_row(row),
-                "filled_quantity": filled_quantity,
-                "remaining_quantity": remaining_quantity,
-            }
-        )
+        if filled_quantity <= 0 and remaining_quantity is None:
+            continue
+        buy_fills.append(normalized_fill)
     refreshed_symbols: list[str] = []
+    balance_promoted_symbols: list[str] = []
     for symbol, position in positions_by_symbol.items():
         existing = holdings_by_symbol.get(symbol)
         if not existing:
+            quantity = _positive_quantity_from_row(position)
+            if quantity <= 0:
+                continue
+            holdings_by_symbol[symbol] = {
+                "symbol": symbol,
+                "ticker": symbol,
+                "name": position.get("name") or symbol,
+                "side": "buy",
+                "quantity": quantity,
+                "sellable_quantity": position.get("sellable_quantity"),
+                "average_price": position.get("average_price"),
+                "current_price": position.get("current_price"),
+                "eval_amount_krw": position.get("eval_amount_krw"),
+                "pnl_krw": position.get("pnl_krw"),
+                "position_state": "holding_confirmed",
+                "order_state": "holding_confirmed",
+                "source": "kis_balance_reconciliation",
+                "confirmed_at_kst": now.isoformat(),
+                "last_reconciled_at_kst": now.isoformat(),
+            }
+            if symbol not in pending_buy_symbols_initial:
+                balance_promoted_symbols.append(symbol)
             continue
         refreshed: Dict[str, Any] = dict(existing)
         refreshed.update(
@@ -1470,7 +1505,9 @@ def _reconcile_runner_state_from_account_truth(
     promoted_symbols: list[str] = []
     closed_sell_symbols: list[str] = []
     partial_sell_symbols: list[str] = []
+    partial_buy_symbols: list[str] = []
     reconciled_sell_order_numbers: list[str] = []
+    reconciled_buy_order_numbers: list[str] = []
     for pending in pending_rows:
         symbol = _symbol_from_row(pending)
         side = str(pending.get("side") or "buy").strip().lower()
@@ -1540,13 +1577,64 @@ def _reconcile_runner_state_from_account_truth(
                 )
                 remaining_pending.append(updated_pending)
             continue
+        matched_buy_fill = _matching_daily_fill_for_pending(pending, account_truth)
+        if (
+            matched_buy_fill
+            and str(matched_buy_fill.get("side") or "").strip().lower()
+            and str(matched_buy_fill.get("side") or "").strip().lower() != side
+        ):
+            matched_buy_fill = None
+        buy_filled_quantity = _filled_quantity_from_row(matched_buy_fill) if matched_buy_fill else 0
+        buy_remaining_quantity = _remaining_quantity_from_row(matched_buy_fill) if matched_buy_fill else None
+        buy_order_quantity = (
+            _coerce_nonnegative_int(
+                matched_buy_fill.get("order_quantity") or matched_buy_fill.get("quantity"),
+                0,
+            )
+            if matched_buy_fill
+            else 0
+        )
+        if matched_buy_fill and buy_remaining_quantity is None and buy_order_quantity > 0:
+            buy_remaining_quantity = max(buy_order_quantity - buy_filled_quantity, 0)
         if not position:
+            if matched_buy_fill and buy_remaining_quantity is not None:
+                updated_pending = dict(pending)
+                updated_pending.update(
+                    {
+                        "filled_quantity": buy_filled_quantity,
+                        "remaining_quantity": buy_remaining_quantity,
+                        "last_reconciled_at_kst": now.isoformat(),
+                    }
+                )
+                if buy_remaining_quantity > 0:
+                    updated_pending["quantity"] = buy_remaining_quantity
+                    if buy_filled_quantity > 0:
+                        updated_pending["order_state"] = "partially_filled"
+                remaining_pending.append(updated_pending)
+                continue
             remaining_pending.append(pending)
             continue
 
         quantity = _positive_quantity_from_row(position)
         if quantity <= 0:
             remaining_pending.append(pending)
+            continue
+        if (
+            matched_buy_fill
+            and buy_filled_quantity <= 0
+            and (buy_remaining_quantity is None or buy_remaining_quantity > 0)
+        ):
+            updated_pending = dict(pending)
+            updated_pending.update(
+                {
+                    "filled_quantity": buy_filled_quantity,
+                    "remaining_quantity": buy_remaining_quantity,
+                    "last_reconciled_at_kst": now.isoformat(),
+                }
+            )
+            if buy_remaining_quantity is not None and buy_remaining_quantity > 0:
+                updated_pending["quantity"] = buy_remaining_quantity
+            remaining_pending.append(updated_pending)
             continue
 
         existing = holdings_by_symbol.get(symbol, {})
@@ -1590,6 +1678,28 @@ def _reconcile_runner_state_from_account_truth(
                 holding[key] = pending.get(key)
         holdings_by_symbol[symbol] = holding
         promoted_symbols.append(symbol)
+        if matched_buy_fill:
+            buy_order_no = _order_number_from_row(matched_buy_fill)
+            if buy_order_no and buy_order_no not in reconciled_buy_order_numbers:
+                reconciled_buy_order_numbers.append(buy_order_no)
+        if buy_remaining_quantity is not None and buy_remaining_quantity > 0:
+            updated_pending = dict(pending)
+            updated_pending.update(
+                {
+                    "quantity": buy_remaining_quantity,
+                    "filled_quantity": buy_filled_quantity,
+                    "remaining_quantity": buy_remaining_quantity,
+                    "order_state": (
+                        "partially_filled"
+                        if buy_filled_quantity > 0
+                        else pending.get("order_state", "pending")
+                    ),
+                    "last_reconciled_at_kst": now.isoformat(),
+                }
+            )
+            remaining_pending.append(updated_pending)
+            if symbol not in partial_buy_symbols:
+                partial_buy_symbols.append(symbol)
 
     stale_removed_symbols: list[str] = []
     if account_truth.get("balance_status") == "pass":
@@ -1604,15 +1714,16 @@ def _reconcile_runner_state_from_account_truth(
                 if symbol not in closed_sell_symbols:
                     stale_removed_symbols.append(symbol)
 
-    if reconciled_sell_order_numbers:
+    if reconciled_sell_order_numbers or reconciled_buy_order_numbers:
         history_rows: list[Dict[str, Any]] = []
+        fill_rows = sell_fills + buy_fills
         for row in state.get("submitted_order_history") or []:
             if not isinstance(row, Mapping):
                 continue
             updated = dict(row)
             order_no = _order_number_from_row(updated)
             matched_fill = next(
-                (fill for fill in sell_fills if order_no and str(fill.get("order_no") or "").strip() == order_no),
+                (fill for fill in fill_rows if order_no and str(fill.get("order_no") or "").strip() == order_no),
                 None,
             )
             if matched_fill:
@@ -1630,12 +1741,15 @@ def _reconcile_runner_state_from_account_truth(
 
     changed = (
         bool(promoted_symbols)
+        or bool(balance_promoted_symbols)
         or bool(refreshed_symbols)
         or bool(closed_sell_symbols)
         or bool(partial_sell_symbols)
+        or bool(partial_buy_symbols)
         or bool(stale_removed_symbols)
         or len(remaining_pending) != len(pending_rows)
         or bool(reconciled_sell_order_numbers)
+        or bool(reconciled_buy_order_numbers)
     )
     if changed:
         state["pending_orders"] = remaining_pending
@@ -1654,15 +1768,20 @@ def _reconcile_runner_state_from_account_truth(
         "raw_response_stored": False,
         "promoted_to_holdings_count": len(promoted_symbols),
         "promoted_symbols": promoted_symbols,
+        "balance_promoted_symbols_count": len(balance_promoted_symbols),
+        "balance_promoted_symbols": balance_promoted_symbols,
         "refreshed_holdings_count": len(refreshed_symbols),
         "refreshed_symbols": refreshed_symbols,
         "closed_sell_symbols_count": len(closed_sell_symbols),
         "closed_sell_symbols": closed_sell_symbols,
         "partial_sell_symbols_count": len(partial_sell_symbols),
         "partial_sell_symbols": partial_sell_symbols,
+        "partial_buy_symbols_count": len(partial_buy_symbols),
+        "partial_buy_symbols": partial_buy_symbols,
         "stale_removed_symbols_count": len(stale_removed_symbols),
         "stale_removed_symbols": stale_removed_symbols,
         "reconciled_sell_order_numbers": reconciled_sell_order_numbers,
+        "reconciled_buy_order_numbers": reconciled_buy_order_numbers,
         "pending_remaining_count": len(remaining_pending),
         "holdings_count": len(state.get("holdings") or []),
     }

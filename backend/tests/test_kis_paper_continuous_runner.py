@@ -491,6 +491,146 @@ def test_reconciliation_refreshes_existing_holding_price_from_kis_balance():
     assert state["last_reconciled_kst"] == "2026-06-05T09:30:00+09:00"
 
 
+def test_reconciliation_preserves_partial_buy_remaining_pending_order():
+    state = {
+        "schema_version": "kis_paper_runner_state/v0",
+        "pending_orders": [
+            {
+                "symbol": "016600",
+                "side": "buy",
+                "quantity": 55,
+                "order_price": 3580,
+                "broker_order_no": "0000013150",
+                "submitted_at_kst": "2026-06-16T09:56:04+09:00",
+                "idempotency_key": "buy-016600-0956",
+            }
+        ],
+        "holdings": [],
+        "submitted_order_history": [
+            {
+                "symbol": "016600",
+                "side": "buy",
+                "quantity": 55,
+                "order_price": 3580,
+                "broker_order_no": "0000013150",
+                "submitted_at_kst": "2026-06-16T09:56:04+09:00",
+                "idempotency_key": "buy-016600-0956",
+            }
+        ],
+    }
+    account_truth = {
+        "balance_status": "pass",
+        "positions": [
+            {
+                "symbol": "016600",
+                "name": "큐캐피탈",
+                "quantity": 1,
+                "sellable_quantity": 1,
+                "average_price": 3580,
+                "current_price": 3585,
+                "eval_amount_krw": 3585,
+                "pnl_krw": 5,
+            }
+        ],
+        "daily_order_fills": [
+            {
+                "symbol": "016600",
+                "side": "buy",
+                "order_no": "0000013150",
+                "order_quantity": 55,
+                "filled_quantity": 1,
+                "remaining_quantity": 54,
+                "filled_price": 3580,
+                "order_price": 3580,
+            }
+        ],
+    }
+
+    step = continuous_runtime._reconcile_runner_state_from_account_truth(  # noqa: SLF001
+        state,
+        account_truth,
+        now=datetime.fromisoformat("2026-06-16T10:06:00+09:00"),
+    )
+
+    assert step["status"] == "pass"
+    assert step["promoted_symbols"] == ["016600"]
+    assert step["partial_buy_symbols"] == ["016600"]
+    assert step["reconciled_buy_order_numbers"] == ["0000013150"]
+    assert len(state["holdings"]) == 1
+    holding = state["holdings"][0]
+    assert holding["symbol"] == "016600"
+    assert holding["quantity"] == 1
+    assert holding["sellable_quantity"] == 1
+    assert holding["pending_order_reconciled"] is True
+    assert len(state["pending_orders"]) == 1
+    pending = state["pending_orders"][0]
+    assert pending["symbol"] == "016600"
+    assert pending["side"] == "buy"
+    assert pending["broker_order_no"] == "0000013150"
+    assert pending["quantity"] == 54
+    assert pending["filled_quantity"] == 1
+    assert pending["remaining_quantity"] == 54
+    assert pending["order_state"] == "partially_filled"
+    history = state["submitted_order_history"][0]
+    assert history["filled_quantity"] == 1
+    assert history["remaining_quantity"] == 54
+    assert history["filled_price"] == 3580
+
+
+def test_reconciliation_adds_balance_position_missing_from_local_holdings():
+    state = {
+        "schema_version": "kis_paper_runner_state/v0",
+        "pending_orders": [],
+        "holdings": [
+            {
+                "symbol": "454180",
+                "quantity": 21,
+                "sellable_quantity": 0,
+                "average_price": 8210,
+                "current_price": 8240,
+                "position_state": "holding_confirmed",
+            }
+        ],
+    }
+    account_truth = {
+        "balance_status": "pass",
+        "positions": [
+            {
+                "symbol": "266550",
+                "name": "ARIRANG",
+                "quantity": 1,
+                "sellable_quantity": 1,
+                "average_price": 17970,
+                "current_price": 19660,
+                "eval_amount_krw": 19660,
+                "pnl_krw": 1690,
+            },
+            {
+                "symbol": "454180",
+                "quantity": 21,
+                "sellable_quantity": 0,
+                "average_price": 8210,
+                "current_price": 8240,
+            },
+        ],
+    }
+
+    step = continuous_runtime._reconcile_runner_state_from_account_truth(  # noqa: SLF001
+        state,
+        account_truth,
+        now=datetime.fromisoformat("2026-06-16T10:06:00+09:00"),
+    )
+
+    assert step["status"] == "pass"
+    assert step["balance_promoted_symbols"] == ["266550"]
+    holdings_by_symbol = {row["symbol"]: row for row in state["holdings"]}
+    assert set(holdings_by_symbol) == {"266550", "454180"}
+    assert holdings_by_symbol["266550"]["quantity"] == 1
+    assert holdings_by_symbol["266550"]["sellable_quantity"] == 1
+    assert holdings_by_symbol["266550"]["source"] == "kis_balance_reconciliation"
+    assert holdings_by_symbol["266550"]["position_state"] == "holding_confirmed"
+
+
 def test_reconciliation_closes_filled_sell_and_removes_stale_absent_holding():
     state = {
         "schema_version": "kis_paper_runner_state/v0",
