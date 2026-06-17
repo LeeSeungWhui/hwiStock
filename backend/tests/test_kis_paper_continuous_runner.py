@@ -629,6 +629,8 @@ def test_reconciliation_adds_balance_position_missing_from_local_holdings():
     assert holdings_by_symbol["266550"]["sellable_quantity"] == 1
     assert holdings_by_symbol["266550"]["source"] == "kis_balance_reconciliation"
     assert holdings_by_symbol["266550"]["position_state"] == "holding_confirmed"
+    assert holdings_by_symbol["454180"]["quantity"] == 21
+    assert holdings_by_symbol["454180"]["sellable_quantity"] == 21
 
 
 def test_reconciliation_closes_filled_sell_and_removes_stale_absent_holding():

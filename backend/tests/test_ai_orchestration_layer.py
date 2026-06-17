@@ -1083,6 +1083,53 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         self.assertEqual(position_action["sellable_truth_status"], "provider_unsupported_with_balance_fallback")
         self.assertTrue(position_action["sellable_truth_accepted"])
 
+    def test_stop_loss_exit_uses_runner_account_quantity_fallback_when_sellable_zero(self):
+        doc = ao.buildFlashTradeDocument(
+            pro_artifact={"artifact_id": "art_pro_hourly_20260617_1400"},
+            recent_events=[{"source_event_id": "event-general"}],
+            kis_market_snapshots=[_kis_snapshot(symbol="454180", price=7990)],
+            compiled_watch=[_compiled_flash_watch(symbol="454180")],
+            portfolio_snapshot={"artifact_id": "art_portfolio_20260617_1450", "holdings": []},
+            order_state_snapshot={
+                "artifact_id": "art_order_state_20260617_1450",
+                "pending_orders": [],
+                "holdings": [
+                    _holding_row(
+                        symbol="454180",
+                        quantity=15,
+                        entry_time_kst="2026-06-10T14:18:49+09:00",
+                        entry_price=8210,
+                        entry_price_limit=8220,
+                        target_price=8512,
+                        stop_loss_price=8017,
+                        take_profit=8512,
+                        stop_loss=8017,
+                        sellable_quantity=0,
+                        sellable_status="none",
+                        source="kis_paper_runner_account_truth",
+                        trading_account_truth={
+                            "sellable_quantity": 0,
+                            "sellable_status": "none",
+                            "source": "kis_paper_runner_account_truth",
+                        },
+                    )
+                ],
+            },
+            morning_watchlist=_morning_watchlist(),
+            produced_at_kst="2026-06-17T14:50:00+09:00",
+        )
+
+        position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["action"], "SELL_NOW")
+        self.assertTrue(position_action["sell_allowed"])
+        self.assertEqual(position_action["time_exit_reason"], "stop_loss_hit")
+        self.assertEqual(position_action["sellable_quantity"], 15)
+        self.assertEqual(position_action["sellable_truth_status"], "pass_balance_position_fallback")
+        self.assertEqual(position_action["sellable_truth_source"], "kis_paper_runner_account_truth")
+        self.assertTrue(position_action["sellable_truth_accepted"])
+        self.assertIn("sellable_helper_unavailable_using_balance_position", position_action["sellable_truth_warnings"])
+        self.assertIsNone(position_action["exit_blocked_reason"])
+
     def test_sell_now_blocked_when_sellable_status_none_and_no_holding_confirmed(self):
         doc = _position_management_doc(
             pending=[
@@ -1111,7 +1158,7 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         self.assertEqual(position_action["sellable_truth_status"], "unknown")
         self.assertEqual(position_action["exit_blocked_reason"], "fill_status_not_reconciled")
 
-    def test_sell_now_blocked_when_sellable_quantity_zero(self):
+    def test_sell_now_uses_confirmed_holding_quantity_when_sellable_quantity_zero(self):
         doc = _position_management_doc(
             holding=[
                 _holding_row(
@@ -1125,9 +1172,49 @@ class AiOrchestrationLayerTests(unittest.TestCase):
         )
 
         position_action = doc["position_actions"][0]
+        self.assertEqual(position_action["action"], "SELL_NOW")
+        self.assertTrue(position_action["sell_allowed"])
+        self.assertEqual(position_action["sellable_quantity"], 10)
+        self.assertEqual(position_action["sellable_truth_status"], "pass_balance_position_fallback")
+        self.assertIsNone(position_action["exit_blocked_reason"])
+
+    def test_sell_now_blocked_when_stale_pending_sell_blocks_balance_fallback(self):
+        doc = ao.buildFlashTradeDocument(
+            pro_artifact={"artifact_id": "art_pro_hourly_20260604_0900"},
+            recent_events=[{"source_event_id": "event-general"}],
+            kis_market_snapshots=[_kis_snapshot(price=10020)],
+            compiled_watch=[_compiled_flash_watch()],
+            portfolio_snapshot={"artifact_id": "art_portfolio_20260604_0905", "holdings": []},
+            order_state_snapshot={
+                "artifact_id": "art_order_state_20260604_0905",
+                "pending_orders": [],
+                "stale_pending_orders_excluded_for_analysis": [
+                    {
+                        "symbol": "005930",
+                        "side": "sell",
+                        "quantity": 10,
+                        "broker_order_no": "0000001111",
+                        "submitted_at_kst": "2026-06-04T08:50:00+09:00",
+                    }
+                ],
+                "holdings": [
+                    _holding_row(
+                        entry_time_kst="2026-06-04T08:34:00+09:00",
+                        sellable_quantity=0,
+                        sellable_status="none",
+                        source="kis_balance_output1",
+                    )
+                ],
+            },
+            morning_watchlist=_morning_watchlist(),
+            produced_at_kst=NOW_KST,
+        )
+
+        position_action = doc["position_actions"][0]
         self.assertEqual(position_action["action"], "WAIT_SELL")
         self.assertFalse(position_action["sell_allowed"])
         self.assertEqual(position_action["sellable_truth_status"], "provider_unsupported_no_fallback")
+        self.assertIn("pending_sell_order_blocks_balance_fallback", position_action["sellable_truth_warnings"])
         self.assertIn("missing_sellable_truth", position_action["exit_blocked_reason"])
         self.assertIn("sellable_truth_not_accepted", position_action["exit_blocked_reason"])
 

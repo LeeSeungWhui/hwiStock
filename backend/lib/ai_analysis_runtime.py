@@ -111,6 +111,37 @@ def _parse_optional_kst(value: Any) -> Optional[datetime]:
     return parsed.astimezone(KST)
 
 
+def _positive_int(value: Any) -> int:
+    if value is None or isinstance(value, bool):
+        return 0
+    raw = str(value).strip().replace(",", "")
+    if not raw:
+        return 0
+    try:
+        parsed = int(float(raw))
+    except ValueError:
+        return 0
+    return parsed if parsed > 0 else 0
+
+
+def _first_positive_position_quantity(row: Mapping[str, Any], keys: Sequence[str]) -> int:
+    for key in keys:
+        parsed = _positive_int(row.get(key))
+        if parsed > 0:
+            return parsed
+    return 0
+
+
+def _account_position_sellable_quantity(position: Mapping[str, Any], existing: Mapping[str, Any]) -> int:
+    return (
+        _first_positive_position_quantity(
+            position,
+            ("sellable_quantity", "ord_psbl_qty", "sll_psbl_qty", "quantity", "hldg_qty", "holding_qty"),
+        )
+        or _first_positive_position_quantity(existing, ("sellable_quantity", "ord_psbl_qty", "sll_psbl_qty"))
+    )
+
+
 def _read_events_for_window(
     data_root: Path,
     *,
@@ -1602,13 +1633,14 @@ def _merge_order_state_holdings_with_account_truth(
         if not symbol:
             continue
         existing = merged_by_symbol.get(symbol, {})
+        sellable_quantity = _account_position_sellable_quantity(position, existing)
         merged_by_symbol[symbol] = {
             **existing,
             "symbol": symbol,
             "ticker": symbol,
             "name": position.get("name") or existing.get("name") or symbol,
             "quantity": position.get("quantity") or existing.get("quantity"),
-            "sellable_quantity": position.get("sellable_quantity") or existing.get("sellable_quantity"),
+            "sellable_quantity": sellable_quantity or existing.get("sellable_quantity"),
             "average_price": position.get("average_price") or existing.get("average_price"),
             "current_price": position.get("current_price") or existing.get("current_price"),
             "eval_amount_krw": position.get("eval_amount_krw") or existing.get("eval_amount_krw"),
@@ -1617,7 +1649,7 @@ def _merge_order_state_holdings_with_account_truth(
             "order_state": "holding_confirmed",
             "source": "kis_paper_runner_account_truth",
             "trading_account_truth": {
-                "sellable_quantity": position.get("sellable_quantity"),
+                "sellable_quantity": sellable_quantity,
                 "sellable_status": position.get("sellable_status") or "none",
                 "current_price": position.get("current_price"),
                 "eval_amount_krw": position.get("eval_amount_krw"),

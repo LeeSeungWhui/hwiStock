@@ -1455,6 +1455,10 @@ def _reconcile_runner_state_from_account_truth(
     balance_promoted_symbols: list[str] = []
     for symbol, position in positions_by_symbol.items():
         existing = holdings_by_symbol.get(symbol)
+        sellable_quantity = _row_positive_quantity(
+            position,
+            ("sellable_quantity", "ord_psbl_qty", "sll_psbl_qty", "quantity", "hldg_qty", "holding_qty"),
+        )
         if not existing:
             quantity = _positive_quantity_from_row(position)
             if quantity <= 0:
@@ -1465,7 +1469,7 @@ def _reconcile_runner_state_from_account_truth(
                 "name": position.get("name") or symbol,
                 "side": "buy",
                 "quantity": quantity,
-                "sellable_quantity": position.get("sellable_quantity"),
+                "sellable_quantity": sellable_quantity or position.get("sellable_quantity"),
                 "average_price": position.get("average_price"),
                 "current_price": position.get("current_price"),
                 "eval_amount_krw": position.get("eval_amount_krw"),
@@ -1486,7 +1490,7 @@ def _reconcile_runner_state_from_account_truth(
                 "ticker": symbol,
                 "name": position.get("name") or existing.get("name") or symbol,
                 "quantity": position.get("quantity") or existing.get("quantity"),
-                "sellable_quantity": position.get("sellable_quantity"),
+                "sellable_quantity": sellable_quantity or position.get("sellable_quantity"),
                 "average_price": position.get("average_price") or existing.get("average_price"),
                 "current_price": position.get("current_price"),
                 "eval_amount_krw": position.get("eval_amount_krw"),

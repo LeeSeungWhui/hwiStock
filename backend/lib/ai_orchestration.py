@@ -1883,12 +1883,13 @@ def _position_entry_price(row: Mapping[str, Any]) -> int:
 
 def _position_sellable_quantity(row: Mapping[str, Any]) -> int:
     account_truth = row.get("trading_account_truth") if isinstance(row.get("trading_account_truth"), Mapping) else {}
-    return _safe_positive_int(
-        _first_non_empty(
-            row.get("sellable_quantity"),
-            row.get("ord_psbl_qty"),
-            account_truth.get("sellable_quantity") if isinstance(account_truth, Mapping) else None,
-        )
+    return _first_positive_int(
+        row.get("sellable_quantity"),
+        row.get("ord_psbl_qty"),
+        row.get("sll_psbl_qty"),
+        account_truth.get("sellable_quantity") if isinstance(account_truth, Mapping) else None,
+        account_truth.get("ord_psbl_qty") if isinstance(account_truth, Mapping) else None,
+        account_truth.get("sll_psbl_qty") if isinstance(account_truth, Mapping) else None,
     )
 
 
@@ -1919,12 +1920,57 @@ def _position_sellable_truth_source(row: Mapping[str, Any]) -> str:
     ).strip()
 
 
+def _position_balance_fallback_quantity(row: Mapping[str, Any]) -> int:
+    account_truth = row.get("trading_account_truth") if isinstance(row.get("trading_account_truth"), Mapping) else {}
+    return _first_positive_int(
+        row.get("sellable_quantity"),
+        row.get("ord_psbl_qty"),
+        row.get("sll_psbl_qty"),
+        account_truth.get("sellable_quantity") if isinstance(account_truth, Mapping) else None,
+        account_truth.get("ord_psbl_qty") if isinstance(account_truth, Mapping) else None,
+        account_truth.get("sll_psbl_qty") if isinstance(account_truth, Mapping) else None,
+        row.get("quantity"),
+        row.get("hldg_qty"),
+        row.get("holding_qty"),
+        row.get("qty"),
+        account_truth.get("quantity") if isinstance(account_truth, Mapping) else None,
+        account_truth.get("hldg_qty") if isinstance(account_truth, Mapping) else None,
+        account_truth.get("holding_qty") if isinstance(account_truth, Mapping) else None,
+    )
+
+
+def _position_balance_fallback_allowed(row: Mapping[str, Any]) -> bool:
+    account_truth = row.get("trading_account_truth") if isinstance(row.get("trading_account_truth"), Mapping) else {}
+    raw_sources = [
+        row.get("source"),
+        row.get("position_source"),
+        row.get("account_truth_source"),
+        row.get("sellable_truth_source"),
+        account_truth.get("source") if isinstance(account_truth, Mapping) else None,
+        account_truth.get("sellable_truth_source") if isinstance(account_truth, Mapping) else None,
+    ]
+    source_text = " ".join(str(value or "").strip().lower() for value in raw_sources if str(value or "").strip())
+    return any(
+        token in source_text
+        for token in (
+            "kis_balance",
+            "balance_output",
+            "account_truth",
+            "runner_account",
+            "balance_reconciliation",
+        )
+    )
+
+
 def _normalize_position_sellable_truth(
     row: Mapping[str, Any],
     *,
     position_state: str,
     sellable_quantity: int,
     sellable_status: str,
+    fallback_quantity: int = 0,
+    fallback_allowed: bool = False,
+    sellable_fallback_blocked: bool = False,
 ) -> Dict[str, Any]:
     status = str(sellable_status or "").strip().lower()
     source = _position_sellable_truth_source(row)
@@ -1935,9 +1981,34 @@ def _normalize_position_sellable_truth(
             "sellable_truth_source": source,
             "sellable_truth_accepted": False,
             "sellable_truth_warnings": [],
+            "sellable_quantity": 0,
             "fallback_used": False,
         }
     if sellable_quantity <= 0:
+        if fallback_allowed and fallback_quantity > 0 and status in SELLABLE_TRUTH_PROVIDER_UNSUPPORTED_STATUSES:
+            if sellable_fallback_blocked:
+                return {
+                    "sellable_truth_status": "provider_unsupported_no_fallback",
+                    "sellable_truth_source": source,
+                    "sellable_truth_accepted": False,
+                    "sellable_truth_warnings": ["pending_sell_order_blocks_balance_fallback"],
+                    "sellable_quantity": 0,
+                    "fallback_used": False,
+                }
+            warnings.append("sellable_helper_unavailable_using_balance_position")
+            fallback_status = (
+                "provider_unsupported_with_balance_fallback"
+                if status in {"skipped_provider_unsupported", "provider_unsupported", "paper_mock_unsupported"}
+                else "pass_balance_position_fallback"
+            )
+            return {
+                "sellable_truth_status": fallback_status,
+                "sellable_truth_source": source or "kis_balance_position",
+                "sellable_truth_accepted": True,
+                "sellable_truth_warnings": warnings,
+                "sellable_quantity": fallback_quantity,
+                "fallback_used": True,
+            }
         return {
             "sellable_truth_status": "provider_unsupported_no_fallback"
             if status in SELLABLE_TRUTH_PROVIDER_UNSUPPORTED_STATUSES
@@ -1945,6 +2016,7 @@ def _normalize_position_sellable_truth(
             "sellable_truth_source": source,
             "sellable_truth_accepted": False,
             "sellable_truth_warnings": [],
+            "sellable_quantity": 0,
             "fallback_used": False,
         }
     if status in SELLABLE_TRUTH_PASS_STATUSES:
@@ -1953,6 +2025,7 @@ def _normalize_position_sellable_truth(
             "sellable_truth_source": source or "sellable_helper",
             "sellable_truth_accepted": True,
             "sellable_truth_warnings": [],
+            "sellable_quantity": sellable_quantity,
             "fallback_used": False,
         }
     if status in SELLABLE_TRUTH_PROVIDER_UNSUPPORTED_STATUSES:
@@ -1967,6 +2040,7 @@ def _normalize_position_sellable_truth(
             "sellable_truth_source": source or "kis_balance_position",
             "sellable_truth_accepted": True,
             "sellable_truth_warnings": warnings,
+            "sellable_quantity": sellable_quantity,
             "fallback_used": True,
         }
     return {
@@ -1974,6 +2048,7 @@ def _normalize_position_sellable_truth(
         "sellable_truth_source": source,
         "sellable_truth_accepted": False,
         "sellable_truth_warnings": [],
+        "sellable_quantity": 0,
         "fallback_used": False,
     }
 
@@ -2084,6 +2159,7 @@ def _build_position_action(
     order_state_ref: str,
     market_refs: Sequence[Any],
     broker_order_open: bool,
+    sellable_fallback_blocked: bool = False,
 ) -> Optional[Dict[str, Any]]:
     symbol = _row_symbol(row)
     if not symbol:
@@ -2105,12 +2181,20 @@ def _build_position_action(
     entry_price = _position_entry_price(row)
     sellable_quantity = _position_sellable_quantity(row)
     sellable_status = _position_sellable_status(row)
+    fallback_quantity = _position_balance_fallback_quantity(row)
+    fallback_allowed = _position_balance_fallback_allowed(row)
     sellable_truth = _normalize_position_sellable_truth(
         row,
         position_state=position_state,
         sellable_quantity=sellable_quantity,
         sellable_status=sellable_status,
+        fallback_quantity=fallback_quantity,
+        fallback_allowed=fallback_allowed,
+        sellable_fallback_blocked=sellable_fallback_blocked,
     )
+    normalized_sellable_quantity = _safe_positive_int(sellable_truth.get("sellable_quantity"))
+    if sellable_quantity <= 0 and normalized_sellable_quantity > 0:
+        sellable_quantity = normalized_sellable_quantity
     pnl_pct = _unrealized_pnl_pct(current_price=current_price, entry_price=entry_price)
     progress_pct = _price_progress_to_target_pct(
         current_price=current_price,
@@ -2260,6 +2344,7 @@ def _build_flash_position_actions(
 ) -> List[Dict[str, Any]]:
     actions: List[Dict[str, Any]] = []
     seen: Set[str] = set()
+    sell_fallback_blocked_symbols = _sell_fallback_blocked_symbols(order_state_snapshot)
     for row in _snapshot_rows(order_state_snapshot, "pending_orders"):
         symbol = _row_symbol(row)
         if not symbol or symbol in seen:
@@ -2273,6 +2358,7 @@ def _build_flash_position_actions(
             order_state_ref=order_state_ref,
             market_refs=market_refs,
             broker_order_open=broker_order_open,
+            sellable_fallback_blocked=symbol in sell_fallback_blocked_symbols,
         )
         if action:
             actions.append(action)
@@ -2290,6 +2376,7 @@ def _build_flash_position_actions(
             order_state_ref=order_state_ref,
             market_refs=market_refs,
             broker_order_open=broker_order_open,
+            sellable_fallback_blocked=symbol in sell_fallback_blocked_symbols,
         )
         if action:
             actions.append(action)
@@ -2307,11 +2394,29 @@ def _build_flash_position_actions(
             order_state_ref=order_state_ref,
             market_refs=market_refs,
             broker_order_open=broker_order_open,
+            sellable_fallback_blocked=symbol in sell_fallback_blocked_symbols,
         )
         if action:
             actions.append(action)
             seen.add(symbol)
     return actions[:5]
+
+
+def _sell_fallback_blocked_symbols(order_state_snapshot: Mapping[str, Any]) -> Set[str]:
+    symbols: Set[str] = set()
+    for key in ("pending_orders", "stale_pending_orders_excluded_for_analysis", "active_exits"):
+        for row in _snapshot_rows(order_state_snapshot, key):
+            symbol = _row_symbol(row)
+            if symbol and _is_sell_like_order_state_row(row):
+                symbols.add(symbol)
+    return symbols
+
+
+def _is_sell_like_order_state_row(row: Mapping[str, Any]) -> bool:
+    side = str(row.get("side") or row.get("order_side") or "").strip().lower()
+    action = str(row.get("action") or row.get("order_action") or "").strip().upper()
+    intent_type = str(row.get("intent_type") or row.get("order_intent_type") or "").strip().lower()
+    return side == "sell" or action in FLASH_SELL_ACTIONS or "sell" in intent_type or "exit" in intent_type
 
 
 def _iter_nested_market_rows(value: Any) -> List[Mapping[str, Any]]:
@@ -3344,6 +3449,14 @@ def _safe_positive_int(value: Any) -> int:
     if not number.is_finite() or number <= 0:
         return 0
     return int(number)
+
+
+def _first_positive_int(*values: Any) -> int:
+    for value in values:
+        parsed = _safe_positive_int(value)
+        if parsed > 0:
+            return parsed
+    return 0
 
 
 def _first_non_empty(*values: Any) -> Any:
