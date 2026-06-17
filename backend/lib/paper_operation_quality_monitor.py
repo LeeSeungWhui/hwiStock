@@ -74,6 +74,7 @@ def _dayPaths(dataRoot: Path, day: str) -> dict[str, str]:
         "morningWatchlistPublishHealth": dataRoot / "evidence" / day / "morning-watchlist-publish-health.json",
         "marketCalendarRefresh": dataRoot / "evidence" / day / "market-calendar-refresh-latest.json",
         "kisPaperRunner": dataRoot / "evidence" / day / "kis-paper-continuous-latest.json",
+        "kisPaperRunnerState": dataRoot / "state" / "kis-paper-runner-state.json",
     }
     return {key: str(path) for key, path in paths.items() if path.exists()}
 
@@ -386,14 +387,74 @@ def _positionExitTriggered(row: Mapping[str, Any]) -> bool:
     return reason in EXIT_TRIGGER_REASONS or status in EXIT_TRIGGER_STATUSES
 
 
+def _rowSymbol(row: Mapping[str, Any]) -> str:
+    return str(row.get("symbol") or row.get("ticker") or row.get("pdno") or "").strip()
+
+
+def _orderNo(row: Mapping[str, Any]) -> str:
+    return str(row.get("broker_order_no") or row.get("order_no") or row.get("odno") or "").strip()
+
+
+def _runnerStateSellEvidence(runnerState: Mapping[str, Any]) -> dict[str, Any]:
+    statePresent = bool(runnerState)
+    pendingSymbols: set[str] = set()
+    submittedSymbols: set[str] = set()
+    holdingSymbols: set[str] = set()
+    handledIntentKeys: set[str] = set()
+    orderNumbers: set[str] = set()
+    for row in _listOfDicts(runnerState.get("holdings")):
+        symbol = _rowSymbol(row)
+        if symbol:
+            holdingSymbols.add(symbol)
+    for key in ("pending_orders", "submitted_order_history", "cancelled_orders"):
+        for row in _listOfDicts(runnerState.get(key)):
+            side = str(row.get("side") or "").strip().lower()
+            if side != "sell":
+                continue
+            symbol = _rowSymbol(row)
+            if symbol:
+                submittedSymbols.add(symbol)
+                if key == "pending_orders":
+                    pendingSymbols.add(symbol)
+            intentKey = str(row.get("idempotency_key") or row.get("intent_key") or "").strip()
+            if intentKey:
+                handledIntentKeys.add(intentKey)
+            orderNo = _orderNo(row)
+            if orderNo:
+                orderNumbers.add(orderNo)
+    return {
+        "state_present": statePresent,
+        "handled_symbols": pendingSymbols | submittedSymbols,
+        "submitted_symbols": submittedSymbols,
+        "holding_symbols": holdingSymbols,
+        "pending_symbols": pendingSymbols,
+        "handled_intent_keys": handledIntentKeys,
+        "order_numbers": orderNumbers,
+    }
+
+
+def _intentHandledByState(row: Mapping[str, Any], sellEvidence: Mapping[str, Any]) -> bool:
+    symbol = _rowSymbol(row)
+    intentKey = str(row.get("idempotency_key") or row.get("intent_key") or "").strip()
+    handledSymbols = sellEvidence.get("handled_symbols") if isinstance(sellEvidence.get("handled_symbols"), set) else set()
+    handledIntentKeys = (
+        sellEvidence.get("handled_intent_keys")
+        if isinstance(sellEvidence.get("handled_intent_keys"), set)
+        else set()
+    )
+    return bool((symbol and symbol in handledSymbols) or (intentKey and intentKey in handledIntentKeys))
+
+
 def _checkSellPipeline(
     flash: Mapping[str, Any],
     *,
     runner: Mapping[str, Any],
+    runnerState: Mapping[str, Any],
     at: datetime,
 ) -> dict[str, Any]:
     positionActions = _listOfDicts(flash.get("position_actions"))
     triggered = [row for row in positionActions if bool(row.get("order_window_open")) and _positionExitTriggered(row)]
+    sellEvidence = _runnerStateSellEvidence(runnerState)
     blocked = [
         {
             "symbol": row.get("symbol") or row.get("ticker"),
@@ -408,6 +469,17 @@ def _checkSellPipeline(
         for row in triggered
         if str(row.get("action") or "").upper() != "SELL_NOW"
     ]
+    blockedP0: list[dict[str, Any]] = []
+    suppressedBlocked: list[dict[str, Any]] = []
+    for row in blocked:
+        symbol = str(row.get("symbol") or "").strip()
+        if symbol in sellEvidence["pending_symbols"]:
+            suppressedBlocked.append({**row, "suppressed_reason": "sell_order_currently_pending_for_symbol"})
+            continue
+        if sellEvidence["state_present"] and symbol and symbol not in sellEvidence["holding_symbols"]:
+            suppressedBlocked.append({**row, "suppressed_reason": "symbol_no_longer_in_local_holdings"})
+            continue
+        blockedP0.append(row)
     sellNowCount = sum(1 for row in positionActions if str(row.get("action") or "").upper() == "SELL_NOW")
     sellIntents = [row for row in _pipelineAcceptedIntents(flash) if _intentIsSell(row)]
     runnerAt = _parseOptionalKst(runner.get("timestamp_kst")) or at
@@ -431,7 +503,7 @@ def _checkSellPipeline(
     nonExpiredSellIntents: list[dict[str, Any]] = []
     expiredBeforeRunner: list[dict[str, Any]] = []
     p0: list[str] = []
-    if blocked:
+    if blockedP0:
         p0.append("exit_trigger_without_sell_now")
     if sellNowCount > 0 and not sellIntents:
         p0.append("sell_now_without_accepted_sell_intent")
@@ -461,7 +533,10 @@ def _checkSellPipeline(
     runnerAfterFlash = flashProducedAt is None or runnerAt >= flashProducedAt
     if sellIntents and runnerAfterFlash and len(expiredBeforeRunner) == len(sellIntents):
         p0.append("sell_intent_expired_before_runner_pickup")
-    if _isOrderWindow(runnerAt) and runnerAfterFlash and nonExpiredSellIntents and not touchedSell:
+    unhandledNonExpiredSellIntents = [
+        row for row in nonExpiredSellIntents if not _intentHandledByState(row, sellEvidence)
+    ]
+    if _isOrderWindow(runnerAt) and runnerAfterFlash and unhandledNonExpiredSellIntents and not touchedSell:
         p0.append("runner_did_not_pick_nonexpired_sell_intent")
     headDisposition = sellDispositions[0] if sellDispositions else {}
     headDispositionName = str(headDisposition.get("intent_disposition") or headDisposition.get("disposition") or "")
@@ -483,6 +558,8 @@ def _checkSellPipeline(
         "sell_now_count": sellNowCount,
         "accepted_sell_intent_count": len(sellIntents),
         "blocked_position_actions": blocked,
+        "blocked_position_actions_p0": blockedP0,
+        "suppressed_blocked_position_actions": suppressedBlocked,
         "runner_timestamp_kst": runnerAt.isoformat(),
         "runner_loaded_sell_intent": loadedSell,
         "runner_touched_sell_intent": touchedSell,
@@ -490,6 +567,10 @@ def _checkSellPipeline(
         "sell_intent_ttl_findings": ttlFindings,
         "expired_sell_intents_before_runner": expiredBeforeRunner,
         "nonexpired_sell_intents_at_runner": nonExpiredSellIntents,
+        "unhandled_nonexpired_sell_intents_at_runner": unhandledNonExpiredSellIntents,
+        "runner_state_sell_handled_symbols": sorted(sellEvidence["handled_symbols"]),
+        "runner_state_holding_symbols": sorted(sellEvidence["holding_symbols"]),
+        "runner_state_pending_sell_symbols": sorted(sellEvidence["pending_symbols"]),
         "min_sell_pickup_ttl_seconds": MIN_SELL_PICKUP_TTL_SECONDS,
         "p0_conditions": p0,
     }
@@ -582,6 +663,7 @@ def evaluatePaperOperationQuality(
     publishHealth = artifacts.get("morningWatchlistPublishHealth") or {}
     marketCalendarRefresh = artifacts.get("marketCalendarRefresh") or {}
     runner = artifacts.get("kisPaperRunner") or {}
+    runnerState = artifacts.get("kisPaperRunnerState") or {}
     checks = {
         "market_calendar": _checkMarketCalendar(
             at=now,
@@ -601,7 +683,7 @@ def evaluatePaperOperationQuality(
             publishHealth=publishHealth,
         ),
         "buy_sizing": _checkBuySizing(flash),
-        "sell_pipeline": _checkSellPipeline(flash, runner=runner, at=now),
+        "sell_pipeline": _checkSellPipeline(flash, runner=runner, runnerState=runnerState, at=now),
         "runner_sell_execution": _checkRunnerSellExecution(at=now, runner=runner),
     }
     p0Conditions: list[str] = []
